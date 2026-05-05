@@ -277,6 +277,14 @@
         Object.entries(subBy).map(([k, v]) => [k, [...v].sort()])
       );
 
+      // Detectar posts huérfanos (sin Semana asignada) — útil para que el
+      // usuario sepa que tiene filas en su Sheet sin clasificar
+      const orphansNoWeek = allPosts.filter(p => p.week == null);
+      const orphansByPlatform = {};
+      for (const p of orphansNoWeek) {
+        orphansByPlatform[p.platform] = (orphansByPlatform[p.platform] || 0) + 1;
+      }
+
       const meta = {
         total_posts: allPosts.length,
         platforms,
@@ -286,6 +294,8 @@
         subcampaignsByCampaign,
         date_min: dates.length ? dates.reduce((a,b) => a<b?a:b) : null,
         date_max: dates.length ? dates.reduce((a,b) => a>b?a:b) : null,
+        orphans_no_week: orphansNoWeek.length,
+        orphans_no_week_by_platform: orphansByPlatform,
       };
       return { allPosts, meta };
     }
@@ -297,7 +307,11 @@
     function applyFilters(allPosts, filters) {
       const { weekRange, platforms, campaigns, subcampaigns } = filters;
       return allPosts.filter(p => {
-        if (weekRange && p.week != null) {
+        // Si hay filtro de semana, posts sin semana asignada se descartan.
+        // (Antes: solo se filtraban los que SÍ tenían semana — bug que dejaba
+        //  posts huérfanos colándose en cualquier rango de semanas)
+        if (weekRange) {
+          if (p.week == null) return false;
           if (p.week < weekRange[0] || p.week > weekRange[1]) return false;
         }
         if (platforms && platforms.length > 0 && !platforms.includes(p.platform)) return false;
@@ -1646,6 +1660,17 @@
                 <span className="font-mono uppercase tracking-wider">Aviso</span> · No se pudo cargar
                 ${errors.length === 1 ? ' ' + errors[0].platform : ` ${errors.length} pestañas`}.
                 Las demás se muestran con normalidad.
+              </div>
+            </div>
+          `}
+
+          ${baseMeta.orphans_no_week > 0 && filters.weekRange && html`
+            <div className="max-w-[1440px] mx-auto px-8 pt-3">
+              <div className="bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber">
+                <span className="font-mono uppercase tracking-wider">Nota</span> ·
+                Hay ${baseMeta.orphans_no_week} ${baseMeta.orphans_no_week === 1 ? 'post' : 'posts'} sin semana asignada en tu Sheet
+                ${' '}(${Object.entries(baseMeta.orphans_no_week_by_platform).map(([p,n]) => `${p}: ${n}`).join(', ')})
+                ${' '}— se excluyen del filtro actual de semana.
               </div>
             </div>
           `}
