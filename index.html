@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#F8F7F2" />
   <title>Samsung MX — Performance Brief</title>
+
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23F8F7F2'/%3E%3Ctext x='50' y='74' text-anchor='middle' font-family='Georgia,serif' font-size='78' font-weight='600' fill='%230A0A09' font-style='italic'%3ES%3C/text%3E%3C/svg%3E" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -26,49 +29,51 @@
     body { font-family: 'Inter Tight', sans-serif; -webkit-font-smoothing: antialiased; background-image: radial-gradient(circle at 1px 1px, rgba(10,10,9,0.025) 1px, transparent 0); background-size: 24px 24px; }
     .font-serif { font-family: 'Fraunces', serif; }
     .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .line-clamp-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
     .tabular-nums { font-variant-numeric: tabular-nums; }
-    .fade-in { animation: fadeIn 200ms ease-out; }
-    .slide-in { animation: slideIn 240ms cubic-bezier(0.32, 0.72, 0, 1); }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .slide-in { animation: slideIn 240ms cubic-bezier(0.32, 0.72, 0, 1); }
+    .fade-in { animation: fadeIn 200ms ease-out; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { scrollbar-width: none; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="module">
-    import React, { useState, useEffect, useCallback, useMemo } from 'https://esm.sh/react@18.3.1';
+    import React, { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'https://esm.sh/react@18.3.1';
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-    import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ComposedChart, Bar, Line } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
+    import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
 
     const html = htm.bind(React.createElement);
 
+    // CONFIG
     const SHEET_ID = '1TcmeDE08Df6Qk4lzRe6PhIBq5qOBUCC_vvHZq4UWD98';
     const SHEET_TABS = { Facebook: '📘 Facebook', Instagram: '📷 Instagram', YouTube: '▶️ YouTube', TikTok: '🎵 TikTok', X: '𝕏 X', LinkedIn: '💼 LinkedIn', Threads: '🧵 Threads' };
     const PLAT_COLORS = { Facebook:'#3B6FB8', Instagram:'#C73E6B', TikTok:'#1FA9B0', X:'#2A2A2A', YouTube:'#C53030', Threads:'#525252', LinkedIn:'#1F4D8C' };
     const PLAT_LETTERS = { Facebook:'FB', Instagram:'IG', YouTube:'YT', TikTok:'TT', X:'X', LinkedIn:'LI', Threads:'TH' };
 
-    // --- CORRECCIÓN 1: PARSEO DE FECHAS Y SEMANAS ---
-    function parseDateAndWeek(dateStr) {
-      if (!dateStr) return { date: null, week: null };
+    // --- CORRECCIÓN DE FECHA ---
+    function parseSafeDate(dateStr) {
+      if (!dateStr) return null;
       const parts = dateStr.split('/');
-      let d;
-      // Forzar DD/MM/YYYY para evitar que 01/05 sea 5 de enero
       if (parts.length === 3) {
-        d = new Date(parts[2], parts[1] - 1, parts[0]);
-      } else {
-        d = new Date(dateStr);
+        // Fuerza formato DD/MM/YYYY
+        return new Date(parts[2], parts[1] - 1, parts[0]);
       }
-      if (isNaN(d.getTime())) return { date: dateStr, week: null };
-      
+      return new Date(dateStr);
+    }
+
+    function getISOWeek(d) {
       const date = new Date(d.getTime());
       date.setHours(0, 0, 0, 0);
       date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
       const week1 = new Date(date.getFullYear(), 0, 4);
-      const week = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-      return { date: d.toISOString(), week: week };
+      return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
     }
 
     function toNum(v) {
@@ -79,44 +84,52 @@
       return isNaN(n) ? 0 : n;
     }
 
-    const COL_MAP = { 'Link': 'link', 'Fecha': 'date', 'Semana': 'week', 'Formato': 'format', 'Campaña': 'campaign', 'Producto': 'product', 'Alcance': 'reach', 'Inter. Totales': 'interactions', 'ER Views %': 'er', 'Views': 'views' };
-
-    async function fetchData() {
-      const allRows = [];
-      for (const [plat, tab] of Object.entries(SHEET_TABS)) {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&range=A2:AI`;
-        try {
-          const res = await fetch(url);
-          const csv = await res.text();
-          const parsed = Papa.parse(csv, { header: true, skipEmptyLines: 'greedy' });
-          parsed.data.forEach(row => {
-            // CORRECCIÓN 2: FILTRO MENOS AGRESIVO (Para detectar los 49 posts)
-            if (!row.Post && !row.Link && !row.Fecha) return;
-            const { date, week } = parseDateAndWeek(row.Fecha);
-            const p = { platform: plat, date, weekCalculated: week };
-            Object.entries(COL_MAP).forEach(([es, en]) => {
-              p[en] = (['reach', 'interactions', 'er', 'views', 'week'].includes(en)) ? toNum(row[es]) : row[es];
-            });
-            // Priorizar semana del Sheets, si no, usar la calculada
-            p.week = p.week || week;
-            allRows.push(p);
-          });
-        } catch (e) { console.error(e); }
-      }
-      return allRows;
-    }
-
+    // --- COMPONENTES ORIGINALES RECONSTRUIDOS ---
     const fmt = (n) => n >= 1e6 ? (n/1e6).toFixed(1) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'K' : Math.round(n).toLocaleString();
 
     function App() {
-      const [data, setData] = useState([]);
+      const [allPosts, setAllPosts] = useState([]);
       const [loading, setLoading] = useState(true);
       const [weekFilter, setWeekFilter] = useState(18);
       const [selected, setSelected] = useState(null);
 
-      useEffect(() => { fetchData().then(d => { setData(d); setLoading(false); }); }, []);
+      useEffect(() => {
+        async function load() {
+          let combined = [];
+          for (const [plat, tab] of Object.entries(SHEET_TABS)) {
+            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&range=A2:AI`;
+            try {
+              const res = await fetch(url);
+              const csv = await res.text();
+              const parsed = Papa.parse(csv, { header: true, skipEmptyLines: 'greedy' });
+              parsed.data.forEach(row => {
+                // CORRECCIÓN: No filtrar por interacciones para no perder los 49 posts
+                if (!row.Post && !row.Link) return;
+                
+                const dateObj = parseSafeDate(row.Fecha);
+                const week = toNum(row.Semana) || (dateObj ? getISOWeek(dateObj) : null);
+                
+                combined.push({
+                  platform: plat,
+                  product: row.Producto || row.Post,
+                  campaign: row.Campaña,
+                  date: dateObj ? dateObj.toISOString() : null,
+                  week: week,
+                  reach: toNum(row.Alcance),
+                  interactions: toNum(row['Inter. Totales']),
+                  er: toNum(row['ER Views %']),
+                  link: row.Link
+                });
+              });
+            } catch (e) { console.error(e); }
+          }
+          setAllPosts(combined);
+          setLoading(false);
+        }
+        load();
+      }, []);
 
-      const filtered = useMemo(() => data.filter(p => p.week === weekFilter), [data, weekFilter]);
+      const filtered = useMemo(() => allPosts.filter(p => p.week === weekFilter), [allPosts, weekFilter]);
       const stats = useMemo(() => {
         return filtered.reduce((acc, p) => {
           acc.reach += p.reach; acc.inter += p.interactions; acc.posts += 1;
@@ -124,68 +137,75 @@
         }, { reach: 0, inter: 0, posts: 0 });
       }, [filtered]);
 
-      if (loading) return html`<div class="h-screen flex items-center justify-center font-mono text-xs uppercase tracking-widest">Sincronizando con Sheets...</div>`;
+      if (loading) return html`<div class="h-screen flex items-center justify-center font-mono text-[10px] uppercase tracking-widest">Cargando Dashboard Samsung...</div>`;
 
       return html`
         <div class="min-h-screen bg-paper pb-20 fade-in">
           <header class="sticky top-0 z-30 bg-paper/80 border-b border-rule px-8 py-4 flex justify-between items-center backdrop-blur">
-            <span class="font-serif italic text-2xl">Samsung MX.</span>
-            <div class="flex gap-2 bg-rule/20 p-1 rounded-full">
+            <span class="font-serif italic text-2xl">Samsung Performance.</span>
+            <div class="flex gap-2 bg-rule/30 p-1 rounded-full">
               ${[16, 17, 18, 19].map(w => html`
-                <button onClick=${() => setWeekFilter(w)} class="px-4 py-1 rounded-full text-[10px] font-mono transition-all ${weekFilter === w ? 'bg-ink text-paper shadow-lg' : 'text-muted hover:bg-paper'}">S${w}</button>
+                <button onClick=${() => setWeekFilter(w)} class="px-4 py-1 rounded-full text-[10px] font-mono transition-all ${weekFilter === w ? 'bg-ink text-paper shadow-lg' : 'hover:bg-paper'}">S${w}</button>
               `)}
             </div>
           </header>
 
-          <main class="max-w-6xl mx-auto px-8 pt-12">
-            <section class="mb-16">
-              <div class="text-[10px] font-mono text-amber uppercase tracking-widest mb-4">Semana ${weekFilter} · Resumen</div>
-              <h1 class="font-serif text-[120px] leading-[0.8] tracking-tighter">${fmt(stats.reach)} <span class="text-faint italic font-light">/ alcance</span></h1>
-              <p class="text-muted font-mono mt-8 uppercase tracking-widest text-xs">${stats.posts} publicaciones detectadas</p>
+          <main class="max-w-[1440px] mx-auto px-8 pt-12">
+            <section class="mb-16 border-b border-rule pb-16">
+              <div class="text-[10px] font-mono text-amber uppercase tracking-widest mb-4">Semana ${weekFilter} · ${stats.posts} Publicaciones</div>
+              <h1 class="font-serif text-[10vw] leading-[0.85] tracking-tighter tabular-nums">${fmt(stats.reach)} <span class="text-faint italic font-light">/ alcance</span></h1>
+              
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+                 <div class="border-l border-rule pl-6"><div class="text-[10px] text-muted font-mono uppercase mb-1">Posts</div><div class="text-4xl font-mono">${stats.posts}</div></div>
+                 <div class="border-l border-rule pl-6"><div class="text-[10px] text-muted font-mono uppercase mb-1">Interacciones</div><div class="text-4xl font-mono">${fmt(stats.inter)}</div></div>
+                 <div class="border-l border-rule pl-6"><div class="text-[10px] text-muted font-mono uppercase mb-1">Engagement Avg.</div><div class="text-4xl font-mono text-accent">${(filtered.reduce((a,b)=>a+b.er,0)/(filtered.filter(p=>p.er>0).length||1)).toFixed(2)}%</div></div>
+              </div>
             </section>
 
-            <section>
-              <h2 class="font-serif text-3xl mb-8">Mejores publicaciones</h2>
-              <div class="bg-white border border-rule shadow-sm overflow-hidden">
-                <table class="w-full text-left text-sm">
-                  <thead>
-                    <tr class="bg-paper font-mono text-[10px] uppercase text-faint border-b border-rule">
-                      <th class="p-4">Plat</th><th class="p-4">Fecha</th><th class="p-4">Producto</th><th class="p-4 text-right">Alcance</th><th class="p-4 text-right">ER</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${filtered.sort((a,b) => b.reach - a.reach).map(p => html`
-                      <tr class="border-b border-rule hover:bg-paper/50 cursor-pointer transition-colors" onClick=${() => setSelected(p)}>
-                        <td class="p-4 font-bold" style="color:${PLAT_COLORS[p.platform]}">${PLAT_LETTERS[p.platform]}</td>
-                        <td class="p-4 text-xs font-mono">${p.date ? new Date(p.date).toLocaleDateString('es-MX', {day:'2-digit', month:'short'}) : '—'}</td>
-                        <td class="p-4 truncate max-w-xs">${p.product || 'Sin nombre'}</td>
-                        <td class="p-4 text-right font-mono">${fmt(p.reach)}</td>
-                        <td class="p-4 text-right font-mono text-accent">${(p.er || 0).toFixed(2)}%</td>
-                      </tr>
-                    `)}
-                  </tbody>
-                </table>
-              </div>
+            <section class="grid grid-cols-1 lg:grid-cols-3 gap-12">
+               <div class="lg:col-span-2">
+                  <h2 class="font-serif text-3xl mb-8 italic">Ranking de Performance</h2>
+                  <div class="bg-white border border-rule shadow-sm overflow-hidden">
+                    <table class="w-full text-left text-sm">
+                      <thead class="bg-paper font-mono text-[10px] uppercase text-faint border-b border-rule">
+                        <tr><th class="p-4">Plat</th><th class="p-4">Fecha</th><th class="p-4">Contenido</th><th class="p-4 text-right">Alcance</th><th class="p-4 text-right">ER</th></tr>
+                      </thead>
+                      <tbody>
+                        ${filtered.sort((a,b)=>b.reach - a.reach).map(p => html`
+                          <tr class="border-b border-rule/50 hover:bg-paper/50 cursor-pointer" onClick=${() => setSelected(p)}>
+                            <td class="p-4 font-bold" style="color:${PLAT_COLORS[p.platform]}">${PLAT_LETTERS[p.platform]}</td>
+                            <td class="p-4 text-xs font-mono text-muted">${p.date ? new Date(p.date).toLocaleDateString('es-MX', {day:'2-digit', month:'short'}) : '—'}</td>
+                            <td class="p-4 truncate max-w-[250px] font-medium">${p.product || 'Sin título'}</td>
+                            <td class="p-4 text-right font-mono">${fmt(p.reach)}</td>
+                            <td class="p-4 text-right font-mono text-accent font-bold">${p.er.toFixed(2)}%</td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  </div>
+               </div>
+
+               <div class="bg-white border border-rule p-8">
+                  <h2 class="font-serif text-2xl mb-6 italic">Distribución</h2>
+                  <div class="h-64 bg-paper/50 flex items-center justify-center border border-dashed border-rule text-[10px] font-mono text-faint uppercase">
+                    [Gráfica de Mix por Plataforma]
+                  </div>
+               </div>
             </section>
           </main>
 
           ${selected && html`
             <div class="fixed inset-0 z-50 flex justify-end bg-ink/10 backdrop-blur-sm" onClick=${() => setSelected(null)}>
-              <div class="w-full max-w-md bg-paper h-full shadow-2xl p-12 overflow-y-auto slide-in" onClick=${e => e.stopPropagation()}>
-                <button onClick=${() => setSelected(null)} class="mb-12 font-mono text-[10px] uppercase">← Cerrar</button>
-                <div class="mb-2 text-amber font-mono text-[10px] uppercase">S${selected.week} · ${selected.platform}</div>
-                <h3 class="font-serif text-5xl mb-8">${selected.product || 'Publicación'}</h3>
-                <div class="space-y-6">
-                  <div class="border-b border-rule pb-4">
-                    <div class="text-[10px] text-faint font-mono uppercase mb-1">Alcance</div>
-                    <div class="text-3xl font-mono">${selected.reach.toLocaleString()}</div>
-                  </div>
-                  <div class="border-b border-rule pb-4">
-                    <div class="text-[10px] text-faint font-mono uppercase mb-1">Interacciones</div>
-                    <div class="text-3xl font-mono">${selected.interactions.toLocaleString()}</div>
-                  </div>
+              <div class="w-full max-w-lg bg-paper h-full shadow-2xl p-12 overflow-y-auto slide-in border-l border-rule" onClick=${e => e.stopPropagation()}>
+                <button onClick=${() => setSelected(null)} class="mb-12 font-mono text-[10px] uppercase tracking-widest hover:text-amber">← Cerrar vista</button>
+                <div class="mb-2 text-amber font-mono text-[10px] uppercase tracking-widest">S${selected.week} · ${selected.platform}</div>
+                <h3 class="font-serif text-5xl leading-none mb-8 italic">${selected.product || 'Publicación'}</h3>
+                <div class="space-y-6 mb-12">
+                   <div class="flex justify-between border-b border-rule pb-4"><span class="font-mono text-[10px] uppercase text-muted">Alcance</span><span class="text-xl font-mono">${selected.reach.toLocaleString()}</span></div>
+                   <div class="flex justify-between border-b border-rule pb-4"><span class="font-mono text-[10px] uppercase text-muted">Interacciones</span><span class="text-xl font-mono">${selected.interactions.toLocaleString()}</span></div>
+                   <div class="flex justify-between border-b border-rule pb-4"><span class="font-mono text-[10px] uppercase text-muted">Engagement</span><span class="text-xl font-mono text-accent">${selected.er.toFixed(2)}%</span></div>
                 </div>
-                ${selected.link && html`<a href="${selected.link}" target="_blank" class="mt-12 block w-full bg-ink text-paper text-center py-4 font-mono text-xs uppercase tracking-widest">Ver Post Original</a>`}
+                ${selected.link && html`<a href="${selected.link}" target="_blank" class="block w-full py-4 bg-ink text-paper text-center font-mono text-xs uppercase tracking-widest hover:bg-amber transition-all">Ver Post Original</a>`}
               </div>
             </div>
           `}
