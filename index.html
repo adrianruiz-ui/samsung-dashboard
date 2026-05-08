@@ -26,6 +26,7 @@
     body { font-family: 'Inter Tight', sans-serif; -webkit-font-smoothing: antialiased; background-image: radial-gradient(circle at 1px 1px, rgba(10,10,9,0.025) 1px, transparent 0); background-size: 24px 24px; }
     .font-serif { font-family: 'Fraunces', serif; }
     .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
     .fade-in { animation: fadeIn 200ms ease-out; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
@@ -34,23 +35,25 @@
   <div id="root"></div>
 
   <script type="module">
-    import React, { useState, useEffect, useCallback, useMemo } from 'https://esm.sh/react@18.3.1';
+    import React, { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'https://esm.sh/react@18.3.1';
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-    import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ComposedChart, Bar, Line } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
+    import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
 
     const html = htm.bind(React.createElement);
 
+    // CONFIG
     const SHEET_ID = '1TcmeDE08Df6Qk4lzRe6PhIBq5qOBUCC_vvHZq4UWD98';
     const SHEET_TABS = { Facebook: '📘 Facebook', Instagram: '📷 Instagram', YouTube: '▶️ YouTube', TikTok: '🎵 TikTok', X: '𝕏 X', LinkedIn: '💼 LinkedIn', Threads: '🧵 Threads' };
     const PLAT_COLORS = { Facebook:'#3B6FB8', Instagram:'#C73E6B', TikTok:'#1FA9B0', X:'#2A2A2A', YouTube:'#C53030', Threads:'#525252', LinkedIn:'#1F4D8C' };
     const PLAT_LETTERS = { Facebook:'FB', Instagram:'IG', YouTube:'YT', TikTok:'TT', X:'X', LinkedIn:'LI', Threads:'TH' };
 
+    // --- FUNCIONES DE LIMPIEZA DE DATOS (EL MOTOR) ---
     function toNum(v) {
       if (v == null || v === '') return 0;
       let s = String(v).trim().replace(/,/g, '').replace(/%/g, '');
-      if (s === '' || s === '—' || s === '-' || s === '#N/A') return 0;
+      if (s === '' || s === '—' || s === '-' || s === '#N/A' || s === '#DIV/0!') return 0;
       const n = parseFloat(s);
       return isNaN(n) ? 0 : n;
     }
@@ -58,7 +61,13 @@
     function parseDateAndWeek(dateStr) {
       if (!dateStr) return { date: null, week: null };
       const parts = dateStr.split('/');
-      let d = parts.length === 3 ? new Date(parts[2], parts[1] - 1, parts[0]) : new Date(dateStr);
+      let d;
+      // Forzar DD/MM/YYYY
+      if (parts.length === 3) {
+        d = new Date(parts[2], parts[1] - 1, parts[0]);
+      } else {
+        d = new Date(dateStr);
+      }
       if (isNaN(d.getTime())) return { date: dateStr, week: null };
       
       const date = new Date(d.getTime());
@@ -69,36 +78,59 @@
       return { date: d.toISOString(), week: week };
     }
 
-    const COL_MAP = { 'Link': 'link', 'Fecha': 'date', 'Semana': 'week', 'Formato': 'format', 'Producto': 'product', 'Campaña': 'campaign', 'Alcance': 'reach', 'Inter. Totales': 'interactions', 'ER Views %': 'er', 'Views': 'views' };
+    const COL_MAP = {
+      'Link': 'link', 'Fecha': 'date', 'Semana': 'week', 'Formato': 'format', 
+      'Campaña': 'campaign', 'Producto': 'product', 'Alcance': 'reach', 
+      'Inter. Totales': 'interactions', 'ER Views %': 'er', 'Views': 'views',
+      'Impresiones': 'impressions', 'Reacciones': 'reactions', 'Comentarios': 'comments',
+      'Compartidos': 'shares', 'Guardados': 'saves', 'Clics': 'clics'
+    };
 
-    async function fetchData() {
-      const allRows = [];
-      for (const [plat, tab] of Object.entries(SHEET_TABS)) {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&range=A2:AI`;
-        const res = await fetch(url);
-        const csv = await res.text();
-        const parsed = Papa.parse(csv, { header: true, skipEmptyLines: 'greedy' });
-        parsed.data.forEach(row => {
-          if (!row.Post && !row.Link && !row.Fecha) return;
-          const { date, week } = parseDateAndWeek(row.Fecha);
-          const normalized = { platform: plat, date, week: toNum(row.Semana) || week };
-          Object.entries(COL_MAP).forEach(([es, en]) => { normalized[en] = en === 'reach' || en === 'interactions' || en === 'er' || en === 'views' ? toNum(row[es]) : row[es]; });
-          allRows.push(normalized);
-        });
-      }
-      return allRows;
-    }
-
-    const fmt = (n) => n >= 1e6 ? (n/1e6).toFixed(1) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'K' : Math.round(n).toLocaleString();
+    // --- COMPONENTES DE LA INTERFAZ ---
+    const fmt = (n) => {
+      if (!n) return '0';
+      if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+      return Math.round(n).toLocaleString('es-MX');
+    };
 
     function App() {
-      const [data, setData] = useState([]);
+      const [allPosts, setAllPosts] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [weekFilter, setWeekFilter] = useState(18);
+      const [weekFilter, setWeekFilter] = useState(18); // Default a la semana del problema
+      const [selected, setSelected] = useState(null);
 
-      useEffect(() => { fetchData().then(d => { setData(d); setLoading(false); }); }, []);
+      useEffect(() => {
+        async function load() {
+          const combined = [];
+          for (const [plat, tab] of Object.entries(SHEET_TABS)) {
+            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&range=A2:AI`;
+            try {
+              const res = await fetch(url);
+              const csv = await res.text();
+              const parsed = Papa.parse(csv, { header: true, skipEmptyLines: 'greedy' });
+              parsed.data.forEach(row => {
+                // Solo descartar si realmente no hay nada
+                if (!row.Post && !row.Link && !row.Fecha) return;
+                const { date, week } = parseDateAndWeek(row.Fecha);
+                const p = { platform: plat, date, weekCalculated: week };
+                Object.entries(COL_MAP).forEach(([es, en]) => {
+                  p[en] = (['reach', 'interactions', 'er', 'views', 'impressions', 'week'].includes(en)) ? toNum(row[es]) : row[es];
+                });
+                // Priorizar semana del Sheets, si no, la calculada
+                p.week = p.week || week;
+                combined.push(p);
+              });
+            } catch (e) { console.error("Error cargando "+plat, e); }
+          }
+          setAllPosts(combined);
+          setLoading(false);
+        }
+        load();
+      }, []);
 
-      const filtered = useMemo(() => data.filter(p => p.week === weekFilter), [data, weekFilter]);
+      const filtered = useMemo(() => allPosts.filter(p => p.week === weekFilter), [allPosts, weekFilter]);
+      
       const stats = useMemo(() => {
         return filtered.reduce((acc, p) => {
           acc.reach += p.reach; acc.inter += p.interactions; acc.posts += 1;
@@ -106,11 +138,13 @@
         }, { reach: 0, inter: 0, posts: 0 });
       }, [filtered]);
 
-      if (loading) return html`<div class="h-screen flex items-center justify-center font-mono">Cargando datos maestros...</div>`;
+      if (loading) return html`<div class="h-screen flex items-center justify-center font-mono text-xs uppercase tracking-widest">Sincronizando con Google Sheets...</div>`;
 
       return html`
-        <div class="min-h-screen bg-paper pb-20">
+        <div class="min-h-screen bg-paper pb-20 fade-in">
           <header class="sticky top-0 z-30 bg-paper/80 border-b border-rule px-8 py-4 flex justify-between items-center backdrop-blur">
-            <span class="font-serif italic text-2xl">Samsung MX.</span>
-            <div class="flex gap-2">
-              ${
+            <span class="font-serif italic text-2xl">Samsung MX Performance.</span>
+            <div class="flex gap-2 bg-rule/20 p-1 rounded-full">
+              ${[16, 17, 18, 19].map(w => html`
+                <button onClick=${() => setWeekFilter(w)} 
+                        class="px-4 py-1 rounded-full text-[10px] font-mono transition-all ${weekFilter === w ? 'bg-ink text-paper shadow-lg
