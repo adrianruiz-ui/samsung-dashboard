@@ -147,4 +147,110 @@
             <div class="flex gap-2 bg-rule/20 p-1 rounded-full">
               ${[16, 17, 18, 19].map(w => html`
                 <button onClick=${() => setWeekFilter(w)} 
-                        class="px-4 py-1 rounded-full text-[10px] font-mono transition-all ${weekFilter === w ? 'bg-ink text-paper shadow-lg
+                        class="px-4 py-1 rounded-full text-[10px] font-mono transition-all ${weekFilter === w ? 'bg-ink text-paper shadow-lg' : 'hover:bg-rule/40 text-muted'}">
+                  S${w}
+                </button>
+              `)}
+            </div>
+          </header>
+
+          <main class="max-w-[1440px] mx-auto px-8 pt-12">
+            <section class="py-12 border-b border-rule mb-12">
+              <div class="font-mono text-[10px] text-amber uppercase tracking-[0.3em] mb-4">Métricas Consolidadas — Semana ${weekFilter}</div>
+              <h1 class="font-serif text-[10vw] leading-[0.85] tracking-tighter mb-8 tabular-nums">
+                ${fmt(stats.reach)} <span class="text-faint italic font-light">alcance</span>
+              </h1>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="border-l border-rule pl-6">
+                  <div class="text-[10px] font-mono text-muted uppercase mb-1">Publicaciones</div>
+                  <div class="text-3xl font-mono">${stats.posts}</div>
+                </div>
+                <div class="border-l border-rule pl-6">
+                  <div class="text-[10px] font-mono text-muted uppercase mb-1">Interacciones Totales</div>
+                  <div class="text-3xl font-mono">${fmt(stats.inter)}</div>
+                </div>
+                <div class="border-l border-rule pl-6 text-accent">
+                  <div class="text-[10px] font-mono uppercase mb-1">Eficiencia Media (ER)</div>
+                  <div class="text-3xl font-mono">
+                    ${(filtered.reduce((a, b) => a + (b.er || 0), 0) / (filtered.filter(p => p.er > 0).length || 1)).toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h2 class="font-serif text-3xl mb-8 italic">Ranking de Performance</h2>
+              <div class="bg-white border border-rule shadow-sm rounded-sm overflow-hidden">
+                <table class="w-full text-left text-[13px] border-collapse">
+                  <thead>
+                    <tr class="bg-paper font-mono text-[10px] uppercase text-faint border-b border-rule">
+                      <th class="p-4 font-medium">Plataforma</th>
+                      <th class="p-4 font-medium">Fecha</th>
+                      <th class="p-4 font-medium">Producto / Campaña</th>
+                      <th class="p-4 font-medium text-right">Alcance</th>
+                      <th class="p-4 font-medium text-right">Inter.</th>
+                      <th class="p-4 font-medium text-right">ER %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filtered.sort((a,b) => b.reach - a.reach).map((p) => html`
+                      <tr class="border-b border-rule/50 hover:bg-paper/40 transition-colors cursor-pointer" onClick=${() => setSelected(p)}>
+                        <td class="p-4">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style="background:${PLAT_COLORS[p.platform]}">
+                            ${PLAT_LETTERS[p.platform]}
+                          </span>
+                        </td>
+                        <td class="p-4 font-mono text-muted">
+                          ${p.date ? new Date(p.date).toLocaleDateString('es-MX', {day:'2-digit', month:'short'}) : '—'}
+                        </td>
+                        <td class="p-4">
+                          <div class="font-medium truncate max-w-[300px]">${p.product || 'Sin especificar'}</div>
+                          <div class="text-[10px] text-faint truncate max-w-[300px] uppercase tracking-wider">${p.campaign || 'General'}</div>
+                        </td>
+                        <td class="p-4 text-right font-mono font-medium">${fmt(p.reach)}</td>
+                        <td class="p-4 text-right font-mono text-muted">${fmt(p.interactions)}</td>
+                        <td class="p-4 text-right font-mono text-accent font-bold">${(p.er || 0).toFixed(2)}%</td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </main>
+
+          ${selected && html`
+            <div class="fixed inset-0 z-50 flex justify-end bg-ink/10 backdrop-blur-sm" onClick=${() => setSelected(null)}>
+              <div class="w-full max-w-lg bg-paper h-full shadow-2xl p-12 overflow-y-auto slide-in border-l border-rule" onClick=${e => e.stopPropagation()}>
+                <button onClick=${() => setSelected(null)} class="mb-12 font-mono text-[10px] uppercase tracking-widest hover:text-amber transition-colors">← Cerrar vista</button>
+                <div class="mb-2 text-amber font-mono text-[10px] uppercase tracking-widest">Semana ${selected.week} · ${selected.platform}</div>
+                <h3 class="font-serif text-5xl leading-none mb-8 italic">${selected.product || 'Publicación'}</h3>
+                
+                <div class="space-y-6 mb-12">
+                   <div class="flex justify-between border-b border-rule pb-4">
+                      <span class="font-mono text-[10px] uppercase text-muted">Campaña</span>
+                      <span class="text-sm font-medium">${selected.campaign || 'N/A'}</span>
+                   </div>
+                   <div class="flex justify-between border-b border-rule pb-4">
+                      <span class="font-mono text-[10px] uppercase text-muted">Alcance</span>
+                      <span class="text-xl font-mono">${selected.reach.toLocaleString()}</span>
+                   </div>
+                   <div class="flex justify-between border-b border-rule pb-4">
+                      <span class="font-mono text-[10px] uppercase text-muted">Engagement</span>
+                      <span class="text-xl font-mono text-accent">${selected.er.toFixed(2)}%</span>
+                   </div>
+                </div>
+
+                ${selected.link && html`
+                  <a href="${selected.link}" target="_blank" class="block w-full py-4 bg-ink text-paper text-center font-mono text-xs uppercase tracking-widest hover:bg-amber transition-all">Ver Post Original</a>
+                `}
+              </div>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    createRoot(document.getElementById('root')).render(html`<${App}/>`);
+  </script>
+</body>
+</html>
