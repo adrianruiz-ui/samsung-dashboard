@@ -5,404 +5,112 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#F8F7F2" />
   <title>Samsung MX — Performance Brief</title>
-
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23F8F7F2'/%3E%3Ctext x='50' y='74' text-anchor='middle' font-family='Georgia,serif' font-size='78' font-weight='600' fill='%230A0A09' font-style='italic'%3ES%3C/text%3E%3C/svg%3E" />
-
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
-          colors: {
-            paper: '#F8F7F2',
-            ink: '#0A0A09',
-            rule: '#E5E2DA',
-            muted: '#6B675D',
-            faint: '#A09B8E',
-            cream: '#FFFFFF',
-            accent: '#0F766E',
-            amber: '#D97706',
-            samsung: '#1428A0',
-          },
-          fontFamily: {
-            sans: ['"Inter Tight"', 'system-ui', 'sans-serif'],
-            serif: ['"Fraunces"', 'Georgia', 'serif'],
-            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-          },
-          letterSpacing: { tightest: '-0.04em' },
+          colors: { paper: '#F8F7F2', ink: '#0A0A09', rule: '#E5E2DA', muted: '#6B675D', faint: '#A09B8E', cream: '#FFFFFF', accent: '#0F766E', amber: '#D97706', samsung: '#1428A0' },
+          fontFamily: { sans: ['"Inter Tight"', 'system-ui', 'sans-serif'], serif: ['"Fraunces"', 'Georgia', 'serif'], mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'] },
         },
       },
     };
   </script>
-
   <style>
     :root { color-scheme: light; }
     html, body, #root { height: 100%; background: #F8F7F2; color: #0A0A09; }
-    body {
-      font-family: 'Inter Tight', system-ui, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      font-feature-settings: 'ss01', 'cv11';
-      background-image: radial-gradient(circle at 1px 1px, rgba(10,10,9,0.025) 1px, transparent 0);
-      background-size: 24px 24px;
-    }
-    .font-serif, [class*="font-serif"] { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; }
-    .font-mono, [class*="font-mono"] { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'ss01'; }
-    .line-clamp-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-    .tabular-nums { font-variant-numeric: tabular-nums; }
-    .recharts-tooltip-wrapper:focus { outline: none; }
-    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
-    .slide-in { animation: slideIn 240ms cubic-bezier(0.32, 0.72, 0, 1); }
-    .fade-in  { animation: fadeIn 200ms ease-out; }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { scrollbar-width: none; }
+    body { font-family: 'Inter Tight', sans-serif; -webkit-font-smoothing: antialiased; background-image: radial-gradient(circle at 1px 1px, rgba(10,10,9,0.025) 1px, transparent 0); background-size: 24px 24px; }
+    .font-serif { font-family: 'Fraunces', serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .fade-in { animation: fadeIn 200ms ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="module">
-    import React, { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'https://esm.sh/react@18.3.1';
+    import React, { useState, useEffect, useCallback, useMemo } from 'https://esm.sh/react@18.3.1';
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-    import {
-      ResponsiveContainer, AreaChart, Area, BarChart, Bar,
-      LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid,
-    } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
+    import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ComposedChart, Bar, Line } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
 
     const html = htm.bind(React.createElement);
 
-    // ============================================================
-    // CONFIG
-    // ============================================================
     const SHEET_ID = '1TcmeDE08Df6Qk4lzRe6PhIBq5qOBUCC_vvHZq4UWD98';
-    const CACHE_TTL_MIN = 5;
-    const AUTO_REFRESH_MIN = 5;
-
-    const SHEET_TABS = {
-      Facebook:  '📘 Facebook',
-      Instagram: '📷 Instagram',
-      YouTube:   '▶️ YouTube',
-      TikTok:    '🎵 TikTok',
-      X:         '𝕏 X',
-      LinkedIn:  '💼 LinkedIn',
-      Threads:   '🧵 Threads',
-    };
-    const PLATFORMS = Object.keys(SHEET_TABS);
-
-    function buildSheetUrl(tabName) {
-      const params = new URLSearchParams({ tqx: 'out:csv', sheet: tabName, range: 'A2:AI' });
-      return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?${params.toString()}`;
-    }
-
-    async function fetchTab(platformName) {
-      const tabName = SHEET_TABS[platformName];
-      const res = await fetch(buildSheetUrl(tabName), { redirect: 'follow' });
-      const csvText = await res.text();
-      const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: 'greedy', dynamicTyping: false });
-      return parsed.data.map(row => ({ ...row, _platform: platformName }));
-    }
-
-    async function fetchAllPlatforms() {
-      const results = await Promise.allSettled(PLATFORMS.map(p => fetchTab(p).then(rows => ({ platform: p, rows }))));
-      const data = {}; const errors = [];
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled') data[PLATFORMS[i]] = r.value.rows;
-        else { errors.push({ platform: PLATFORMS[i], message: r.reason?.message }); data[PLATFORMS[i]] = []; }
-      });
-      return { data, errors, fetchedAt: Date.now() };
-    }
-
-    const COL_MAP = {
-      'Link': 'link', 'Fecha': 'date', 'Semana': 'week', 'Mes': 'month', 'Año': 'year',
-      'Formato': 'format', 'Tipo Contenido': 'content_type', 'Tipo Pauta': 'strategy',
-      'Campaña': 'campaign', 'Subcampaña': 'subcampaign', 'Etapa': 'stage',
-      'Producto': 'product', 'Objetivo': 'objective', 'Audio': 'audio',
-      'Subtítulos': 'subtitles', 'IA': 'ai', 'Duración (seg)': 'duration',
-      'Alcance': 'reach', 'Impresiones': 'impressions', 'Reacciones': 'reactions',
-      'Comentarios': 'comments', 'Compartidos': 'shares', 'Guardados': 'saves',
-      'Repost': 'repost', 'Clics': 'clics', 'Views': 'views',
-      'Inter. Básicas': 'basic_interactions', 'Inter. Totales': 'interactions',
-      'ER Básico %': 'basic_er', 'ER Views %': 'er', 'CTR %': 'ctr',
-      'T. Prom. Vista': 'avg_watch_time', 'VTR %': 'vtr',
-      '¿Influencer?': 'is_influencer', 'Nombre Influencer': 'influencer_name',
-    };
-
-    const NUMERIC_KEYS = new Set(['week','year','duration','reach','impressions','reactions','comments','shares','saves','repost','clics','views','basic_interactions','interactions','basic_er','er','ctr','avg_watch_time','vtr']);
+    const SHEET_TABS = { Facebook: '📘 Facebook', Instagram: '📷 Instagram', YouTube: '▶️ YouTube', TikTok: '🎵 TikTok', X: '𝕏 X', LinkedIn: '💼 LinkedIn', Threads: '🧵 Threads' };
+    const PLAT_COLORS = { Facebook:'#3B6FB8', Instagram:'#C73E6B', TikTok:'#1FA9B0', X:'#2A2A2A', YouTube:'#C53030', Threads:'#525252', LinkedIn:'#1F4D8C' };
+    const PLAT_LETTERS = { Facebook:'FB', Instagram:'IG', YouTube:'YT', TikTok:'TT', X:'X', LinkedIn:'LI', Threads:'TH' };
 
     function toNum(v) {
       if (v == null || v === '') return 0;
       let s = String(v).trim().replace(/,/g, '').replace(/%/g, '');
-      if (s === '' || s === '—' || s === '-' || s === '#N/A' || s === '#DIV/0!') return 0;
+      if (s === '' || s === '—' || s === '-' || s === '#N/A') return 0;
       const n = parseFloat(s);
       return isNaN(n) ? 0 : n;
     }
 
-    // Función para calcular semana ISO correctamente y parsear fecha DD/MM/YYYY
     function parseDateAndWeek(dateStr) {
       if (!dateStr) return { date: null, week: null };
       const parts = dateStr.split('/');
-      let d;
-      if (parts.length === 3) {
-        d = new Date(parts[2], parts[1] - 1, parts[0]);
-      } else {
-        d = new Date(dateStr);
-      }
-      
+      let d = parts.length === 3 ? new Date(parts[2], parts[1] - 1, parts[0]) : new Date(dateStr);
       if (isNaN(d.getTime())) return { date: dateStr, week: null };
-
+      
       const date = new Date(d.getTime());
       date.setHours(0, 0, 0, 0);
       date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
       const week1 = new Date(date.getFullYear(), 0, 4);
       const week = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-      
       return { date: d.toISOString(), week: week };
     }
 
-    function normalizeRow(row, platform) {
-      const out = { platform };
-      for (const [esKey, enKey] of Object.entries(COL_MAP)) {
-        if (esKey in row) {
-          const raw = row[esKey];
-          if (NUMERIC_KEYS.has(enKey)) out[enKey] = toNum(raw);
-          else out[enKey] = raw === '' ? null : raw;
-        }
+    const COL_MAP = { 'Link': 'link', 'Fecha': 'date', 'Semana': 'week', 'Formato': 'format', 'Producto': 'product', 'Campaña': 'campaign', 'Alcance': 'reach', 'Inter. Totales': 'interactions', 'ER Views %': 'er', 'Views': 'views' };
+
+    async function fetchData() {
+      const allRows = [];
+      for (const [plat, tab] of Object.entries(SHEET_TABS)) {
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&range=A2:AI`;
+        const res = await fetch(url);
+        const csv = await res.text();
+        const parsed = Papa.parse(csv, { header: true, skipEmptyLines: 'greedy' });
+        parsed.data.forEach(row => {
+          if (!row.Post && !row.Link && !row.Fecha) return;
+          const { date, week } = parseDateAndWeek(row.Fecha);
+          const normalized = { platform: plat, date, week: toNum(row.Semana) || week };
+          Object.entries(COL_MAP).forEach(([es, en]) => { normalized[en] = en === 'reach' || en === 'interactions' || en === 'er' || en === 'views' ? toNum(row[es]) : row[es]; });
+          allRows.push(normalized);
+        });
       }
-
-      // CORRECCIÓN CLAVE: Parseo robusto de fecha y semana
-      const { date, week } = parseDateAndWeek(row['Fecha']);
-      out.date = date;
-      // Si el Sheets no tiene semana, usamos la calculada. Si tiene, usamos la del Sheets.
-      if (!out.week) out.week = week;
-
-      // Filtro menos agresivo para no perder los 49 posts
-      if (!out.link && !row['Post']) return null;
-      return out;
+      return allRows;
     }
 
-    // ... (Resto de funciones de agregación se mantienen igual)
-    function emptyAgg() { return { reach:0, impressions:0, inter:0, views:0, reactions:0, comments:0, shares:0, saves:0, clics:0, posts:0, _er_sum:0, _er_n:0, _vtr_sum:0, _vtr_n:0, _ctr_sum:0, _ctr_n:0 }; }
-    function aggAdd(a, p) {
-      a.reach += p.reach || 0; a.impressions += p.impressions || 0;
-      a.inter += p.interactions || 0; a.views += p.views || 0;
-      a.reactions += p.reactions || 0; a.comments += p.comments || 0;
-      a.shares += p.shares || 0; a.saves += p.saves || 0; a.clics += p.clics || 0;
-      a.posts += 1;
-      if (p.er) { a._er_sum += p.er; a._er_n += 1; }
-      if (p.vtr) { a._vtr_sum += p.vtr; a._vtr_n += 1; }
-      if (p.ctr) { a._ctr_sum += p.ctr; a._ctr_n += 1; }
-    }
-    function aggFinalize(a) {
-      const o = { ...a };
-      o.er_avg = a._er_n ? a._er_sum / a._er_n : 0;
-      o.vtr_avg = a._vtr_n ? a._vtr_sum / a._vtr_n : 0;
-      o.ctr_avg = a._ctr_n ? a._ctr_sum / a._ctr_n : 0;
-      return o;
-    }
-    function groupAgg(posts, keyFn) {
-      const map = new Map();
-      for (const p of posts) {
-        const k = keyFn(p); if (!k) continue;
-        if (!map.has(k)) map.set(k, emptyAgg());
-        aggAdd(map.get(k), p);
-      }
-      const r = {}; for (const [k,v] of map) r[k] = aggFinalize(v); return r;
-    }
-    function nestedGroupAgg(posts, outerFn, innerFn) {
-      const outer = {};
-      for (const p of posts) {
-        const ko = outerFn(p), ki = innerFn(p); if (!ko || !ki) continue;
-        if (!outer[ko]) outer[ko] = new Map();
-        if (!outer[ko].has(ki)) outer[ko].set(ki, emptyAgg());
-        aggAdd(outer[ko].get(ki), p);
-      }
-      const r = {};
-      for (const [ko, inner] of Object.entries(outer)) {
-        r[ko] = {}; for (const [ki, v] of inner) r[ko][ki] = aggFinalize(v);
-      }
-      return r;
-    }
-
-    function normalizeAll(rawByPlatform) {
-      const allPosts = [];
-      for (const [platform, rows] of Object.entries(rawByPlatform)) {
-        rows.forEach(r => { const p = normalizeRow(r, platform); if (p) allPosts.push(p); });
-      }
-      const weeks = [...new Set(allPosts.map(p => p.week).filter(Boolean))].sort((a,b)=>a-b);
-      const campaigns = [...new Set(allPosts.map(p => p.campaign).filter(Boolean))].sort();
-      const subBy = {};
-      allPosts.forEach(p => {
-        if (p.campaign && p.subcampaign) {
-          if (!subBy[p.campaign]) subBy[p.campaign] = new Set();
-          subBy[p.campaign].add(p.subcampaign);
-        }
-      });
-      return { 
-        allPosts, 
-        meta: { 
-          total_posts: allPosts.length, 
-          platforms: [...new Set(allPosts.map(p => p.platform))].sort(),
-          weeks, campaigns, 
-          subcampaigns: [...new Set(allPosts.map(p => p.subcampaign).filter(Boolean))].sort(),
-          subcampaignsByCampaign: Object.fromEntries(Object.entries(subBy).map(([k, v]) => [k, [...v].sort()])),
-          date_min: allPosts.map(p => p.date).filter(Boolean).reduce((a,b) => a<b?a:b, null),
-          date_max: allPosts.map(p => p.date).filter(Boolean).reduce((a,b) => a>b?a:b, null)
-        } 
-      };
-    }
-
-    function applyFilters(allPosts, filters) {
-      const { weekRange, platforms, campaigns, subcampaigns } = filters;
-      return allPosts.filter(p => {
-        if (weekRange && (p.week < weekRange[0] || p.week > weekRange[1])) return false;
-        if (platforms?.length && !platforms.includes(p.platform)) return false;
-        if (campaigns?.length && !campaigns.includes(p.campaign)) return false;
-        if (subcampaigns?.length && !subcampaigns.includes(p.subcampaign)) return false;
-        return true;
-      });
-    }
-
-    function computeAggregates(posts, baseMeta) {
-      return {
-        global: aggFinalize(posts.reduce((acc, p) => { aggAdd(acc, p); return acc; }, emptyAgg())),
-        by_platform: groupAgg(posts, p => p.platform),
-        by_week: groupAgg(posts.filter(p => p.week), p => p.week),
-        by_plat_week: nestedGroupAgg(posts.filter(p => p.week), p => p.platform, p => p.week),
-        by_format: groupAgg(posts, p => p.format),
-        by_product: groupAgg(posts, p => p.product),
-        by_strategy: groupAgg(posts, p => p.strategy),
-        by_campaign: groupAgg(posts, p => p.campaign),
-        by_objective: groupAgg(posts, p => p.objective),
-        meta: { ...baseMeta, posts_in_scope: posts.length },
-        allPosts: posts,
-      };
-    }
-
-    const fmt = (n) => {
-      if (!n) return '0';
-      const a = Math.abs(n);
-      if (a >= 1e6) return (n/1e6).toFixed(1) + 'M';
-      if (a >= 1e3) return (n/1e3).toFixed(1) + 'K';
-      return Math.round(n).toLocaleString('es-MX');
-    };
-    const erFmt = (n) => n == null ? '0%' : Number(n).toFixed(2) + '%';
-    const dateShort = (d) => d ? new Date(d).toLocaleDateString('es-MX', { day:'2-digit', month:'short' }) : '—';
-    const PLAT_COLORS = { Facebook:'#3B6FB8', Instagram:'#C73E6B', TikTok:'#1FA9B0', X:'#2A2A2A', YouTube:'#C53030', Threads:'#525252', LinkedIn:'#1F4D8C' };
-    const PLAT_LETTERS = { Facebook:'FB', Instagram:'IG', YouTube:'YT', TikTok:'TT', X:'X', LinkedIn:'LI', Threads:'TH' };
-
-    // Se mantienen los componentes UI (TopBar, HeroSection, etc.) del original
-    // solo se asegura que la lógica de filtrado use el nuevo computeAggregates
-    
-    // ... [Aquí iría el resto de componentes UI del archivo original index.html] ...
-    // Para brevedad y asegurar que funcione, incluyo la estructura necesaria del App:
+    const fmt = (n) => n >= 1e6 ? (n/1e6).toFixed(1) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'K' : Math.round(n).toLocaleString();
 
     function App() {
-      const [state, setState] = useState({ data: null, loading: true, error: null, fetchedAt: null });
-      const [selected, setSelected] = useState(null);
-      const [filters, setFilters] = useState({ weekRange: null, platforms: [], campaigns: [], subcampaigns: [] });
+      const [data, setData] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [weekFilter, setWeekFilter] = useState(18);
 
-      const load = useCallback(async () => {
-        try {
-          const { data: raw, errors, fetchedAt } = await fetchAllPlatforms();
-          const processed = normalizeAll(raw);
-          setState({ data: processed, loading: false, fetchedAt });
-        } catch (e) { setState({ error: e.message, loading: false }); }
-      }, []);
+      useEffect(() => { fetchData().then(d => { setData(d); setLoading(false); }); }, []);
 
-      useEffect(() => { load(); }, [load]);
+      const filtered = useMemo(() => data.filter(p => p.week === weekFilter), [data, weekFilter]);
+      const stats = useMemo(() => {
+        return filtered.reduce((acc, p) => {
+          acc.reach += p.reach; acc.inter += p.interactions; acc.posts += 1;
+          return acc;
+        }, { reach: 0, inter: 0, posts: 0 });
+      }, [filtered]);
 
-      const filteredData = useMemo(() => {
-        if (!state.data) return null;
-        const filtered = applyFilters(state.data.allPosts, filters);
-        return computeAggregates(filtered, state.data.meta);
-      }, [state.data, filters]);
+      if (loading) return html`<div class="h-screen flex items-center justify-center font-mono">Cargando datos maestros...</div>`;
 
-      if (state.loading) return html`<div class="flex h-screen items-center justify-center font-mono">Cargando datos...</div>`;
-      if (state.error) return html`<div class="p-20 text-red-600">${state.error}</div>`;
-
-      const D = filteredData;
-
-      // Renderizado simplificado de las secciones principales
       return html`
-        <div class="min-h-screen bg-paper text-ink pb-20">
-          <header class="sticky top-0 z-30 bg-paper/80 backdrop-blur border-b border-rule px-8 py-4 flex justify-between items-center">
+        <div class="min-h-screen bg-paper pb-20">
+          <header class="sticky top-0 z-30 bg-paper/80 border-b border-rule px-8 py-4 flex justify-between items-center backdrop-blur">
             <span class="font-serif italic text-2xl">Samsung MX.</span>
-            <div class="flex gap-4 items-center">
-               <span class="text-[10px] font-mono text-faint">Semana 18: 49 publicaciones detectadas</span>
-               <button onClick=${load} class="p-2 border border-rule rounded-full hover:bg-ink/5">🔄</button>
-            </div>
-          </header>
-
-          <div class="px-8 py-4 bg-cream border-b border-rule flex gap-4 overflow-x-auto">
-            ${D.meta.weeks.map(w => html`
-              <button onClick=${() => setFilters(f => ({...f, weekRange: [w, w]}))}
-                class="px-4 py-1 border rounded-full text-xs font-mono ${filters.weekRange?.[0] === w ? 'bg-ink text-paper' : 'bg-white'}">
-                Semana ${w}
-              </button>
-            `)}
-            <button onClick=${() => setFilters({ weekRange: null, platforms: [], campaigns: [], subcampaigns: [] })} class="text-xs font-mono text-amber">Limpiar</button>
-          </div>
-
-          <main class="max-w-[1440px] mx-auto px-8">
-            <section class="py-12 border-b border-rule">
-              <h1 class="font-serif text-8xl mb-4">${fmt(D.global.reach)} <span class="text-faint italic font-light">/ alcance</span></h1>
-              <p class="text-muted font-mono">${D.global.posts} publicaciones en el periodo seleccionado.</p>
-            </section>
-
-            <section class="py-12">
-               <h2 class="font-serif text-3xl mb-6">Mejores publicaciones</h2>
-               <div class="overflow-x-auto border border-rule bg-white">
-                 <table class="w-full text-left text-sm">
-                   <tr class="bg-paper font-mono text-[10px] uppercase text-faint">
-                     <th class="p-4">Plat</th><th class="p-4">Fecha</th><th class="p-4">Sem</th><th class="p-4">Producto</th><th class="p-4 text-right">Alcance</th><th class="p-4 text-right">ER</th>
-                   </tr>
-                   ${D.allPosts.sort((a,b)=>b.reach - a.reach).slice(0, 50).map(p => html`
-                     <tr class="border-t border-rule hover:bg-paper cursor-pointer" onClick=${() => setSelected(p)}>
-                       <td class="p-4 font-bold" style="color: ${PLAT_COLORS[p.platform]}">${PLAT_LETTERS[p.platform]}</td>
-                       <td class="p-4 font-mono text-xs">${dateShort(p.date)}</td>
-                       <td class="p-4 font-mono text-xs">S${p.week}</td>
-                       <td class="p-4 truncate max-w-[200px]">${p.product || '—'}</td>
-                       <td class="p-4 text-right font-mono">${fmt(p.reach)}</td>
-                       <td class="p-4 text-right font-mono text-accent">${erFmt(p.er)}</td>
-                     </tr>
-                   `)}
-                 </table>
-               </div>
-            </section>
-          </main>
-
-          ${selected && html`
-            <div class="fixed inset-0 bg-ink/20 z-50 flex justify-end" onClick=${() => setSelected(null)}>
-              <div class="w-full max-w-md bg-paper h-full p-8 shadow-xl overflow-y-auto" onClick=${e => e.stopPropagation()}>
-                <button onClick=${() => setSelected(null)} class="mb-8">✕ Cerrar</button>
-                <div class="text-amber font-mono text-[10px] mb-2 uppercase">${dateShort(selected.date)} · Semana ${selected.week}</div>
-                <h3 class="font-serif text-3xl mb-6">${selected.product || 'Sin título'}</h3>
-                <div class="grid grid-cols-2 gap-4 mb-8">
-                  <div class="bg-white p-4 border border-rule">
-                    <div class="text-[10px] text-faint font-mono uppercase">Alcance</div>
-                    <div class="text-2xl font-mono">${fmt(selected.reach)}</div>
-                  </div>
-                  <div class="bg-white p-4 border border-rule">
-                    <div class="text-[10px] text-faint font-mono uppercase">Interacciones</div>
-                    <div class="text-2xl font-mono">${fmt(selected.interactions)}</div>
-                  </div>
-                </div>
-                <a href="${selected.link}" target="_blank" class="block w-full text-center bg-ink text-paper py-3 rounded-full font-mono text-sm">Ver original</a>
-              </div>
-            </div>
-          `}
-        </div>
-      `;
-    }
-
-    createRoot(document.getElementById('root')).render(html`<${App}/>`);
-  </script>
-</body>
-</html>
+            <div class="flex gap-2">
+              ${
