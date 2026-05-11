@@ -128,10 +128,13 @@
 
     function buildSheetUrl(tabName) {
       if (!SHEET_ID) throw new Error('Falta SHEET_ID en la configuración del archivo.');
+      // RANGO EXPLÍCITO: A2:AI10000 fuerza a gviz a leer hasta la fila 10000.
+      // Antes usábamos A2:AI (sin límite) y gviz a veces corta cuando hay
+      // gaps de filas vacías entre los datos.
       const params = new URLSearchParams({
         tqx: 'out:csv',
         sheet: tabName,
-        range: 'A2:AI',
+        range: 'A2:AI10000',
       });
       return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?${params.toString()}`;
     }
@@ -555,7 +558,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-10-v5';
+    const BUILD_VERSION = '2026-05-10-v6';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1898,7 +1901,7 @@
     // o si la cuenta de S18 no concuerda con la base
     // ============================================================
     function DiagnosticPanel() {
-      const [open, setOpen] = useState(false);
+      const [open, setOpen] = useState(true);  // abierto por defecto para diagnosticar
       const [d, setD] = useState(null);
 
       useEffect(() => {
