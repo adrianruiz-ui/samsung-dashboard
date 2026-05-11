@@ -283,12 +283,26 @@
      */
     function normalizeAll(rawByPlatform) {
       const allPosts = [];
+      const _diagByPlat = {};  // diagnóstico
       for (const [platform, rows] of Object.entries(rawByPlatform)) {
+        let raw = 0, ok = 0;
         for (const r of rows) {
+          raw++;
           const p = normalizeRow(r, platform);
-          if (p) allPosts.push(p);
+          if (p) { allPosts.push(p); ok++; }
         }
+        _diagByPlat[platform] = { raw_rows: raw, posts_ok: ok };
       }
+      // Diagnóstico visible en consola y window.__smxDebug
+      const _diagBuild = 'fix-2026-05-09-v3';
+      const _s18 = allPosts.filter(p => p.week === 18);
+      const _s18ByPlat = {};
+      for (const p of _s18) _s18ByPlat[p.platform] = (_s18ByPlat[p.platform]||0)+1;
+      console.log(`[Samsung MX dashboard · ${_diagBuild}]`);
+      console.log('Filas leídas y posts válidos por plataforma:', _diagByPlat);
+      console.log('Total posts:', allPosts.length, ' · S18:', _s18.length);
+      console.log('S18 por plataforma:', _s18ByPlat);
+      window.__smxDebug = { build: _diagBuild, byPlatform: _diagByPlat, allPosts, s18ByPlat: _s18ByPlat };
       // Meta global: dominio completo de los datos (independiente de filtros)
       const weeks = [...new Set(allPosts.map(p => p.week).filter(Boolean))].sort((a,b)=>a-b);
       const dates = allPosts.map(p => p.date).filter(Boolean);
@@ -496,8 +510,26 @@
     // ============================================================
     // CACHE local + HOOK de datos con auto-refresh
     // ============================================================
-    const CACHE_KEY = 'smx-dashboard-cache-html-v1';
+    // BUILD_VERSION: cámbialo cuando subas una versión nueva.
+    // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
+    const BUILD_VERSION = '2026-05-09-v4';
+    const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
+
+    // Log inmediato en consola para confirmar qué versión está corriendo.
+    // En consola del navegador (F12 → Console) busca esta línea.
+    console.log('%c[Samsung MX dashboard · build ' + BUILD_VERSION + ']',
+      'color:#AFA9EC;font-weight:bold;font-size:13px');
+
+    // Limpia automáticamente caches de builds viejos al cargar.
+    try {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('smx-dashboard-cache-') && k !== CACHE_KEY) {
+          localStorage.removeItem(k);
+          console.log('[Samsung MX] caché viejo eliminado:', k);
+        }
+      });
+    } catch {}
 
     function readCache() {
       try {
@@ -882,6 +914,22 @@
               <div className="text-[9px] font-mono text-faint mt-1">
                 act. ${timeAgo(fetchedAt)}${autoRefreshMin > 0 ? ` · auto cada ${autoRefreshMin}m` : ''}
               </div>
+              <div className="text-[9px] font-mono text-faint mt-2 pt-2 border-t border-line/50">
+                build ${BUILD_VERSION}
+              </div>
+              <button
+                onClick=${() => {
+                  try {
+                    Object.keys(localStorage).forEach(k => {
+                      if (k.startsWith('smx-dashboard-cache-')) localStorage.removeItem(k);
+                    });
+                  } catch {}
+                  location.reload();
+                }}
+                className="mt-2 text-[9px] font-mono text-txt3 hover:text-accent transition-colors"
+                title="Limpia caché del navegador y recarga">
+                ↻ forzar recarga
+              </button>
             `}
           </div>
         </aside>`;
