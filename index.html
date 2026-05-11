@@ -293,16 +293,59 @@
         }
         _diagByPlat[platform] = { raw_rows: raw, posts_ok: ok };
       }
-      // Diagnóstico visible en consola y window.__smxDebug
-      const _diagBuild = 'fix-2026-05-09-v3';
+      // Diagnóstico visible en consola, window.__smxDebug y panel #6
       const _s18 = allPosts.filter(p => p.week === 18);
       const _s18ByPlat = {};
       for (const p of _s18) _s18ByPlat[p.platform] = (_s18ByPlat[p.platform]||0)+1;
-      console.log(`[Samsung MX dashboard · ${_diagBuild}]`);
-      console.log('Filas leídas y posts válidos por plataforma:', _diagByPlat);
-      console.log('Total posts:', allPosts.length, ' · S18:', _s18.length);
+
+      // Captura filas crudas tal como las devolvió gviz/papaparse — para detectar
+      // si el Sheet en vivo está enviando menos filas de las que parecen estar
+      // presentes en la base de datos
+      const _rawCountByPlat = {};
+      const _rawS18ByPlat = {};
+      const _rawS18Rows = {};   // sólo IG para inspección detallada
+      for (const [platform, rows] of Object.entries(rawByPlatform)) {
+        _rawCountByPlat[platform] = rows.length;
+        const s18raw = rows.filter(r => {
+          const s = r['Semana'];
+          if (s == null || s === '') return false;
+          const n = parseFloat(String(s).replace(',', '.'));
+          return n === 18;
+        });
+        _rawS18ByPlat[platform] = s18raw.length;
+        if (platform === 'Instagram' || platform === 'Facebook') {
+          _rawS18Rows[platform] = s18raw.map(r => ({
+            link: r['Link'] ? '✓' : '—',
+            fecha: r['Fecha'],
+            formato: r['Formato'],
+            alcance: r['Alcance'],
+            inter_totales: r['Inter. Totales'],
+          }));
+        }
+      }
+
+      console.log('%c[Samsung MX dashboard · build ' + BUILD_VERSION + ']',
+        'color:#AFA9EC;font-weight:bold;font-size:13px');
+      console.log('Filas crudas devueltas por gviz:', _rawCountByPlat);
+      console.log('Filas crudas con Semana=18:', _rawS18ByPlat);
+      console.log('Posts válidos por plataforma:', _diagByPlat);
+      console.log('Total posts: ' + allPosts.length + '  ·  S18: ' + _s18.length);
       console.log('S18 por plataforma:', _s18ByPlat);
-      window.__smxDebug = { build: _diagBuild, byPlatform: _diagByPlat, allPosts, s18ByPlat: _s18ByPlat };
+      console.log('Detalle de filas RAW S18 (FB e IG):');
+      console.table(_rawS18Rows.Facebook || []);
+      console.table(_rawS18Rows.Instagram || []);
+
+      window.__smxDebug = {
+        build: BUILD_VERSION,
+        rawCountByPlat: _rawCountByPlat,
+        rawS18ByPlat: _rawS18ByPlat,
+        rawS18Rows: _rawS18Rows,
+        byPlatform: _diagByPlat,
+        s18ByPlat: _s18ByPlat,
+        totalPosts: allPosts.length,
+        totalS18: _s18.length,
+        allPosts,
+      };
       // Meta global: dominio completo de los datos (independiente de filtros)
       const weeks = [...new Set(allPosts.map(p => p.week).filter(Boolean))].sort((a,b)=>a-b);
       const dates = allPosts.map(p => p.date).filter(Boolean);
@@ -512,21 +555,15 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-09-v4';
+    const BUILD_VERSION = '2026-05-10-v5';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
-
-    // Log inmediato en consola para confirmar qué versión está corriendo.
-    // En consola del navegador (F12 → Console) busca esta línea.
-    console.log('%c[Samsung MX dashboard · build ' + BUILD_VERSION + ']',
-      'color:#AFA9EC;font-weight:bold;font-size:13px');
 
     // Limpia automáticamente caches de builds viejos al cargar.
     try {
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith('smx-dashboard-cache-') && k !== CACHE_KEY) {
           localStorage.removeItem(k);
-          console.log('[Samsung MX] caché viejo eliminado:', k);
         }
       });
     } catch {}
@@ -1856,6 +1893,127 @@
     // ============================================================
     // Footer
     // ============================================================
+    // ============================================================
+    // Panel de diagnóstico — visible si la URL incluye ?diag=1
+    // o si la cuenta de S18 no concuerda con la base
+    // ============================================================
+    function DiagnosticPanel() {
+      const [open, setOpen] = useState(false);
+      const [d, setD] = useState(null);
+
+      useEffect(() => {
+        const t = setInterval(() => {
+          if (window.__smxDebug) {
+            setD({ ...window.__smxDebug });
+          }
+        }, 1000);
+        return () => clearInterval(t);
+      }, []);
+
+      if (!d) return null;
+
+      const platOrder = ['Facebook','Instagram','YouTube','TikTok','X','LinkedIn','Threads'];
+
+      return html`
+        <div className="border-t border-line mt-3 mx-7">
+          <button
+            onClick=${() => setOpen(!open)}
+            className="w-full py-3 text-left text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 hover:text-accent transition-colors">
+            ${open ? '▾' : '▸'} Diagnóstico de datos (build ${d.build})
+          </button>
+          ${open && html`
+            <div className="pb-7 space-y-5">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">
+                  Resumen por plataforma
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="text-[11px] font-mono w-full">
+                    <thead>
+                      <tr className="text-txt3 border-b border-line">
+                        <th className="text-left py-2 pr-4">Plataforma</th>
+                        <th className="text-right py-2 px-3">Raw rows<br/>(gviz)</th>
+                        <th className="text-right py-2 px-3">Raw S18<br/>(gviz)</th>
+                        <th className="text-right py-2 px-3">Posts ok<br/>(normalizados)</th>
+                        <th className="text-right py-2 pl-3">Posts S18<br/>(dashboard)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${platOrder.map(p => html`
+                        <tr key=${p} className="border-b border-line/40 text-txt2">
+                          <td className="py-2 pr-4">${p}</td>
+                          <td className="text-right py-2 px-3">${d.rawCountByPlat?.[p] ?? '—'}</td>
+                          <td className="text-right py-2 px-3 ${d.rawS18ByPlat?.[p] !== d.s18ByPlat?.[p] ? 'text-amber' : ''}">
+                            ${d.rawS18ByPlat?.[p] ?? '—'}
+                          </td>
+                          <td className="text-right py-2 px-3">${d.byPlatform?.[p]?.posts_ok ?? '—'}</td>
+                          <td className="text-right py-2 pl-3 ${d.s18ByPlat?.[p] !== (d.rawS18ByPlat?.[p] || 0) ? 'text-amber' : 'text-txt'}">
+                            ${d.s18ByPlat?.[p] ?? 0}
+                          </td>
+                        </tr>
+                      `)}
+                      <tr className="text-txt font-medium">
+                        <td className="py-2 pr-4">TOTAL</td>
+                        <td className="text-right py-2 px-3">${Object.values(d.rawCountByPlat||{}).reduce((a,b)=>a+b,0)}</td>
+                        <td className="text-right py-2 px-3">${Object.values(d.rawS18ByPlat||{}).reduce((a,b)=>a+b,0)}</td>
+                        <td className="text-right py-2 px-3">${d.totalPosts}</td>
+                        <td className="text-right py-2 pl-3">${d.totalS18}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-[10px] text-txt3 mt-2 leading-relaxed">
+                  · <span className="text-txt">Raw rows</span> = filas que gviz devolvió desde tu Google Sheet en vivo (incluyendo vacías y descartadas).<br/>
+                  · <span className="text-txt">Raw S18</span> = de esas, cuántas tienen Semana = 18 al leer el CSV crudo.<br/>
+                  · <span className="text-txt">Posts ok</span> = cuántas pasaron la regla <code>hasAnyIdentity</code> (no son filas completamente vacías).<br/>
+                  · <span className="text-txt">Posts S18</span> = el conteo final que muestra el dashboard.<br/>
+                  · Si Raw S18 ≠ Posts S18, la regla de descarte está eliminando filas legítimas.<br/>
+                  · Si Raw S18 ya es menor a lo esperado, el Google Sheet en vivo está devolviendo menos datos que tu .xlsx exportado.
+                </div>
+              </div>
+
+              ${d.rawS18Rows?.Instagram?.length > 0 && html`
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">
+                    Filas RAW de Instagram en S18 (lo que recibió gviz)
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="text-[11px] font-mono w-full">
+                      <thead>
+                        <tr className="text-txt3 border-b border-line">
+                          <th className="text-left py-2 pr-4">#</th>
+                          <th className="text-left py-2 pr-4">Link</th>
+                          <th className="text-left py-2 pr-4">Fecha</th>
+                          <th className="text-left py-2 pr-4">Formato</th>
+                          <th className="text-right py-2 pr-4">Alcance</th>
+                          <th className="text-right py-2">Inter. Totales</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${d.rawS18Rows.Instagram.map((r, i) => html`
+                          <tr key=${i} className="border-b border-line/40 text-txt2">
+                            <td className="py-1.5 pr-4 text-txt4">${i+1}</td>
+                            <td className="py-1.5 pr-4">${r.link}</td>
+                            <td className="py-1.5 pr-4">${r.fecha || '—'}</td>
+                            <td className="py-1.5 pr-4">${r.formato || '—'}</td>
+                            <td className="py-1.5 pr-4 text-right">${r.alcance || '—'}</td>
+                            <td className="py-1.5 text-right">${r.inter_totales || '—'}</td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `}
+
+              <div className="text-[10px] text-txt4">
+                Para inspección manual abre la consola del navegador (F12 → Console) y escribe: <code className="text-txt2">window.__smxDebug</code>
+              </div>
+            </div>
+          `}
+        </div>`;
+    }
+
     function Footer({ fetchedAt, totalPosts }) {
       return html`
         <footer className="border-t border-line mt-3 mx-7">
@@ -1978,6 +2136,8 @@
                 <${CatalogSection} D=${D}/>
               </main>
             `}
+
+            <${DiagnosticPanel} />
 
             <${Footer} fetchedAt=${fetchedAt} totalPosts=${baseMeta.total_posts}/>
           </div>
