@@ -558,7 +558,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-10-v6';
+    const BUILD_VERSION = '2026-05-10-v7';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -824,6 +824,14 @@
         <path d="M3 7 L21 7 L20 22 L4 22 Z"/>
       </svg>`;
 
+    const PlayIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <polygon points="6 3 20 12 6 21 6 3"/>
+      </svg>`;
+
     // ============================================================
     // ESTADOS UI
     // ============================================================
@@ -871,6 +879,7 @@
       { id: 'tendencia',   label: 'Tendencia',   Icon: TrendIcon    },
       { id: 'mezcla',      label: 'Mezcla',      Icon: DonutIcon    },
       { id: 'top-posts',   label: 'Top posts',   Icon: RowsIcon     },
+      { id: 'vtr',         label: 'VTR',         Icon: PlayIcon     },
       { id: 'catalogo',    label: 'Catálogo',    Icon: BagIcon      },
     ];
 
@@ -1713,6 +1722,240 @@
     }
 
     // ============================================================
+    // VtrSection — VTR general, por plataforma, por duración + top videos
+    // ============================================================
+    function computeVtrStats(posts) {
+      // Un post es "video" si tiene VTR registrado y no es Story.
+      // (Stories no se cuentan en VTR — definido en la base de datos.)
+      const videos = posts.filter(p =>
+        p.vtr != null &&
+        p.format !== 'Stories'
+      );
+
+      // Agregadores. Para "simple" calculamos promedio aritmético del VTR%.
+      // Para "ponderado" usamos sum(vtr * views) / sum(views) — refleja qué tanto
+      // se ve el video real considerando alcance.
+      function aggBucket(list) {
+        if (!list.length) return { n: 0, vtr_simple: null, vtr_weighted: null, views: 0, duration_avg: null };
+        const sumVtr = list.reduce((a, p) => a + (p.vtr || 0), 0);
+        const sumViews = list.reduce((a, p) => a + (p.views || 0), 0);
+        const sumVtrXViews = list.reduce((a, p) => a + ((p.vtr || 0) * (p.views || 0)), 0);
+        const sumDur = list.reduce((a, p) => a + (p.duration || 0), 0);
+        const nWithDur = list.filter(p => p.duration > 0).length;
+        return {
+          n: list.length,
+          vtr_simple: sumVtr / list.length,
+          vtr_weighted: sumViews > 0 ? sumVtrXViews / sumViews : null,
+          views: sumViews,
+          duration_avg: nWithDur > 0 ? sumDur / nWithDur : null,
+        };
+      }
+
+      const general = aggBucket(videos);
+
+      const byPlatform = {};
+      const platOrder = ['Facebook','Instagram','YouTube','TikTok','X','LinkedIn','Threads'];
+      for (const plat of platOrder) {
+        const platVideos = videos.filter(p => p.platform === plat);
+        if (platVideos.length > 0) byPlatform[plat] = aggBucket(platVideos);
+      }
+
+      const short = videos.filter(p => p.duration != null && p.duration <= 30);
+      const long  = videos.filter(p => p.duration != null && p.duration  > 30);
+      const byDuration = {
+        short: { ...aggBucket(short), label: '≤ 30 segundos' },
+        long:  { ...aggBucket(long),  label: '> 30 segundos' },
+      };
+
+      // Top 10 videos por VTR — filtramos los que tienen pocas views para
+      // evitar que dominen videos con VTR alto pero base mínima.
+      // Umbral: top 25% en views.
+      const viewsSorted = videos.map(v => v.views || 0).sort((a, b) => b - a);
+      const viewsThreshold = viewsSorted[Math.floor(viewsSorted.length * 0.25)] || 0;
+      const topVideos = videos
+        .filter(p => (p.views || 0) >= Math.max(viewsThreshold, 1000))
+        .sort((a, b) => (b.vtr || 0) - (a.vtr || 0))
+        .slice(0, 10);
+
+      return { general, byPlatform, byDuration, topVideos, totalVideos: videos.length };
+    }
+
+    function VtrSection({ D }) {
+      const vtr = useMemo(() => computeVtrStats(D.allPosts || []), [D.allPosts]);
+      const platOrder = Object.keys(vtr.byPlatform);
+
+      if (vtr.totalVideos === 0) {
+        return html`
+          <section id="sec-vtr" className="px-7 py-7">
+            <div className="flex items-baseline justify-between mb-5">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 06</div>
+                <h2 className="text-[18px] font-medium text-txt">VTR · Video Through Rate</h2>
+              </div>
+              <div className="text-[11px] font-mono text-txt4">Sin videos en este filtro</div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-8 text-center text-faint text-sm">
+              No hay videos en el rango filtrado actualmente.
+            </div>
+          </section>`;
+      }
+
+      return html`
+        <section id="sec-vtr" className="px-7 py-7">
+          <div className="flex items-baseline justify-between mb-5">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 06</div>
+              <h2 className="text-[18px] font-medium text-txt">VTR · Video Through Rate</h2>
+            </div>
+            <div className="text-[11px] font-mono text-txt4">${vtr.totalVideos} videos · stories excluidas</div>
+          </div>
+
+          <!-- KPI general -->
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div className="rounded-xl bg-surface border border-line p-5">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general · simple</div>
+              <div className="text-[28px] font-medium text-txt tabular-nums leading-none">${erFmt(vtr.general.vtr_simple)}</div>
+              <div className="text-[11px] font-mono text-txt4 mt-2">promedio aritmético</div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-5">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general · ponderado</div>
+              <div className="text-[28px] font-medium text-accent tabular-nums leading-none">${erFmt(vtr.general.vtr_weighted)}</div>
+              <div className="text-[11px] font-mono text-txt4 mt-2">ponderado por views</div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-5">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Videos</div>
+              <div className="text-[28px] font-medium text-txt tabular-nums leading-none">${vtr.totalVideos}</div>
+              <div className="text-[11px] font-mono text-txt4 mt-2">en el filtro actual</div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-5">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Reproducciones</div>
+              <div className="text-[28px] font-medium text-txt tabular-nums leading-none">${fmt(vtr.general.views)}</div>
+              <div className="text-[11px] font-mono text-txt4 mt-2">total views</div>
+            </div>
+          </div>
+
+          <!-- Por duración -->
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+            ${['short', 'long'].map(k => {
+              const b = vtr.byDuration[k];
+              const isShort = k === 'short';
+              return html`
+                <div key=${k} className="rounded-xl bg-surface border border-line p-5">
+                  <div className="flex items-baseline justify-between mb-3">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">${isShort ? 'Videos cortos' : 'Videos largos'}</div>
+                      <div className="text-[15px] text-txt font-medium">${b.label}</div>
+                    </div>
+                    <div className="text-[11px] font-mono text-txt4">${b.n} videos</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 pt-3 border-t border-line">
+                    <div>
+                      <div className="text-[10px] font-mono text-txt4 mb-1">VTR simple</div>
+                      <div className="text-[18px] tabular-nums text-txt">${erFmt(b.vtr_simple)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono text-txt4 mb-1">VTR ponderado</div>
+                      <div className="text-[18px] tabular-nums text-accent">${erFmt(b.vtr_weighted)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono text-txt4 mb-1">Dur. prom.</div>
+                      <div className="text-[18px] tabular-nums text-txt2">${b.duration_avg != null ? b.duration_avg.toFixed(0) + 's' : '—'}</div>
+                    </div>
+                  </div>
+                </div>`;
+            })}
+          </div>
+
+          <!-- Por plataforma -->
+          <div className="rounded-xl bg-surface border border-line p-5 mb-3">
+            <div className="flex items-baseline justify-between mb-4">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">Por plataforma</div>
+              <div className="text-[10px] font-mono text-txt4">${platOrder.length} con videos</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="text-[12px] font-mono w-full">
+                <thead>
+                  <tr className="text-txt3 border-b border-line">
+                    <th className="text-left py-2.5 pr-3 font-medium">Plataforma</th>
+                    <th className="text-right py-2.5 px-3 font-medium">Videos</th>
+                    <th className="text-right py-2.5 px-3 font-medium">VTR simple</th>
+                    <th className="text-right py-2.5 px-3 font-medium">VTR ponderado</th>
+                    <th className="text-right py-2.5 px-3 font-medium">Views</th>
+                    <th className="text-right py-2.5 pl-3 font-medium">Dur. prom.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${platOrder.map(plat => {
+                    const b = vtr.byPlatform[plat];
+                    const color = PLAT_COLORS[plat];
+                    return html`
+                      <tr key=${plat} className="border-b border-line/40 hover:bg-white/[0.02] transition-colors">
+                        <td className="py-2.5 pr-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-6 h-6 rounded-md flex items-center justify-center text-[9px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[plat]}</span>
+                            <span className="text-txt text-[13px] font-sans">${plat}</span>
+                          </div>
+                        </td>
+                        <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${b.n}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums text-txt">${erFmt(b.vtr_simple)}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums text-accent">${erFmt(b.vtr_weighted)}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(b.views)}</td>
+                        <td className="text-right py-2.5 pl-3 tabular-nums text-txt3">${b.duration_avg != null ? b.duration_avg.toFixed(0) + 's' : '—'}</td>
+                      </tr>`;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Top videos por VTR -->
+          ${vtr.topVideos.length > 0 && html`
+            <div className="rounded-xl bg-surface border border-line p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">Top videos por VTR</div>
+                <div className="text-[10px] font-mono text-txt4">filtrado a videos con base de views relevante</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="text-[12px] font-mono w-full">
+                  <thead>
+                    <tr className="text-txt3 border-b border-line">
+                      <th className="text-left py-2.5 pr-3 font-medium w-8">#</th>
+                      <th className="text-left py-2.5 pr-3 font-medium">Plataforma</th>
+                      <th className="text-left py-2.5 pr-3 font-medium">Formato</th>
+                      <th className="text-left py-2.5 pr-3 font-medium">Campaña</th>
+                      <th className="text-right py-2.5 px-3 font-medium">Duración</th>
+                      <th className="text-right py-2.5 px-3 font-medium">Views</th>
+                      <th className="text-right py-2.5 pl-3 font-medium">VTR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${vtr.topVideos.map((p, i) => {
+                      const color = PLAT_COLORS[p.platform];
+                      return html`
+                        <tr key=${i} className="border-b border-line/40 hover:bg-white/[0.02] transition-colors">
+                          <td className="py-2.5 pr-3 text-txt4 tabular-nums">${i + 1}</td>
+                          <td className="py-2.5 pr-3">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded flex items-center justify-center text-[8px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
+                              <span className="text-txt2 text-[12px] font-sans">${p.platform}</span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-3 text-txt2 font-sans">${p.format || '—'}</td>
+                          <td className="py-2.5 pr-3 text-txt3 font-sans truncate max-w-[220px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
+                          <td className="text-right py-2.5 px-3 tabular-nums text-txt3">${p.duration != null ? p.duration + 's' : '—'}</td>
+                          <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(p.views)}</td>
+                          <td className="text-right py-2.5 pl-3 tabular-nums text-accent font-medium">${erFmt(p.vtr)}</td>
+                        </tr>`;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `}
+        </section>`;
+    }
+
+    // ============================================================
     // CatalogSection (Top productos + campañas)
     // ============================================================
     function CatalogList({ entries, title, max }) {
@@ -1750,7 +1993,7 @@
         <section id="sec-catalogo" className="px-7 py-7">
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 06</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 07</div>
               <h2 className="text-[18px] font-medium text-txt">Catálogo</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">Productos · campañas</div>
@@ -1901,7 +2144,7 @@
     // o si la cuenta de S18 no concuerda con la base
     // ============================================================
     function DiagnosticPanel() {
-      const [open, setOpen] = useState(true);  // abierto por defecto para diagnosticar
+      const [open, setOpen] = useState(false);  // colapsado por defecto; útil si vuelven a aparecer discrepancias
       const [d, setD] = useState(null);
 
       useEffect(() => {
@@ -2136,6 +2379,7 @@
                 <${TrendSection}   D=${D}/>
                 <${MixSection}     D=${D}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected}/>
+                <${VtrSection}     D=${D}/>
                 <${CatalogSection} D=${D}/>
               </main>
             `}
