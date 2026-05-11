@@ -535,6 +535,37 @@
       if (!dt) return d ? String(d) : '—';
       return dt.toLocaleDateString('es-MX', { day:'2-digit', month:'short' });
     };
+
+    // === Helpers para vista diaria ===
+    // weekDays(N, año) → array de 7 Date objects (Dom→Sáb) que componen
+    // la semana N del año, usando convención US/MX:
+    //   Semana 1 = semana que contiene el 1 de enero, inicia en domingo.
+    function weekDays(weekNum, year) {
+      const jan1 = new Date(year, 0, 1);
+      const dow = jan1.getDay();                // 0=Dom .. 6=Sáb
+      const start = new Date(year, 0, 1 - dow + (weekNum - 1) * 7);
+      return Array.from({ length: 7 }, (_, i) =>
+        new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+    }
+    const DAY_NAMES_ES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dayLabel = (d) => `${DAY_NAMES_ES[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+
+    // Infiere el año dominante de un conjunto de posts (por fecha o por p.year)
+    function inferYear(posts) {
+      const counts = {};
+      for (const p of posts || []) {
+        let y = null;
+        if (p.year && +p.year > 1900) y = +p.year;
+        else {
+          const dt = parseDate(p.date);
+          if (dt) y = dt.getFullYear();
+        }
+        if (y) counts[y] = (counts[y] || 0) + 1;
+      }
+      const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+      return sorted.length ? +sorted[0][0] : new Date().getFullYear();
+    }
     const timeAgo = (ts) => {
       if (!ts) return '—';
       const diff = Math.floor((Date.now() - ts) / 1000);
@@ -558,7 +589,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-11-v8';
+    const BUILD_VERSION = '2026-05-11-v9';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1394,10 +1425,14 @@
     // ============================================================
     // PlatformsGrid
     // ============================================================
-    function PlatformCard({ name, stat, weekly }) {
+    function PlatformCard({ name, stat, weekly, dailySeries }) {
       const color = PLAT_COLORS[name];
-      const series = Object.keys(weekly || {}).sort((a,b) => +a - +b)
-        .map(w => ({ w:+w, reach: weekly[w].reach }));
+      // Si recibimos dailySeries, la usamos directo (modo single-week).
+      // Si no, derivamos serie semanal a partir de `weekly`.
+      const series = dailySeries
+        ? dailySeries.map(d => ({ w: d.key, reach: d.reach }))
+        : Object.keys(weekly || {}).sort((a,b) => +a - +b)
+            .map(w => ({ w:+w, reach: weekly[w].reach }));
 
       return html`
         <div className="rounded-xl bg-surface border border-line p-4 flex flex-col gap-3 hover:border-line2 transition-colors">
@@ -1446,6 +1481,33 @@
       const platforms = Object.keys(D.by_platform)
         .sort((a,b) => D.by_platform[b].reach - D.by_platform[a].reach);
 
+      // Single-week mode: calculamos serie diaria por plataforma
+      // (mismos 7 días Dom→Sáb que TrendSection)
+      const weeksInScope = D.meta?.weeks_in_scope || D.meta?.weeks || [];
+      const isDailyMode = weeksInScope.length === 1;
+
+      const dailyByPlatform = useMemo(() => {
+        if (!isDailyMode) return null;
+        const wk = weeksInScope[0];
+        const year = inferYear(D.allPosts);
+        const days = weekDays(wk, year);
+
+        const out = {};
+        for (const plat of platforms) {
+          const byKey = {};
+          for (const d of days) byKey[isoDay(d)] = { key: isoDay(d), reach: 0 };
+          for (const p of (D.allPosts || [])) {
+            if (p.platform !== plat) continue;
+            const dt = parseDate(p.date);
+            if (!dt) continue;
+            const key = isoDay(dt);
+            if (byKey[key]) byKey[key].reach += p.reach || 0;
+          }
+          out[plat] = days.map(d => byKey[isoDay(d)]);
+        }
+        return out;
+      }, [D, isDailyMode, weeksInScope, platforms.join(',')]);
+
       return html`
         <section id="sec-plataformas" className="px-7 py-7">
           <div className="flex items-baseline justify-between mb-4">
@@ -1453,11 +1515,18 @@
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 02</div>
               <h2 className="text-[18px] font-medium text-txt">Por plataforma</h2>
             </div>
-            <div className="text-[11px] font-mono text-txt4">Ordenadas por alcance</div>
+            <div className="text-[11px] font-mono text-txt4">
+              ${isDailyMode ? 'Tendencia diaria · ' : ''}Ordenadas por alcance
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             ${platforms.map(p => html`
-              <${PlatformCard} key=${p} name=${p} stat=${D.by_platform[p]} weekly=${D.by_plat_week[p]} />
+              <${PlatformCard}
+                key=${p}
+                name=${p}
+                stat=${D.by_platform[p]}
+                weekly=${dailyByPlatform ? null : D.by_plat_week[p]}
+                dailySeries=${dailyByPlatform ? dailyByPlatform[p] : null} />
             `)}
           </div>
         </section>`;
@@ -1484,20 +1553,26 @@
 
       const series = useMemo(() => {
         if (isDailyMode) {
-          // Agregados por día a partir de allPosts filtrados
-          const posts = D.allPosts || [];
-          const byDay = {};
-          for (const p of posts) {
+          const wk = weeksInScope[0];
+          const year = inferYear(D.allPosts);
+          const days = weekDays(wk, year);
+
+          // Inicializa los 7 días con ceros (Dom→Sáb)
+          const byKey = {};
+          for (const d of days) {
+            byKey[isoDay(d)] = { date: d, posts: 0, reach: 0, inter: 0, views: 0, er_sum: 0, er_n: 0 };
+          }
+
+          // Acumula posts cuya fecha cae dentro de esos 7 días.
+          // Los posts con fecha fuera de la ventana (data entry inconsistente:
+          // Semana=18 pero Fecha=01/04, por ejemplo) se ignoran del gráfico.
+          let outOfWindow = 0;
+          for (const p of (D.allPosts || [])) {
             const dt = parseDate(p.date);
-            if (!dt) continue;
-            const y = dt.getFullYear();
-            const m = String(dt.getMonth() + 1).padStart(2, '0');
-            const d = String(dt.getDate()).padStart(2, '0');
-            const key = `${y}-${m}-${d}`;
-            if (!byDay[key]) {
-              byDay[key] = { date: dt, key, posts: 0, reach: 0, inter: 0, views: 0, er_sum: 0, er_n: 0 };
-            }
-            const agg = byDay[key];
+            if (!dt) { outOfWindow++; continue; }
+            const key = isoDay(dt);
+            const agg = byKey[key];
+            if (!agg) { outOfWindow++; continue; }
             agg.posts++;
             agg.reach += p.reach || 0;
             agg.inter += p.interactions || 0;
@@ -1505,18 +1580,16 @@
             if (p.er != null) { agg.er_sum += p.er; agg.er_n++; }
           }
 
-          const DOW = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-          const sorted = Object.values(byDay).sort((a, b) => a.date - b.date);
-          return sorted.map(d => {
-            const dd = String(d.date.getDate()).padStart(2, '0');
-            const mm = String(d.date.getMonth() + 1).padStart(2, '0');
-            const label = `${DOW[d.date.getDay()]} ${dd}/${mm}`;
+          const out = days.map(d => {
+            const agg = byKey[isoDay(d)];
             let value;
-            if (metric === 'er_avg')      value = d.er_n > 0 ? d.er_sum / d.er_n : 0;
-            else if (metric === 'inter')  value = d.inter;
-            else                          value = d[metric];   // reach | views
-            return { week: d.key, label, value, posts: d.posts };
+            if (metric === 'er_avg')      value = agg.er_n > 0 ? agg.er_sum / agg.er_n : 0;
+            else if (metric === 'inter')  value = agg.inter;
+            else                          value = agg[metric];   // reach | views
+            return { week: isoDay(d), label: dayLabel(d), value, posts: agg.posts };
           });
+          out._outOfWindow = outOfWindow;
+          return out;
         }
 
         // Vista semanal estándar
@@ -1526,13 +1599,16 @@
         }));
       }, [D, metric, isDailyMode]);
 
-      // Rango de fechas para subheader en daily mode
-      const dateRange = useMemo(() => {
-        if (!isDailyMode || series.length === 0) return null;
-        const first = series[0].label;
-        const last  = series[series.length - 1].label;
-        return `${first} → ${last}`;
-      }, [isDailyMode, series]);
+      // Rango fijo de la semana en daily mode (Dom→Sáb)
+      const weekRangeLabel = useMemo(() => {
+        if (!isDailyMode) return null;
+        const wk = weeksInScope[0];
+        const year = inferYear(D.allPosts);
+        const days = weekDays(wk, year);
+        return `${dayLabel(days[0])} → ${dayLabel(days[6])}`;
+      }, [isDailyMode, weeksInScope, D.allPosts]);
+
+      const outOfWindow = isDailyMode ? (series._outOfWindow || 0) : 0;
 
       const xTickInterval = isDailyMode
         ? 0   // mostrar todos los días
@@ -1544,8 +1620,8 @@
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 03</div>
               <h2 className="text-[18px] font-medium text-txt">${isDailyMode ? 'Evolución diaria' : 'Evolución semanal'}</h2>
-              ${isDailyMode && dateRange && html`
-                <div className="text-[10px] font-mono text-txt4 mt-1">Semana ${weeksInScope[0]} · ${dateRange}</div>
+              ${isDailyMode && weekRangeLabel && html`
+                <div className="text-[10px] font-mono text-txt4 mt-1">Semana ${weeksInScope[0]} · ${weekRangeLabel}</div>
               `}
             </div>
             <div className="flex rounded-lg border border-line bg-white/[0.02] overflow-hidden">
@@ -1592,6 +1668,11 @@
             <div className="flex gap-5 mt-3 pt-3 border-t border-line text-[10px] font-mono text-txt4">
               <div className="flex items-center gap-2"><span className="w-3 h-0.5 bg-accent"></span><span>${TREND_METRICS.find(m => m.k === metric)?.l}</span></div>
               <div className="flex items-center gap-2"><span className="w-3 h-2 bg-white/10 rounded-sm"></span><span>Volumen de posts</span></div>
+              ${isDailyMode && outOfWindow > 0 && html`
+                <div className="text-amber" title="Posts marcados como esta semana pero con fecha fuera del rango Dom→Sáb">
+                  ⚠ ${outOfWindow} post${outOfWindow === 1 ? '' : 's'} con fecha fuera de la semana
+                </div>
+              `}
               ${isDailyMode && html`<div className="ml-auto text-accent/60">vista diaria automática</div>`}
             </div>
           </div>
