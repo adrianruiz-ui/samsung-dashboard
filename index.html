@@ -351,10 +351,40 @@
       };
       // Meta global: dominio completo de los datos (independiente de filtros)
       const weeks = [...new Set(allPosts.map(p => p.week).filter(Boolean))].sort((a,b)=>a-b);
-      const dates = allPosts.map(p => p.date).filter(Boolean);
+      // FIX: comparar como Date objects, no strings, para que date_min/max sean
+      // cronológicos (antes "31/12/2025" > "01/01/2026" alfabéticamente)
+      const dates = allPosts.map(p => parseDate(p.date)).filter(Boolean);
       const campaigns = [...new Set(allPosts.map(p => p.campaign).filter(Boolean))].sort();
       const subcampaigns = [...new Set(allPosts.map(p => p.subcampaign).filter(Boolean))].sort();
       const platforms = [...new Set(allPosts.map(p => p.platform))].sort();
+      // Años presentes — derivados de fecha o del campo "Año" del Sheet
+      const yearsSet = new Set();
+      for (const p of allPosts) {
+        if (p.year && +p.year > 1900) yearsSet.add(+p.year);
+        const dt = parseDate(p.date);
+        if (dt) yearsSet.add(dt.getFullYear());
+      }
+      const years = [...yearsSet].sort((a,b) => b - a);  // recientes primero
+
+      // Semanas con datos por año — para el slider, que muestra sólo
+      // las semanas relevantes al año filtrado
+      const weeksByYear = {};
+      for (const p of allPosts) {
+        if (p.week == null) continue;
+        let y = null;
+        if (p.year && +p.year > 1900) y = +p.year;
+        else {
+          const dt = parseDate(p.date);
+          if (dt) y = dt.getFullYear();
+        }
+        if (!y) continue;
+        if (!weeksByYear[y]) weeksByYear[y] = new Set();
+        weeksByYear[y].add(p.week);
+      }
+      const weeksByYearArr = {};
+      for (const y of Object.keys(weeksByYear)) {
+        weeksByYearArr[y] = [...weeksByYear[y]].sort((a,b) => a-b);
+      }
 
       // Mapa campaña → subcampañas (para el filtro encadenado)
       const subBy = {};
@@ -380,6 +410,8 @@
         total_posts: allPosts.length,
         platforms,
         weeks,
+        weeks_by_year: weeksByYearArr,
+        years,
         campaigns,
         subcampaigns,
         subcampaignsByCampaign,
@@ -395,12 +427,23 @@
      * Aplica los filtros al array de posts.
      * Filtros vacíos = no filtra esa dimensión.
      */
+    // Helper: deriva el año de un post desde p.year o desde parseDate(p.date)
+    function postYear(p) {
+      if (p.year && +p.year > 1900) return +p.year;
+      const dt = parseDate(p.date);
+      if (dt) return dt.getFullYear();
+      return null;
+    }
+
     function applyFilters(allPosts, filters) {
-      const { weekRange, platforms, campaigns, subcampaigns } = filters;
+      const { year, weekRange, platforms, campaigns, subcampaigns } = filters;
       return allPosts.filter(p => {
+        // Año: 'all' deja pasar todo; un número específico exige match exacto
+        if (year && year !== 'all') {
+          const py = postYear(p);
+          if (py !== year) return false;
+        }
         // Si hay filtro de semana, posts sin semana asignada se descartan.
-        // (Antes: solo se filtraban los que SÍ tenían semana — bug que dejaba
-        //  posts huérfanos colándose en cualquier rango de semanas)
         if (weekRange) {
           if (p.week == null) return false;
           if (p.week < weekRange[0] || p.week > weekRange[1]) return false;
@@ -429,7 +472,8 @@
 
       // Meta del subset filtrado (para la sección "viendo")
       const weeksInScope = [...new Set(posts.map(p => p.week).filter(Boolean))].sort((a,b)=>a-b);
-      const datesInScope = posts.map(p => p.date).filter(Boolean);
+      // FIX: parsear a Date para que el min/max sea cronológico, no alfabético
+      const datesInScope = posts.map(p => parseDate(p.date)).filter(Boolean);
 
       return {
         global, by_platform, by_week, by_plat_week, by_format, by_product,
@@ -589,7 +633,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-11-v9';
+    const BUILD_VERSION = '2026-05-11-v10';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -674,6 +718,7 @@
     // FILTROS — estado, sync con URL, filtro encadenado
     // ============================================================
     const EMPTY_FILTERS = {
+      year: 2026,             // 2025 | 2026 | 'all'
       weekRange: null,        // [min, max] o null
       platforms: [],          // [] = todas
       campaigns: [],
@@ -684,6 +729,10 @@
       try {
         const sp = new URLSearchParams(window.location.search);
         const f = { ...EMPTY_FILTERS };
+        const y = sp.get('y');
+        if (y === '2025' || y === '2026') f.year = +y;
+        else if (y === 'all')              f.year = 'all';
+        // si no hay ?y= en URL → conserva el default 2026
         const wr = sp.get('w');
         if (wr) {
           const [a, b] = wr.split('-').map(Number);
@@ -703,6 +752,8 @@
     function writeFiltersToUrl(f) {
       try {
         const sp = new URLSearchParams();
+        // sólo escribir ?y= si no es el default 2026
+        if (f.year !== 2026) sp.set('y', String(f.year));
         if (f.weekRange) sp.set('w', `${f.weekRange[0]}-${f.weekRange[1]}`);
         if (f.platforms?.length)    sp.set('p',  f.platforms.join('|'));
         if (f.campaigns?.length)    sp.set('c',  f.campaigns.join('|'));
@@ -731,6 +782,7 @@
       }, []);
 
       const isActive = (
+        (filters.year != null && filters.year !== 2026) ||  // 'all' o 2025 cuenta como activo
         (filters.weekRange != null) ||
         filters.platforms.length > 0 ||
         filters.campaigns.length > 0 ||
@@ -1172,6 +1224,12 @@
     function FilterBar({ baseMeta, filters, setFilters, clear, isActive, postsInScope, totalPosts }) {
       const { weeks, platforms, campaigns, subcampaignsByCampaign } = baseMeta;
 
+      // Semanas disponibles para el slider — dependen del año filtrado
+      const availableWeeks = useMemo(() => {
+        if (filters.year === 'all') return weeks;
+        return baseMeta.weeks_by_year?.[filters.year] || [];
+      }, [filters.year, weeks, baseMeta.weeks_by_year]);
+
       // Subcampañas disponibles en función de las campañas seleccionadas
       const availableSubcampaigns = useMemo(() => {
         if (!filters.campaigns.length) return baseMeta.subcampaigns;
@@ -1210,6 +1268,19 @@
         setFilters(prev => ({ ...prev, weekRange: range }));
       };
 
+      const setYear = (y) => {
+        // Al cambiar de año, limpiamos weekRange porque las semanas se
+        // reinterpretan en el contexto del año seleccionado y el rango anterior
+        // podría no aplicar (o ser confuso).
+        setFilters(prev => ({ ...prev, year: y, weekRange: null }));
+      };
+
+      const yearOptions = [
+        { v: 2025,  l: '2025' },
+        { v: 2026,  l: '2026' },
+        { v: 'all', l: 'Todo' },
+      ];
+
       const weekSummary = filters.weekRange
         ? `S${filters.weekRange[0]}–S${filters.weekRange[1]}`
         : 'Todas';
@@ -1227,12 +1298,27 @@
               <${FilterIcon} size=${12}/> Filtros
             </div>
 
+            <div className="flex items-center rounded-lg border border-line bg-white/[0.02] overflow-hidden shrink-0">
+              <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-faint px-2.5 py-1.5 border-r border-line">Año</span>
+              ${yearOptions.map((o, i) => html`
+                <button key=${o.v}
+                  onClick=${() => setYear(o.v)}
+                  className=${"px-2.5 py-1.5 text-[11px] transition-colors " +
+                    (i > 0 ? "border-l border-line " : "") +
+                    (filters.year === o.v
+                      ? "bg-accent2/15 text-txt"
+                      : "text-txt3 hover:text-txt hover:bg-white/[0.03]")}>
+                  ${o.l}
+                </button>
+              `)}
+            </div>
+
             <${FilterPopover}
               label="Semana"
               summary=${weekSummary}
               badgeCount=${filters.weekRange ? 1 : 0}
             >
-              ${({}) => html`<${WeekRangeControl} weeks=${weeks} value=${filters.weekRange} onChange=${setWeekRange}/>`}
+              ${({}) => html`<${WeekRangeControl} weeks=${availableWeeks} value=${filters.weekRange} onChange=${setWeekRange}/>`}
             <//>
 
             <${FilterPopover}
@@ -1489,7 +1575,8 @@
       const dailyByPlatform = useMemo(() => {
         if (!isDailyMode) return null;
         const wk = weeksInScope[0];
-        const year = inferYear(D.allPosts);
+        const sy = D.meta?.selected_year;
+        const year = (typeof sy === 'number') ? sy : inferYear(D.allPosts);
         const days = weekDays(wk, year);
 
         const out = {};
@@ -1554,7 +1641,10 @@
       const series = useMemo(() => {
         if (isDailyMode) {
           const wk = weeksInScope[0];
-          const year = inferYear(D.allPosts);
+          // Si el usuario filtró un año específico (no 'all'), úsalo;
+          // si está en 'all', infiere del dominante en los posts en scope.
+          const sy = D.meta?.selected_year;
+          const year = (typeof sy === 'number') ? sy : inferYear(D.allPosts);
           const days = weekDays(wk, year);
 
           // Inicializa los 7 días con ceros (Dom→Sáb)
@@ -1603,10 +1693,11 @@
       const weekRangeLabel = useMemo(() => {
         if (!isDailyMode) return null;
         const wk = weeksInScope[0];
-        const year = inferYear(D.allPosts);
+        const sy = D.meta?.selected_year;
+        const year = (typeof sy === 'number') ? sy : inferYear(D.allPosts);
         const days = weekDays(wk, year);
         return `${dayLabel(days[0])} → ${dayLabel(days[6])}`;
-      }, [isDailyMode, weeksInScope, D.allPosts]);
+      }, [isDailyMode, weeksInScope, D.allPosts, D.meta?.selected_year]);
 
       const outOfWindow = isDailyMode ? (series._outOfWindow || 0) : 0;
 
@@ -2445,7 +2536,11 @@
       const filteredData = useMemo(() => {
         if (!data || !baseMeta) return null;
         const filtered = applyFilters(allPosts, filters);
-        return computeAggregates(filtered, baseMeta);
+        const result = computeAggregates(filtered, baseMeta);
+        // Expone el año seleccionado en meta para que TrendSection/PlatformsGrid
+        // sepan qué año usar al calcular los 7 días de la semana en modo diario.
+        result.meta.selected_year = filters.year;
+        return result;
       }, [data, allPosts, baseMeta, filters]);
 
       if (loading) return html`<${LoadingState}/>`;
