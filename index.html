@@ -640,7 +640,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-11-v11';
+    const BUILD_VERSION = '2026-05-19-v12';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1846,7 +1846,7 @@
                       </div>
                       <div className="h-1 bg-white/[0.06] rounded"><div className="h-full rounded" style=${{ width: pctPosts + '%', background: color }}/></div>
                       <div className="flex justify-between mt-1.5 text-[10px] font-mono text-txt4">
-                        <span>${s.posts} posts · ER ${erFmt(s.er_avg)}</span>
+                        <span>${s.posts} posts · ER ${erFmt(s.er_avg)} · básico ${erFmt(s.basic_er_avg)}</span>
                         <span>${fmt(s.inter)} interacciones</span>
                       </div>
                     </div>`;
@@ -1855,18 +1855,26 @@
             </div>
             <div className="rounded-xl bg-surface border border-line p-5">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-4">Por formato (alcance)</div>
+              <div className="grid grid-cols-12 items-baseline gap-3 mb-2 pb-2 border-b border-line/40">
+                <div className="col-span-3 text-[9px] font-mono uppercase tracking-wider text-faint">Formato</div>
+                <div className="col-span-5"></div>
+                <div className="col-span-2 text-right text-[9px] font-mono uppercase tracking-wider text-faint">Alcance</div>
+                <div className="col-span-1 text-right text-[9px] font-mono uppercase tracking-wider text-faint">ER</div>
+                <div className="col-span-1 text-right text-[9px] font-mono uppercase tracking-wider text-faint">Bás.</div>
+              </div>
               <div className="space-y-2.5">
                 ${fmts.slice(0, 8).map(f => {
                   const w = (f.reach / max) * 100;
                   return html`
                     <div key=${f.name} className="grid grid-cols-12 items-baseline gap-3">
                       <div className="col-span-3 text-[13px] text-txt2 truncate" title=${f.name}>${f.name}</div>
-                      <div className="col-span-6 h-px bg-white/[0.06] relative">
+                      <div className="col-span-5 h-px bg-white/[0.06] relative">
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 rounded-sm bg-accent"
                              style=${{ width: w + '%' }}/>
                       </div>
                       <div className="col-span-2 text-right font-mono text-[11px] text-txt">${fmt(f.reach)}</div>
-                      <div className="col-span-1 text-right font-mono text-[11px] text-txt4">${erFmt(f.er_avg)}</div>
+                      <div className="col-span-1 text-right font-mono text-[11px] text-txt4 tabular-nums" title="ER total">${erFmt(f.er_avg)}</div>
+                      <div className="col-span-1 text-right font-mono text-[11px] text-txt4 tabular-nums" title="ER básico">${erFmt(f.basic_er_avg)}</div>
                     </div>`;
                 })}
               </div>
@@ -1881,7 +1889,9 @@
     const SORTS = [
       { k:'reach',        l:'Por alcance' },
       { k:'interactions', l:'Por interacciones' },
-      { k:'er',           l:'Por ER' },
+      { k:'er',           l:'Por ER total' },
+      { k:'basic_er',     l:'Por ER básico' },
+      { k:'vtr',          l:'Por VTR' },
       { k:'date',         l:'Más recientes' },
     ];
 
@@ -1895,7 +1905,18 @@
         const all = D.allPosts || [];
         const filtered = filterPlat === 'all' ? all : all.filter(p => p.platform === filterPlat);
         if (sortBy === 'date') return [...filtered].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-        if (sortBy === 'er') return [...filtered].filter(p => (p.reach||0) > 1000 && p.er > 0).sort((a,b) => (b.er||0) - (a.er||0));
+        if (sortBy === 'er' || sortBy === 'basic_er') {
+          // Aplicamos umbral mínimo de alcance para evitar que posts con base
+          // ridículamente pequeña (pero ER 1000%) dominen el ranking.
+          return [...filtered]
+            .filter(p => (p.reach||0) > 1000 && (p[sortBy]||0) > 0)
+            .sort((a,b) => (b[sortBy]||0) - (a[sortBy]||0));
+        }
+        if (sortBy === 'vtr') {
+          return [...filtered]
+            .filter(p => p.vtr != null && p.vtr > 0)
+            .sort((a,b) => (b.vtr||0) - (a.vtr||0));
+        }
         return [...filtered].filter(p => (p[sortBy]||0) > 0).sort((a,b) => (b[sortBy]||0) - (a[sortBy]||0));
       }, [D, sortBy, filterPlat]);
 
@@ -1935,13 +1956,14 @@
                   <th className="text-left py-2.5 px-4 font-medium">Campaña</th>
                   <th className="text-right py-2.5 px-4 font-medium">Alcance</th>
                   <th className="text-right py-2.5 px-4 font-medium">Inter.</th>
-                  <th className="text-right py-2.5 px-4 font-medium">ER</th>
+                  <th className="text-right py-2.5 px-4 font-medium">ER total</th>
+                  <th className="text-right py-2.5 px-4 font-medium">ER básico</th>
                   <th className="text-right py-2.5 px-4 font-medium pr-6">VTR</th>
                 </tr>
               </thead>
               <tbody>
                 ${visible.length === 0 && html`
-                  <tr><td colSpan=${11} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
+                  <tr><td colSpan=${12} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
                 `}
                 ${visible.map((p, i) => {
                   const color = PLAT_COLORS[p.platform];
@@ -1965,6 +1987,7 @@
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${fmt(p.reach)}</td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt2">${fmt(p.interactions)}</td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px]" style=${{ color }}>${erFmt(p.er)}</td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt3">${p.basic_er != null ? erFmt(p.basic_er) : '—'}</td>
                       <td className="py-2.5 px-4 pr-6 text-right font-mono tabular-nums text-[12px] text-txt3">
                         ${p.vtr != null ? erFmt(p.vtr) : '—'}
                       </td>
@@ -2232,7 +2255,8 @@
                 <th className="text-left py-2 font-medium"></th>
                 <th className="text-right py-2 font-medium">Posts</th>
                 <th className="text-right py-2 font-medium">Alcance</th>
-                <th className="text-right py-2 font-medium pr-1">ER</th>
+                <th className="text-right py-2 font-medium">ER</th>
+                <th className="text-right py-2 font-medium pr-1">Bás.</th>
               </tr>
             </thead>
             <tbody>
@@ -2241,7 +2265,8 @@
                   <td className="py-2 text-[12px] text-txt2 truncate max-w-[260px]" title=${e.name}>${e.name}</td>
                   <td className="py-2 text-right font-mono tabular-nums text-[11px] text-txt4">${e.posts}</td>
                   <td className="py-2 text-right font-mono tabular-nums text-[11px] text-txt">${fmt(e.reach)}</td>
-                  <td className="py-2 pr-1 text-right font-mono tabular-nums text-[11px] text-txt3">${erFmt(e.er_avg)}</td>
+                  <td className="py-2 text-right font-mono tabular-nums text-[11px] text-txt3">${erFmt(e.er_avg)}</td>
+                  <td className="py-2 pr-1 text-right font-mono tabular-nums text-[11px] text-txt4">${erFmt(e.basic_er_avg)}</td>
                 </tr>
               `)}
             </tbody>
