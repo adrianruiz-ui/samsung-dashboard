@@ -232,7 +232,8 @@
         reach:0, impressions:0, inter:0, views:0,
         reactions:0, comments:0, shares:0, saves:0, clics:0,
         posts:0,
-        _er_sum:0, _er_n:0, _vtr_sum:0, _vtr_n:0, _ctr_sum:0, _ctr_n:0,
+        _er_sum:0, _er_n:0, _basic_er_sum:0, _basic_er_n:0,
+        _vtr_sum:0, _vtr_n:0, _ctr_sum:0, _ctr_n:0,
       };
     }
     function aggAdd(a, p) {
@@ -242,15 +243,18 @@
       a.shares += p.shares || 0; a.saves += p.saves || 0; a.clics += p.clics || 0;
       a.posts += 1;
       if (p.er != null && p.er !== 0) { a._er_sum += p.er; a._er_n += 1; }
+      if (p.basic_er != null && p.basic_er !== 0) { a._basic_er_sum += p.basic_er; a._basic_er_n += 1; }
       if (p.vtr != null && p.vtr !== 0) { a._vtr_sum += p.vtr; a._vtr_n += 1; }
       if (p.ctr != null && p.ctr !== 0) { a._ctr_sum += p.ctr; a._ctr_n += 1; }
     }
     function aggFinalize(a) {
       const o = { ...a };
       o.er_avg = a._er_n ? a._er_sum / a._er_n : 0;
+      o.basic_er_avg = a._basic_er_n ? a._basic_er_sum / a._basic_er_n : 0;
       o.vtr_avg = a._vtr_n ? a._vtr_sum / a._vtr_n : 0;
       o.ctr_avg = a._ctr_n ? a._ctr_sum / a._ctr_n : 0;
-      delete o._er_sum; delete o._er_n; delete o._vtr_sum; delete o._vtr_n;
+      delete o._er_sum; delete o._er_n; delete o._basic_er_sum; delete o._basic_er_n;
+      delete o._vtr_sum; delete o._vtr_n;
       delete o._ctr_sum; delete o._ctr_n;
       return o;
     }
@@ -356,6 +360,7 @@
       const dates = allPosts.map(p => parseDate(p.date)).filter(Boolean);
       const campaigns = [...new Set(allPosts.map(p => p.campaign).filter(Boolean))].sort();
       const subcampaigns = [...new Set(allPosts.map(p => p.subcampaign).filter(Boolean))].sort();
+      const content_types = [...new Set(allPosts.map(p => p.content_type).filter(Boolean))].sort();
       const platforms = [...new Set(allPosts.map(p => p.platform))].sort();
       // Años presentes — derivados de fecha o del campo "Año" del Sheet
       const yearsSet = new Set();
@@ -414,6 +419,7 @@
         years,
         campaigns,
         subcampaigns,
+        content_types,
         subcampaignsByCampaign,
         date_min: dates.length ? dates.reduce((a,b) => a<b?a:b) : null,
         date_max: dates.length ? dates.reduce((a,b) => a>b?a:b) : null,
@@ -436,7 +442,7 @@
     }
 
     function applyFilters(allPosts, filters) {
-      const { year, weekRange, platforms, campaigns, subcampaigns } = filters;
+      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes } = filters;
       return allPosts.filter(p => {
         // Año: 'all' deja pasar todo; un número específico exige match exacto
         if (year && year !== 'all') {
@@ -451,6 +457,7 @@
         if (platforms && platforms.length > 0 && !platforms.includes(p.platform)) return false;
         if (campaigns && campaigns.length > 0 && !campaigns.includes(p.campaign)) return false;
         if (subcampaigns && subcampaigns.length > 0 && !subcampaigns.includes(p.subcampaign)) return false;
+        if (contentTypes && contentTypes.length > 0 && !contentTypes.includes(p.content_type)) return false;
         return true;
       });
     }
@@ -633,7 +640,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-11-v10';
+    const BUILD_VERSION = '2026-05-11-v11';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -723,6 +730,7 @@
       platforms: [],          // [] = todas
       campaigns: [],
       subcampaigns: [],
+      contentTypes: [],       // [] = todos (Local / Global / LAO / ...)
     };
 
     function readFiltersFromUrl() {
@@ -745,6 +753,7 @@
         f.platforms = arr('p');
         f.campaigns = arr('c');
         f.subcampaigns = arr('sc');
+        f.contentTypes = arr('ct');
         return f;
       } catch { return EMPTY_FILTERS; }
     }
@@ -758,6 +767,7 @@
         if (f.platforms?.length)    sp.set('p',  f.platforms.join('|'));
         if (f.campaigns?.length)    sp.set('c',  f.campaigns.join('|'));
         if (f.subcampaigns?.length) sp.set('sc', f.subcampaigns.join('|'));
+        if (f.contentTypes?.length) sp.set('ct', f.contentTypes.join('|'));
         const qs = sp.toString();
         const newUrl = window.location.pathname + (qs ? '?' + qs : '');
         window.history.replaceState(null, '', newUrl);
@@ -786,7 +796,8 @@
         (filters.weekRange != null) ||
         filters.platforms.length > 0 ||
         filters.campaigns.length > 0 ||
-        filters.subcampaigns.length > 0
+        filters.subcampaigns.length > 0 ||
+        filters.contentTypes.length > 0
       );
 
       const clear = useCallback(() => setFilters(EMPTY_FILTERS), [setFilters]);
@@ -1366,6 +1377,21 @@
               />`}
             <//>
 
+            <${FilterPopover}
+              label="Tipo contenido"
+              summary=${arrSummary(filters.contentTypes, (baseMeta.content_types || []).length)}
+              badgeCount=${filters.contentTypes.length}
+            >
+              ${() => html`<${MultiSelectPanel}
+                options=${baseMeta.content_types || []}
+                selected=${filters.contentTypes}
+                onToggle=${toggleArr('contentTypes')}
+                onSelectAll=${selectAll('contentTypes', baseMeta.content_types || [])}
+                onClear=${clearKey('contentTypes')}
+                emptyLabel="Sin tipos de contenido"
+              />`}
+            <//>
+
             <div className="flex-1 min-w-[8px]"></div>
 
             <div className="text-[11px] font-mono text-txt4 tabular-nums">
@@ -1501,7 +1527,7 @@
             <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} />
             <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} />
             <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR prom.`} />
-            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`CTR ${erFmt(g.ctr_avg)}`} accent />
+            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent />
             <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} />
             <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} />
           </div>
@@ -1537,7 +1563,10 @@
             </div>
             <div className="text-right">
               <div className="text-[14px] tabular-nums" style=${{ color }}>${erFmt(stat.er_avg)}</div>
-              <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1.5">ER prom.</div>
+              <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1.5">ER total</div>
+              ${stat.basic_er_avg > 0 && html`
+                <div className="text-[10px] font-mono text-txt3 mt-1.5 tabular-nums">Básico ${erFmt(stat.basic_er_avg)}</div>
+              `}
             </div>
           </div>
           <div className="h-10 -mx-1">
@@ -1623,10 +1652,11 @@
     // TrendSection
     // ============================================================
     const TREND_METRICS = [
-      { k:'reach',  l:'Alcance' },
-      { k:'inter',  l:'Interacciones' },
-      { k:'views',  l:'Reproducciones' },
-      { k:'er_avg', l:'ER promedio', isPercent:true },
+      { k:'reach',         l:'Alcance' },
+      { k:'inter',         l:'Interacciones' },
+      { k:'views',         l:'Reproducciones' },
+      { k:'er_avg',        l:'ER total',    isPercent:true },
+      { k:'basic_er_avg',  l:'ER básico',   isPercent:true },
     ];
 
     function TrendSection({ D }) {
@@ -1650,12 +1680,14 @@
           // Inicializa los 7 días con ceros (Dom→Sáb)
           const byKey = {};
           for (const d of days) {
-            byKey[isoDay(d)] = { date: d, posts: 0, reach: 0, inter: 0, views: 0, er_sum: 0, er_n: 0 };
+            byKey[isoDay(d)] = {
+              date: d, posts: 0, reach: 0, inter: 0, views: 0,
+              er_sum: 0, er_n: 0,
+              basic_er_sum: 0, basic_er_n: 0,
+            };
           }
 
           // Acumula posts cuya fecha cae dentro de esos 7 días.
-          // Los posts con fecha fuera de la ventana (data entry inconsistente:
-          // Semana=18 pero Fecha=01/04, por ejemplo) se ignoran del gráfico.
           let outOfWindow = 0;
           for (const p of (D.allPosts || [])) {
             const dt = parseDate(p.date);
@@ -1668,14 +1700,16 @@
             agg.inter += p.interactions || 0;
             agg.views += p.views || 0;
             if (p.er != null) { agg.er_sum += p.er; agg.er_n++; }
+            if (p.basic_er != null) { agg.basic_er_sum += p.basic_er; agg.basic_er_n++; }
           }
 
           const out = days.map(d => {
             const agg = byKey[isoDay(d)];
             let value;
-            if (metric === 'er_avg')      value = agg.er_n > 0 ? agg.er_sum / agg.er_n : 0;
-            else if (metric === 'inter')  value = agg.inter;
-            else                          value = agg[metric];   // reach | views
+            if (metric === 'er_avg')             value = agg.er_n > 0 ? agg.er_sum / agg.er_n : 0;
+            else if (metric === 'basic_er_avg')  value = agg.basic_er_n > 0 ? agg.basic_er_sum / agg.basic_er_n : 0;
+            else if (metric === 'inter')         value = agg.inter;
+            else                                 value = agg[metric];   // reach | views
             return { week: isoDay(d), label: dayLabel(d), value, posts: agg.posts };
           });
           out._outOfWindow = outOfWindow;
