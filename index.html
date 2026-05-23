@@ -645,7 +645,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-19-v13';
+    const BUILD_VERSION = '2026-05-19-v14';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2054,20 +2054,17 @@
         p.format !== 'Stories'
       );
 
-      // Agregadores. Para "simple" calculamos promedio aritmético del VTR%.
-      // Para "ponderado" usamos sum(vtr * views) / sum(views) — refleja qué tanto
-      // se ve el video real considerando alcance.
+      // Promedio aritmético simple del VTR%: cada video pesa igual,
+      // independiente del número de views.
       function aggBucket(list) {
-        if (!list.length) return { n: 0, vtr_simple: null, vtr_weighted: null, views: 0, duration_avg: null };
+        if (!list.length) return { n: 0, vtr: null, views: 0, duration_avg: null };
         const sumVtr = list.reduce((a, p) => a + (p.vtr || 0), 0);
         const sumViews = list.reduce((a, p) => a + (p.views || 0), 0);
-        const sumVtrXViews = list.reduce((a, p) => a + ((p.vtr || 0) * (p.views || 0)), 0);
         const sumDur = list.reduce((a, p) => a + (p.duration || 0), 0);
         const nWithDur = list.filter(p => p.duration > 0).length;
         return {
           n: list.length,
-          vtr_simple: sumVtr / list.length,
-          vtr_weighted: sumViews > 0 ? sumVtrXViews / sumViews : null,
+          vtr: sumVtr / list.length,
           views: sumViews,
           duration_avg: nWithDur > 0 ? sumDur / nWithDur : null,
         };
@@ -2133,16 +2130,11 @@
           </div>
 
           <!-- KPI general -->
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
             <div className="rounded-xl bg-surface border border-line p-5">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general · simple</div>
-              <div className="text-[28px] font-medium text-txt tabular-nums leading-none">${erFmt(vtr.general.vtr_simple)}</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general</div>
+              <div className="text-[28px] font-medium text-accent tabular-nums leading-none">${erFmt(vtr.general.vtr)}</div>
               <div className="text-[11px] font-mono text-txt4 mt-2">promedio aritmético</div>
-            </div>
-            <div className="rounded-xl bg-surface border border-line p-5">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general · ponderado</div>
-              <div className="text-[28px] font-medium text-accent tabular-nums leading-none">${erFmt(vtr.general.vtr_weighted)}</div>
-              <div className="text-[11px] font-mono text-txt4 mt-2">ponderado por views</div>
             </div>
             <div className="rounded-xl bg-surface border border-line p-5">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Videos</div>
@@ -2170,14 +2162,10 @@
                     </div>
                     <div className="text-[11px] font-mono text-txt4">${b.n} videos</div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 pt-3 border-t border-line">
+                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-line">
                     <div>
-                      <div className="text-[10px] font-mono text-txt4 mb-1">VTR simple</div>
-                      <div className="text-[18px] tabular-nums text-txt">${erFmt(b.vtr_simple)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-mono text-txt4 mb-1">VTR ponderado</div>
-                      <div className="text-[18px] tabular-nums text-accent">${erFmt(b.vtr_weighted)}</div>
+                      <div className="text-[10px] font-mono text-txt4 mb-1">VTR</div>
+                      <div className="text-[18px] tabular-nums text-accent">${erFmt(b.vtr)}</div>
                     </div>
                     <div>
                       <div className="text-[10px] font-mono text-txt4 mb-1">Dur. prom.</div>
@@ -2200,8 +2188,7 @@
                   <tr className="text-txt3 border-b border-line">
                     <th className="text-left py-2.5 pr-3 font-medium">Plataforma</th>
                     <th className="text-right py-2.5 px-3 font-medium">Videos</th>
-                    <th className="text-right py-2.5 px-3 font-medium">VTR simple</th>
-                    <th className="text-right py-2.5 px-3 font-medium">VTR ponderado</th>
+                    <th className="text-right py-2.5 px-3 font-medium">VTR</th>
                     <th className="text-right py-2.5 px-3 font-medium">Views</th>
                     <th className="text-right py-2.5 pl-3 font-medium">Dur. prom.</th>
                   </tr>
@@ -2219,8 +2206,7 @@
                           </div>
                         </td>
                         <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${b.n}</td>
-                        <td className="text-right py-2.5 px-3 tabular-nums text-txt">${erFmt(b.vtr_simple)}</td>
-                        <td className="text-right py-2.5 px-3 tabular-nums text-accent">${erFmt(b.vtr_weighted)}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums text-accent">${erFmt(b.vtr)}</td>
                         <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(b.views)}</td>
                         <td className="text-right py-2.5 pl-3 tabular-nums text-txt3">${b.duration_avg != null ? b.duration_avg.toFixed(0) + 's' : '—'}</td>
                       </tr>`;
