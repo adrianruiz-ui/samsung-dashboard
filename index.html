@@ -253,6 +253,10 @@
       o.basic_er_avg = a._basic_er_n ? a._basic_er_sum / a._basic_er_n : 0;
       o.vtr_avg = a._vtr_n ? a._vtr_sum / a._vtr_n : 0;
       o.ctr_avg = a._ctr_n ? a._ctr_sum / a._ctr_n : 0;
+      // Promedios por publicación (totales / # posts)
+      o.reach_per_post = a.posts > 0 ? a.reach / a.posts : 0;
+      o.inter_per_post = a.posts > 0 ? a.inter / a.posts : 0;
+      o.views_per_post = a.posts > 0 ? a.views / a.posts : 0;
       delete o._er_sum; delete o._er_n; delete o._basic_er_sum; delete o._basic_er_n;
       delete o._vtr_sum; delete o._vtr_n;
       delete o._ctr_sum; delete o._ctr_n;
@@ -361,6 +365,7 @@
       const campaigns = [...new Set(allPosts.map(p => p.campaign).filter(Boolean))].sort();
       const subcampaigns = [...new Set(allPosts.map(p => p.subcampaign).filter(Boolean))].sort();
       const content_types = [...new Set(allPosts.map(p => p.content_type).filter(Boolean))].sort();
+      const strategies = [...new Set(allPosts.map(p => p.strategy).filter(Boolean))].sort();
       const platforms = [...new Set(allPosts.map(p => p.platform))].sort();
       // Años presentes — derivados de fecha o del campo "Año" del Sheet
       const yearsSet = new Set();
@@ -420,6 +425,7 @@
         campaigns,
         subcampaigns,
         content_types,
+        strategies,
         subcampaignsByCampaign,
         date_min: dates.length ? dates.reduce((a,b) => a<b?a:b) : null,
         date_max: dates.length ? dates.reduce((a,b) => a>b?a:b) : null,
@@ -442,14 +448,12 @@
     }
 
     function applyFilters(allPosts, filters) {
-      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes } = filters;
+      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes, strategies } = filters;
       return allPosts.filter(p => {
-        // Año: 'all' deja pasar todo; un número específico exige match exacto
         if (year && year !== 'all') {
           const py = postYear(p);
           if (py !== year) return false;
         }
-        // Si hay filtro de semana, posts sin semana asignada se descartan.
         if (weekRange) {
           if (p.week == null) return false;
           if (p.week < weekRange[0] || p.week > weekRange[1]) return false;
@@ -458,6 +462,7 @@
         if (campaigns && campaigns.length > 0 && !campaigns.includes(p.campaign)) return false;
         if (subcampaigns && subcampaigns.length > 0 && !subcampaigns.includes(p.subcampaign)) return false;
         if (contentTypes && contentTypes.length > 0 && !contentTypes.includes(p.content_type)) return false;
+        if (strategies && strategies.length > 0 && !strategies.includes(p.strategy)) return false;
         return true;
       });
     }
@@ -640,7 +645,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-19-v12';
+    const BUILD_VERSION = '2026-05-19-v13';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -731,6 +736,7 @@
       campaigns: [],
       subcampaigns: [],
       contentTypes: [],       // [] = todos (Local / Global / LAO / ...)
+      strategies: [],         // [] = todas (Orgánico / Pagado / ...)
     };
 
     function readFiltersFromUrl() {
@@ -754,6 +760,7 @@
         f.campaigns = arr('c');
         f.subcampaigns = arr('sc');
         f.contentTypes = arr('ct');
+        f.strategies = arr('st');
         return f;
       } catch { return EMPTY_FILTERS; }
     }
@@ -768,6 +775,7 @@
         if (f.campaigns?.length)    sp.set('c',  f.campaigns.join('|'));
         if (f.subcampaigns?.length) sp.set('sc', f.subcampaigns.join('|'));
         if (f.contentTypes?.length) sp.set('ct', f.contentTypes.join('|'));
+        if (f.strategies?.length)   sp.set('st', f.strategies.join('|'));
         const qs = sp.toString();
         const newUrl = window.location.pathname + (qs ? '?' + qs : '');
         window.history.replaceState(null, '', newUrl);
@@ -792,12 +800,13 @@
       }, []);
 
       const isActive = (
-        (filters.year != null && filters.year !== 2026) ||  // 'all' o 2025 cuenta como activo
+        (filters.year != null && filters.year !== 2026) ||
         (filters.weekRange != null) ||
         filters.platforms.length > 0 ||
         filters.campaigns.length > 0 ||
         filters.subcampaigns.length > 0 ||
-        filters.contentTypes.length > 0
+        filters.contentTypes.length > 0 ||
+        filters.strategies.length > 0
       );
 
       const clear = useCallback(() => setFilters(EMPTY_FILTERS), [setFilters]);
@@ -926,6 +935,16 @@
         <polygon points="6 3 20 12 6 21 6 3"/>
       </svg>`;
 
+    const AvgIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <line x1="4" y1="20" x2="20" y2="4"/>
+        <circle cx="6" cy="18" r="1.5"/>
+        <circle cx="18" cy="6" r="1.5"/>
+      </svg>`;
+
     // ============================================================
     // ESTADOS UI
     // ============================================================
@@ -974,6 +993,7 @@
       { id: 'mezcla',      label: 'Mezcla',      Icon: DonutIcon    },
       { id: 'top-posts',   label: 'Top posts',   Icon: RowsIcon     },
       { id: 'vtr',         label: 'VTR',         Icon: PlayIcon     },
+      { id: 'promedios',   label: 'Promedios',   Icon: AvgIcon      },
       { id: 'catalogo',    label: 'Catálogo',    Icon: BagIcon      },
     ];
 
@@ -1389,6 +1409,21 @@
                 onSelectAll=${selectAll('contentTypes', baseMeta.content_types || [])}
                 onClear=${clearKey('contentTypes')}
                 emptyLabel="Sin tipos de contenido"
+              />`}
+            <//>
+
+            <${FilterPopover}
+              label="Pauta"
+              summary=${arrSummary(filters.strategies, (baseMeta.strategies || []).length)}
+              badgeCount=${filters.strategies.length}
+            >
+              ${() => html`<${MultiSelectPanel}
+                options=${baseMeta.strategies || []}
+                selected=${filters.strategies}
+                onToggle=${toggleArr('strategies')}
+                onSelectAll=${selectAll('strategies', baseMeta.strategies || [])}
+                onClear=${clearKey('strategies')}
+                emptyLabel="Sin tipos de pauta"
               />`}
             <//>
 
@@ -2243,6 +2278,131 @@
     }
 
     // ============================================================
+    // AveragesSection — promedios por publicación (alcance/inter/views)
+    // ============================================================
+    function AvgSortHeader({ label, sortKey, currentSort, onSort }) {
+      const active = currentSort === sortKey;
+      return html`
+        <th onClick=${() => onSort(sortKey)}
+            className=${"text-right py-2.5 px-3 font-medium cursor-pointer select-none transition-colors " +
+              (active ? "text-accent" : "text-txt3 hover:text-txt")}>
+          ${label}${active ? ' ↓' : ''}
+        </th>`;
+    }
+
+    function AveragesTable({ title, subtitle, entries, getLabel, getColor }) {
+      const [sortKey, setSortKey] = useState('reach_per_post');
+      const sorted = useMemo(() => {
+        return [...entries].sort((a, b) => (b[sortKey] || 0) - (a[sortKey] || 0));
+      }, [entries, sortKey]);
+
+      return html`
+        <div className="rounded-xl bg-surface border border-line p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">${title}</div>
+            ${subtitle && html`<div className="text-[10px] font-mono text-faint">${subtitle}</div>`}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="text-[12px] font-mono w-full">
+              <thead>
+                <tr className="border-b border-line text-[10px] uppercase tracking-[0.15em] text-txt4">
+                  <th className="text-left py-2.5 pr-3 font-medium">Nombre</th>
+                  <th className="text-right py-2.5 px-3 font-medium">Posts</th>
+                  <${AvgSortHeader} label="Alcance/post"  sortKey="reach_per_post" currentSort=${sortKey} onSort=${setSortKey}/>
+                  <${AvgSortHeader} label="Inter./post"   sortKey="inter_per_post" currentSort=${sortKey} onSort=${setSortKey}/>
+                  <${AvgSortHeader} label="Views/post"    sortKey="views_per_post" currentSort=${sortKey} onSort=${setSortKey}/>
+                </tr>
+              </thead>
+              <tbody>
+                ${sorted.length === 0 && html`
+                  <tr><td colSpan=${5} className="py-8 text-center text-faint">Sin datos.</td></tr>
+                `}
+                ${sorted.map((e, i) => {
+                  const color = getColor ? getColor(e) : null;
+                  return html`
+                    <tr key=${e.name} className="border-b border-line/40 last:border-0 hover:bg-white/[0.025] transition-colors">
+                      <td className="py-2.5 pr-3">
+                        ${color ? html`
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-5 h-5 rounded flex items-center justify-center text-[9px] text-white font-medium" style=${{ background: color }}>${getLabel ? getLabel(e) : e.name.slice(0,2).toUpperCase()}</span>
+                            <span className="text-txt text-[13px] font-sans">${e.name}</span>
+                          </div>` : html`
+                          <span className="text-txt text-[13px] font-sans truncate inline-block max-w-[200px]" title=${e.name}>${e.name}</span>
+                        `}
+                      </td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-txt3">${e.posts}</td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-txt">${fmt(e.reach_per_post)}</td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(e.inter_per_post)}</td>
+                      <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(e.views_per_post)}</td>
+                    </tr>`;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    function AveragesSection({ D }) {
+      const g = D.global;
+
+      // Por plataforma — ordenado por alcance/post por defecto
+      const platforms = Object.entries(D.by_platform || {})
+        .map(([name, v]) => ({ name, ...v }));
+
+      // Por formato — toma los formatos con al menos algún post
+      const formats = Object.entries(D.by_format || {})
+        .map(([name, v]) => ({ name, ...v }))
+        .filter(f => f.posts > 0);
+
+      return html`
+        <section id="sec-promedios" className="px-7 py-7">
+          <div className="flex items-baseline justify-between mb-5">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 07</div>
+              <h2 className="text-[18px] font-medium text-txt">Promedios por publicación</h2>
+              <p className="text-txt4 text-[12px] mt-1">Total dividido entre número de posts. Ordenable por columna.</p>
+            </div>
+            <div className="text-[11px] font-mono text-txt4">${g.posts} posts en el filtro</div>
+          </div>
+
+          <!-- KPI row de promedios globales -->
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-3">
+            <div className="rounded-xl bg-surface border border-line px-5 py-4">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Alcance promedio</div>
+              <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmt(g.reach_per_post)}</div>
+              <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line px-5 py-4">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Interacciones promedio</div>
+              <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmt(g.inter_per_post)}</div>
+              <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line px-5 py-4">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Reproducciones promedio</div>
+              <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmt(g.views_per_post)}</div>
+              <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
+            </div>
+          </div>
+
+          <!-- Tablas: por plataforma + por formato -->
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <${AveragesTable}
+              title="Por plataforma"
+              subtitle="${platforms.length} plataformas"
+              entries=${platforms}
+              getColor=${(e) => PLAT_COLORS[e.name]}
+              getLabel=${(e) => PLAT_LETTERS[e.name]}
+            />
+            <${AveragesTable}
+              title="Por formato"
+              subtitle="${formats.length} formatos"
+              entries=${formats}
+            />
+          </div>
+        </section>`;
+    }
+
+    // ============================================================
     // CatalogSection (Top productos + campañas)
     // ============================================================
     function CatalogList({ entries, title, max }) {
@@ -2282,7 +2442,7 @@
         <section id="sec-catalogo" className="px-7 py-7">
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 07</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
               <h2 className="text-[18px] font-medium text-txt">Catálogo</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">Productos · campañas</div>
@@ -2672,8 +2832,9 @@
                 <${TrendSection}   D=${D}/>
                 <${MixSection}     D=${D}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected}/>
-                <${VtrSection}     D=${D}/>
-                <${CatalogSection} D=${D}/>
+                <${VtrSection}      D=${D}/>
+                <${AveragesSection} D=${D}/>
+                <${CatalogSection}  D=${D}/>
               </main>
             `}
 
