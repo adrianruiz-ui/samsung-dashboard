@@ -14,6 +14,10 @@
 
   <!-- Tailwind via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Libs para snapshots (PNG por sección + PDF global) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -641,11 +645,104 @@
     };
 
     // ============================================================
+    // EXPORTACIÓN — PNG por sección y PDF global
+    // ============================================================
+    function buildFileName(suffix) {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `samsung-mx_${suffix}_${yyyy}-${mm}-${dd}`;
+    }
+
+    async function captureSection(sectionId) {
+      const el = document.getElementById(sectionId);
+      if (!el) throw new Error('Sección no encontrada: ' + sectionId);
+      if (typeof window.html2canvas !== 'function') {
+        throw new Error('html2canvas no está cargado todavía. Recarga la página.');
+      }
+      // backgroundColor: '#0A0A0F' replica el bg-ink del dashboard
+      // scale: 2 = retina-quality
+      // useCORS: para que las imágenes externas (si las hay) no rompan la captura
+      return await window.html2canvas(el, {
+        backgroundColor: '#0A0A0F',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+    }
+
+    async function exportSectionAsPng(sectionId, name) {
+      try {
+        const canvas = await captureSection(sectionId);
+        const link = document.createElement('a');
+        link.download = buildFileName(name) + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } catch (e) {
+        console.error('Error exportando PNG:', e);
+        alert('No se pudo exportar la imagen: ' + e.message);
+      }
+    }
+
+    async function exportFullDashboardPdf(onProgress) {
+      try {
+        if (typeof window.jspdf === 'undefined') {
+          throw new Error('jsPDF no está cargado. Recarga la página.');
+        }
+        const { jsPDF } = window.jspdf;
+        // Secciones en el orden que aparecen en el dashboard
+        const sections = [
+          { id: 'sec-resumen',      name: 'Resumen' },
+          { id: 'sec-plataformas',  name: 'Plataformas' },
+          { id: 'sec-tendencia',    name: 'Tendencia' },
+          { id: 'sec-mezcla',       name: 'Mezcla' },
+          { id: 'sec-top-posts',    name: 'Top posts' },
+          { id: 'sec-vtr',          name: 'VTR' },
+          { id: 'sec-promedios',    name: 'Promedios' },
+          { id: 'sec-comparativas', name: 'Comparativas' },
+          { id: 'sec-catalogo',     name: 'Catálogo' },
+        ];
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const padding = 24;
+        let firstPage = true;
+
+        const present = sections.filter(s => document.getElementById(s.id));
+        for (let i = 0; i < present.length; i++) {
+          const { id, name } = present[i];
+          if (onProgress) onProgress(i + 1, present.length, name);
+          const canvas = await captureSection(id);
+          if (!firstPage) pdf.addPage();
+          firstPage = false;
+          // Encajar la imagen en la página manteniendo aspecto
+          const maxW = pageW - padding * 2;
+          const maxH = pageH - padding * 2;
+          const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+          const w = canvas.width * ratio;
+          const h = canvas.height * ratio;
+          // Fondo oscuro para que matchee con el dashboard
+          pdf.setFillColor(10, 10, 15);
+          pdf.rect(0, 0, pageW, pageH, 'F');
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG',
+            (pageW - w) / 2, (pageH - h) / 2, w, h);
+        }
+        pdf.save(buildFileName('dashboard') + '.pdf');
+      } catch (e) {
+        console.error('Error exportando PDF:', e);
+        alert('No se pudo exportar el PDF: ' + e.message);
+      }
+    }
+
+    // ============================================================
     // CACHE local + HOOK de datos con auto-refresh
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-19-v14';
+    const BUILD_VERSION = '2026-05-19-v15';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -845,6 +942,15 @@
         <path d="M10 14 21 3"/>
         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
       </svg>`;
+    const DownloadIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>`;
     const FilterIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -945,6 +1051,16 @@
         <circle cx="18" cy="6" r="1.5"/>
       </svg>`;
 
+    const CompareIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <path d="M7 16 L3 12 L7 8"/>
+        <path d="M17 8 L21 12 L17 16"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+      </svg>`;
+
     // ============================================================
     // ESTADOS UI
     // ============================================================
@@ -987,14 +1103,15 @@
     // SIDEBAR — colapsable
     // ============================================================
     const NAV_ITEMS = [
-      { id: 'resumen',     label: 'Resumen',     Icon: SquaresIcon  },
-      { id: 'plataformas', label: 'Plataformas', Icon: LayersIcon   },
-      { id: 'tendencia',   label: 'Tendencia',   Icon: TrendIcon    },
-      { id: 'mezcla',      label: 'Mezcla',      Icon: DonutIcon    },
-      { id: 'top-posts',   label: 'Top posts',   Icon: RowsIcon     },
-      { id: 'vtr',         label: 'VTR',         Icon: PlayIcon     },
-      { id: 'promedios',   label: 'Promedios',   Icon: AvgIcon      },
-      { id: 'catalogo',    label: 'Catálogo',    Icon: BagIcon      },
+      { id: 'resumen',      label: 'Resumen',      Icon: SquaresIcon  },
+      { id: 'plataformas',  label: 'Plataformas',  Icon: LayersIcon   },
+      { id: 'tendencia',    label: 'Tendencia',    Icon: TrendIcon    },
+      { id: 'mezcla',       label: 'Mezcla',       Icon: DonutIcon    },
+      { id: 'top-posts',    label: 'Top posts',    Icon: RowsIcon     },
+      { id: 'vtr',          label: 'VTR',          Icon: PlayIcon     },
+      { id: 'promedios',    label: 'Promedios',    Icon: AvgIcon      },
+      { id: 'comparativas', label: 'Comparativas', Icon: CompareIcon  },
+      { id: 'catalogo',     label: 'Catálogo',     Icon: BagIcon      },
     ];
 
     function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin }) {
@@ -1451,6 +1568,21 @@
       const today = new Date().toLocaleDateString('es-MX', {
         weekday:'long', day:'2-digit', month:'long', year:'numeric',
       });
+      const [pdfBusy, setPdfBusy] = useState(false);
+      const [pdfProgress, setPdfProgress] = useState('');
+
+      const handlePdf = async () => {
+        if (pdfBusy) return;
+        setPdfBusy(true);
+        try {
+          await exportFullDashboardPdf((i, total, name) => {
+            setPdfProgress(`${i}/${total} · ${name}`);
+          });
+        } finally {
+          setPdfBusy(false);
+          setPdfProgress('');
+        }
+      };
 
       return html`
         <header className="px-7 pt-6 pb-5 flex items-end justify-between gap-6">
@@ -1465,6 +1597,12 @@
                 ${autoRefreshMin > 0 && html`<div className="text-[9px] font-mono text-faint">auto cada ${autoRefreshMin}m</div>`}
               </div>
             `}
+            <button onClick=${handlePdf} disabled=${pdfBusy}
+                    className="h-8 px-3 rounded-lg border border-line bg-white/[0.03] hover:bg-white/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center gap-1.5 text-txt3 hover:text-txt text-[11px] font-mono"
+                    title="Exportar dashboard completo como PDF">
+              <${DownloadIcon} size=${13} className=${pdfBusy ? 'animate-pulse' : ''} />
+              ${pdfBusy ? (pdfProgress || 'Generando…') : 'PDF'}
+            </button>
             <button onClick=${onRefresh} disabled=${refreshing}
                     className="w-8 h-8 rounded-lg border border-line bg-white/[0.03] hover:bg-white/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center justify-center text-txt3"
                     title="Actualizar ahora">
@@ -1472,6 +1610,33 @@
             </button>
           </div>
         </header>`;
+    }
+
+    // ============================================================
+    // Botón flotante de exportar PNG por sección
+    // ============================================================
+    function SectionExportBtn({ sectionId, name }) {
+      const [busy, setBusy] = useState(false);
+      const handle = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (busy) return;
+        setBusy(true);
+        try {
+          await exportSectionAsPng(sectionId, name);
+        } finally {
+          setBusy(false);
+        }
+      };
+      return html`
+        <button
+          onClick=${handle}
+          disabled=${busy}
+          title=${`Exportar ${name} como PNG`}
+          className="absolute top-5 right-5 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono text-txt4 hover:text-accent bg-surface/80 hover:bg-white/[0.04] border border-line hover:border-line2 backdrop-blur transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50">
+          <${DownloadIcon} size=${11} />
+          ${busy ? 'Generando…' : 'PNG'}
+        </button>`;
     }
 
     // ============================================================
@@ -1483,7 +1648,8 @@
       const trend = weekKeys.map(w => ({ week:+w, reach: D.by_week[w].reach }));
 
       return html`
-        <section id="sec-resumen" className="px-7 pb-5">
+        <section id="sec-resumen" className="px-7 pb-5 relative group">
+          <${SectionExportBtn} sectionId="sec-resumen" name="Resumen" />
           <div className="grid grid-cols-12 gap-3.5">
             <div className="col-span-12 lg:col-span-7 rounded-xl bg-surface border border-line p-6 relative overflow-hidden">
               <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full pointer-events-none"
@@ -1660,7 +1826,8 @@
       }, [D, isDailyMode, weeksInScope, platforms.join(',')]);
 
       return html`
-        <section id="sec-plataformas" className="px-7 py-7">
+        <section id="sec-plataformas" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-plataformas" name="Plataformas" />
           <div className="flex items-baseline justify-between mb-4">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 02</div>
@@ -1775,7 +1942,8 @@
         : Math.max(0, Math.floor(series.length / 12));
 
       return html`
-        <section id="sec-tendencia" className="px-7 py-7">
+        <section id="sec-tendencia" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-tendencia" name="Tendencia" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 03</div>
@@ -1853,7 +2021,8 @@
       const max = fmts[0]?.reach || 1;
 
       return html`
-        <section id="sec-mezcla" className="px-7 py-7">
+        <section id="sec-mezcla" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-mezcla" name="Mezcla" />
           <div className="flex items-baseline justify-between mb-5">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 04</div>
@@ -1958,7 +2127,8 @@
       const visible = sorted.slice(0, limit);
 
       return html`
-        <section id="sec-top-posts" className="px-7 py-7">
+        <section id="sec-top-posts" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-top-posts" name="TopPosts" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 05</div>
@@ -2105,7 +2275,8 @@
 
       if (vtr.totalVideos === 0) {
         return html`
-          <section id="sec-vtr" className="px-7 py-7">
+          <section id="sec-vtr" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-vtr" name="VTR" />
             <div className="flex items-baseline justify-between mb-5">
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 06</div>
@@ -2341,7 +2512,8 @@
         .filter(f => f.posts > 0);
 
       return html`
-        <section id="sec-promedios" className="px-7 py-7">
+        <section id="sec-promedios" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-promedios" name="Promedios" />
           <div className="flex items-baseline justify-between mb-5">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 07</div>
@@ -2389,6 +2561,252 @@
     }
 
     // ============================================================
+    // ComparativasSection — Week-over-Week
+    // ============================================================
+    function deltaPct(curr, prev) {
+      if (prev == null || prev === 0) return null;
+      return ((curr - prev) / prev) * 100;
+    }
+
+    function DeltaPill({ pct, invert }) {
+      // invert=true para métricas donde "menos es mejor" (no aplicable aquí, pero por si acaso)
+      if (pct == null || !isFinite(pct)) {
+        return html`<span className="text-[11px] font-mono text-faint">—</span>`;
+      }
+      const isUp = pct > 0;
+      const isNeutral = Math.abs(pct) < 0.5;
+      const good = invert ? !isUp : isUp;
+      const color = isNeutral ? 'text-txt4' : good ? 'text-success' : 'text-amber';
+      const arrow = isNeutral ? '·' : isUp ? '↑' : '↓';
+      const sign = pct > 0 ? '+' : '';
+      return html`
+        <span className=${"text-[11px] font-mono tabular-nums " + color}>
+          ${arrow} ${sign}${pct.toFixed(1)}%
+        </span>`;
+    }
+
+    function CompareKpiCard({ label, curr, prev, isPercent }) {
+      const pct = deltaPct(curr, prev);
+      const fmtVal = isPercent ? erFmt : fmt;
+      return html`
+        <div className="rounded-xl bg-surface border border-line px-5 py-4">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">${label}</div>
+          <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmtVal(curr)}</div>
+          <div className="flex items-baseline gap-2 mt-2">
+            <${DeltaPill} pct=${pct} />
+            <span className="text-[10px] font-mono text-faint">vs ${fmtVal(prev)}</span>
+          </div>
+        </div>`;
+    }
+
+    // Calcula un agregado simple desde una lista de posts (sin pasar por aggAdd)
+    function quickAgg(posts) {
+      let reach=0, inter=0, views=0, er_sum=0, er_n=0, basic_sum=0, basic_n=0, vtr_sum=0, vtr_n=0;
+      for (const p of posts) {
+        reach += p.reach || 0;
+        inter += p.interactions || 0;
+        views += p.views || 0;
+        if (p.er != null && p.er !== 0)             { er_sum += p.er; er_n++; }
+        if (p.basic_er != null && p.basic_er !== 0) { basic_sum += p.basic_er; basic_n++; }
+        if (p.vtr != null && p.vtr !== 0)           { vtr_sum += p.vtr; vtr_n++; }
+      }
+      const n = posts.length;
+      return {
+        posts: n,
+        reach, inter, views,
+        er_avg: er_n ? er_sum / er_n : 0,
+        basic_er_avg: basic_n ? basic_sum / basic_n : 0,
+        vtr_avg: vtr_n ? vtr_sum / vtr_n : 0,
+        reach_per_post: n ? reach / n : 0,
+        inter_per_post: n ? inter / n : 0,
+        views_per_post: n ? views / n : 0,
+      };
+    }
+
+    function ComparativasSection({ D, rawPosts, filters }) {
+      // Auto-activación: si el filtro tiene exactamente una semana, activamos WoW
+      const weekRange = filters?.weekRange;
+      const isSingleWeek = weekRange && weekRange[0] === weekRange[1];
+      const currentWeek = isSingleWeek ? weekRange[0] : null;
+      const prevWeek = currentWeek != null ? currentWeek - 1 : null;
+
+      // Para comparar manzanas con manzanas, aplicamos TODOS los demás filtros
+      // (año, plataformas, campañas, tipo contenido, pauta) pero ignoramos el de semana
+      const compareData = useMemo(() => {
+        if (!isSingleWeek || prevWeek == null || prevWeek < 1) return null;
+        const filtersNoWeek = { ...filters, weekRange: null };
+        const scopedPosts = applyFilters(rawPosts || [], filtersNoWeek);
+        const currentPosts = scopedPosts.filter(p => p.week === currentWeek);
+        const prevPosts = scopedPosts.filter(p => p.week === prevWeek);
+
+        if (prevPosts.length === 0) return { noPrev: true, currentWeek, prevWeek };
+
+        // Por plataforma
+        const platforms = [...new Set([...currentPosts, ...prevPosts].map(p => p.platform))].sort();
+        const byPlatform = platforms.map(plat => ({
+          name: plat,
+          curr: quickAgg(currentPosts.filter(p => p.platform === plat)),
+          prev: quickAgg(prevPosts.filter(p => p.platform === plat)),
+        }));
+
+        // Por formato
+        const formats = [...new Set([...currentPosts, ...prevPosts]
+          .map(p => p.format).filter(Boolean))].sort();
+        const byFormat = formats.map(fmt => ({
+          name: fmt,
+          curr: quickAgg(currentPosts.filter(p => p.format === fmt)),
+          prev: quickAgg(prevPosts.filter(p => p.format === fmt)),
+        }));
+
+        return {
+          currentWeek, prevWeek,
+          curr: quickAgg(currentPosts),
+          prev: quickAgg(prevPosts),
+          byPlatform, byFormat,
+          currentPostsCount: currentPosts.length,
+          prevPostsCount: prevPosts.length,
+        };
+      }, [rawPosts, filters, isSingleWeek, currentWeek, prevWeek]);
+
+      // Estado vacío 1: no hay filtro de semana
+      if (!isSingleWeek) {
+        return html`
+          <section id="sec-comparativas" className="px-7 py-7 relative group">
+            <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
+            <div className="flex items-baseline justify-between mb-5">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
+                <h2 className="text-[18px] font-medium text-txt">Comparativas · WoW</h2>
+                <p className="text-txt4 text-[12px] mt-1">Compara una semana contra la anterior.</p>
+              </div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px] mb-1">Filtra exactamente una semana en la barra superior</div>
+              <div className="text-faint text-[11px] font-mono">para activar la comparativa Week-over-Week</div>
+            </div>
+          </section>`;
+      }
+
+      // Estado vacío 2: no hay datos en semana anterior
+      if (!compareData || compareData.noPrev) {
+        return html`
+          <section id="sec-comparativas" className="px-7 py-7 relative group">
+            <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
+            <div className="flex items-baseline justify-between mb-5">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
+                <h2 className="text-[18px] font-medium text-txt">Comparativas · WoW</h2>
+                <p className="text-txt4 text-[12px] mt-1">S${currentWeek} vs S${prevWeek}</p>
+              </div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px] mb-1">No hay datos en S${prevWeek} para comparar</div>
+              <div className="text-faint text-[11px] font-mono">Prueba con una semana posterior o limpia los demás filtros</div>
+            </div>
+          </section>`;
+      }
+
+      const c = compareData;
+
+      return html`
+        <section id="sec-comparativas" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
+          <div className="flex items-baseline justify-between mb-5">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
+              <h2 className="text-[18px] font-medium text-txt">Comparativas · WoW</h2>
+              <p className="text-txt4 text-[12px] mt-1">
+                S${c.currentWeek} (${c.currentPostsCount} posts) vs S${c.prevWeek} (${c.prevPostsCount} posts)
+              </p>
+            </div>
+          </div>
+
+          <!-- KPI deltas -->
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 mb-3">
+            <${CompareKpiCard} label="Alcance"        curr=${c.curr.reach}        prev=${c.prev.reach}        />
+            <${CompareKpiCard} label="Interacciones"  curr=${c.curr.inter}        prev=${c.prev.inter}        />
+            <${CompareKpiCard} label="Reproducciones" curr=${c.curr.views}        prev=${c.prev.views}        />
+            <${CompareKpiCard} label="Posts"          curr=${c.curr.posts}        prev=${c.prev.posts}        />
+            <${CompareKpiCard} label="ER total"       curr=${c.curr.er_avg}       prev=${c.prev.er_avg}       isPercent />
+            <${CompareKpiCard} label="ER básico"      curr=${c.curr.basic_er_avg} prev=${c.prev.basic_er_avg} isPercent />
+            <${CompareKpiCard} label="VTR"            curr=${c.curr.vtr_avg}      prev=${c.prev.vtr_avg}      isPercent />
+            <${CompareKpiCard} label="Alcance/post"   curr=${c.curr.reach_per_post} prev=${c.prev.reach_per_post} />
+          </div>
+
+          <!-- Tablas WoW por plataforma y por formato -->
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <${CompareTable}
+              title="Por plataforma"
+              rows=${c.byPlatform}
+              currentWeek=${c.currentWeek}
+              prevWeek=${c.prevWeek}
+              showBadge=${true}
+            />
+            <${CompareTable}
+              title="Por formato"
+              rows=${c.byFormat}
+              currentWeek=${c.currentWeek}
+              prevWeek=${c.prevWeek}
+              showBadge=${false}
+            />
+          </div>
+        </section>`;
+    }
+
+    function CompareTable({ title, rows, currentWeek, prevWeek, showBadge }) {
+      // Ordenar por alcance del periodo actual descendente
+      const sorted = [...rows].sort((a, b) => (b.curr.reach || 0) - (a.curr.reach || 0));
+      return html`
+        <div className="rounded-xl bg-surface border border-line p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">${title}</div>
+            <div className="text-[10px] font-mono text-faint">S${currentWeek} → S${prevWeek}</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="text-[12px] font-mono w-full">
+              <thead>
+                <tr className="border-b border-line text-[10px] uppercase tracking-[0.15em] text-txt4">
+                  <th className="text-left py-2.5 pr-3 font-medium">Nombre</th>
+                  <th className="text-right py-2.5 px-2 font-medium">Alcance</th>
+                  <th className="text-right py-2.5 px-2 font-medium">Δ</th>
+                  <th className="text-right py-2.5 px-2 font-medium">Inter.</th>
+                  <th className="text-right py-2.5 px-2 font-medium">Δ</th>
+                  <th className="text-right py-2.5 pl-2 font-medium">Posts</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sorted.length === 0 && html`
+                  <tr><td colSpan=${6} className="py-8 text-center text-faint">Sin datos.</td></tr>
+                `}
+                ${sorted.map(r => {
+                  const reachDelta = deltaPct(r.curr.reach, r.prev.reach);
+                  const interDelta = deltaPct(r.curr.inter, r.prev.inter);
+                  const color = showBadge ? PLAT_COLORS[r.name] : null;
+                  return html`
+                    <tr key=${r.name} className="border-b border-line/40 last:border-0 hover:bg-white/[0.025] transition-colors">
+                      <td className="py-2.5 pr-3">
+                        ${color ? html`
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-5 h-5 rounded flex items-center justify-center text-[9px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[r.name]}</span>
+                            <span className="text-txt text-[13px] font-sans">${r.name}</span>
+                          </div>` : html`
+                          <span className="text-txt text-[13px] font-sans truncate inline-block max-w-[200px]" title=${r.name}>${r.name}</span>
+                        `}
+                      </td>
+                      <td className="text-right py-2.5 px-2 tabular-nums text-txt">${fmt(r.curr.reach)}</td>
+                      <td className="text-right py-2.5 px-2"><${DeltaPill} pct=${reachDelta} /></td>
+                      <td className="text-right py-2.5 px-2 tabular-nums text-txt2">${fmt(r.curr.inter)}</td>
+                      <td className="text-right py-2.5 px-2"><${DeltaPill} pct=${interDelta} /></td>
+                      <td className="text-right py-2.5 pl-2 tabular-nums text-txt3">${r.curr.posts}<span className="text-faint"> / ${r.prev.posts}</span></td>
+                    </tr>`;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    // ============================================================
     // CatalogSection (Top productos + campañas)
     // ============================================================
     function CatalogList({ entries, title, max }) {
@@ -2425,10 +2843,11 @@
       const campaigns = Object.entries(D.by_campaign).map(([k,v]) => ({ name:k, ...v })).sort((a,b) => b.reach - a.reach);
 
       return html`
-        <section id="sec-catalogo" className="px-7 py-7">
+        <section id="sec-catalogo" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-catalogo" name="Catalogo" />
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 09</div>
               <h2 className="text-[18px] font-medium text-txt">Catálogo</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">Productos · campañas</div>
@@ -2818,9 +3237,10 @@
                 <${TrendSection}   D=${D}/>
                 <${MixSection}     D=${D}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected}/>
-                <${VtrSection}      D=${D}/>
-                <${AveragesSection} D=${D}/>
-                <${CatalogSection}  D=${D}/>
+                <${VtrSection}         D=${D}/>
+                <${AveragesSection}    D=${D}/>
+                <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters}/>
+                <${CatalogSection}     D=${D}/>
               </main>
             `}
 
