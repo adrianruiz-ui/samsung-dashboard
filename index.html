@@ -233,7 +233,7 @@
 
     function emptyAgg() {
       return {
-        reach:0, impressions:0, inter:0, views:0,
+        reach:0, impressions:0, inter:0, basic_inter:0, views:0,
         reactions:0, comments:0, shares:0, saves:0, clics:0,
         posts:0,
         _er_sum:0, _er_n:0, _basic_er_sum:0, _basic_er_n:0,
@@ -242,7 +242,8 @@
     }
     function aggAdd(a, p) {
       a.reach += p.reach || 0; a.impressions += p.impressions || 0;
-      a.inter += p.interactions || 0; a.views += p.views || 0;
+      a.inter += p.interactions || 0; a.basic_inter += p.basic_interactions || 0;
+      a.views += p.views || 0;
       a.reactions += p.reactions || 0; a.comments += p.comments || 0;
       a.shares += p.shares || 0; a.saves += p.saves || 0; a.clics += p.clics || 0;
       a.posts += 1;
@@ -2858,28 +2859,34 @@
       return html`
         <div className="rounded-xl bg-surface border border-line p-5">
           <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-3">${title}</div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-faint">
-                <th className="text-left py-2 font-medium"></th>
-                <th className="text-right py-2 font-medium">Posts</th>
-                <th className="text-right py-2 font-medium">Alcance</th>
-                <th className="text-right py-2 font-medium">ER</th>
-                <th className="text-right py-2 font-medium pr-1">Bás.</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${entries.slice(0, max).map(e => html`
-                <tr key=${e.name} className="border-b border-line/40 last:border-0">
-                  <td className="py-2 text-[12px] text-txt2 truncate max-w-[260px]" title=${e.name}>${e.name}</td>
-                  <td className="py-2 text-right font-mono tabular-nums text-[11px] text-txt4">${e.posts}</td>
-                  <td className="py-2 text-right font-mono tabular-nums text-[11px] text-txt">${fmt(e.reach)}</td>
-                  <td className="py-2 text-right font-mono tabular-nums text-[11px] text-txt3">${erFmt(e.er_avg)}</td>
-                  <td className="py-2 pr-1 text-right font-mono tabular-nums text-[11px] text-txt4">${erFmt(e.basic_er_avg)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style=${{ minWidth: '760px' }}>
+              <thead>
+                <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-faint">
+                  <th className="text-left py-2 font-medium"></th>
+                  <th className="text-right py-2 px-2 font-medium">Posts</th>
+                  <th className="text-right py-2 px-2 font-medium">Alcance</th>
+                  <th className="text-right py-2 px-2 font-medium" title="Interacciones totales">Inter. totales</th>
+                  <th className="text-right py-2 px-2 font-medium" title="Interacciones básicas (reacciones + comentarios + compartidos)">Inter. básicas</th>
+                  <th className="text-right py-2 px-2 font-medium">ER total</th>
+                  <th className="text-right py-2 pl-2 font-medium">ER básico</th>
                 </tr>
-              `)}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                ${entries.slice(0, max).map(e => html`
+                  <tr key=${e.name} className="border-b border-line/40 last:border-0">
+                    <td className="py-2 text-[12px] text-txt2 truncate max-w-[200px]" title=${e.name}>${e.name}</td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt4">${e.posts}</td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt">${fmt(e.reach)}</td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt2">${fmt(e.inter)}</td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt3">${fmt(e.basic_inter)}</td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt3">${erFmt(e.er_avg)}</td>
+                    <td className="py-2 pl-2 text-right font-mono tabular-nums text-[11px] text-txt4">${erFmt(e.basic_er_avg)}</td>
+                  </tr>
+                `)}
+              </tbody>
+            </table>
+          </div>
         </div>`;
     }
 
@@ -2897,7 +2904,7 @@
             </div>
             <div className="text-[11px] font-mono text-txt4">Productos · campañas</div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <${CatalogList} entries=${products}  title="Top productos por alcance"  max=${10} />
             <${CatalogList} entries=${campaigns} title="Top campañas por alcance"   max=${10} />
           </div>
