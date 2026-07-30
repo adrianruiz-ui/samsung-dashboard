@@ -370,6 +370,7 @@
       const campaigns = [...new Set(allPosts.map(p => p.campaign).filter(Boolean))].sort();
       const subcampaigns = [...new Set(allPosts.map(p => p.subcampaign).filter(Boolean))].sort();
       const content_types = [...new Set(allPosts.map(p => p.content_type).filter(Boolean))].sort();
+      const stages = [...new Set(allPosts.map(p => p.stage).filter(Boolean))].sort();
       const strategies = [...new Set(allPosts.map(p => p.strategy).filter(Boolean))].sort();
       const products = [...new Set(allPosts.map(p => p.product).filter(Boolean))].sort();
       const platforms = [...new Set(allPosts.map(p => p.platform))].sort();
@@ -431,6 +432,7 @@
         campaigns,
         subcampaigns,
         content_types,
+        stages,
         strategies,
         products,
         subcampaignsByCampaign,
@@ -455,7 +457,7 @@
     }
 
     function applyFilters(allPosts, filters) {
-      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes, strategies, products } = filters;
+      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products } = filters;
       return allPosts.filter(p => {
         if (year && year !== 'all') {
           const py = postYear(p);
@@ -469,6 +471,7 @@
         if (campaigns && campaigns.length > 0 && !campaigns.includes(p.campaign)) return false;
         if (subcampaigns && subcampaigns.length > 0 && !subcampaigns.includes(p.subcampaign)) return false;
         if (contentTypes && contentTypes.length > 0 && !contentTypes.includes(p.content_type)) return false;
+        if (stages && stages.length > 0 && !stages.includes(p.stage)) return false;
         if (strategies && strategies.length > 0 && !strategies.includes(p.strategy)) return false;
         if (products && products.length > 0 && !products.includes(p.product)) return false;
         return true;
@@ -489,6 +492,7 @@
       const by_strategy = groupAgg(posts, p => p.strategy);
       const by_campaign = groupAgg(posts, p => p.campaign);
       const by_objective = groupAgg(posts, p => p.objective);
+      const by_stage = groupAgg(posts, p => p.stage);
 
       // Meta del subset filtrado (para la sección "viendo")
       const weeksInScope = [...new Set(posts.map(p => p.week).filter(Boolean))].sort((a,b)=>a-b);
@@ -497,7 +501,7 @@
 
       return {
         global, by_platform, by_week, by_plat_week, by_format, by_product,
-        by_strategy, by_campaign, by_objective,
+        by_strategy, by_campaign, by_objective, by_stage,
         meta: {
           ...baseMeta,
           // Sobreescribimos sólo los campos que dependen del filtro
@@ -522,14 +526,9 @@
     // ============================================================
     // FORMATTERS
     // ============================================================
-    const fmt = (n) => {
-      if (n == null || isNaN(n)) return '—';
-      const a = Math.abs(n);
-      if (a >= 1e9) return (n/1e9).toFixed(1) + 'B';
-      if (a >= 1e6) return (n/1e6).toFixed(1) + 'M';
-      if (a >= 1e3) return (n/1e3).toFixed(1) + 'K';
-      return Math.round(n).toLocaleString('es-MX');
-    };
+    // Antes abreviaba a K/M/B; ahora siempre muestra el número completo
+    // con separadores de miles (petición: ver el dato exacto).
+    const fmt = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('es-MX');
     const fmtFull = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('es-MX');
     const erFmt = (n) => n == null ? '—' : Number(n).toFixed(2) + '%';
 
@@ -851,6 +850,7 @@
       campaigns: [],
       subcampaigns: [],
       contentTypes: [],       // [] = todos (Local / Global / LAO / ...)
+      stages: [],              // [] = todas (Etapa del funnel/campaña)
       strategies: [],         // [] = todas (Orgánico / Pagado / ...)
       products: [],           // [] = todos (Galaxy S25 / Z Fold7 / Watch / ...)
     };
@@ -876,6 +876,7 @@
         f.campaigns = arr('c');
         f.subcampaigns = arr('sc');
         f.contentTypes = arr('ct');
+        f.stages = arr('sg');
         f.strategies = arr('st');
         f.products = arr('pr');
         return f;
@@ -892,6 +893,7 @@
         if (f.campaigns?.length)    sp.set('c',  f.campaigns.join('|'));
         if (f.subcampaigns?.length) sp.set('sc', f.subcampaigns.join('|'));
         if (f.contentTypes?.length) sp.set('ct', f.contentTypes.join('|'));
+        if (f.stages?.length)       sp.set('sg', f.stages.join('|'));
         if (f.strategies?.length)   sp.set('st', f.strategies.join('|'));
         if (f.products?.length)     sp.set('pr', f.products.join('|'));
         const qs = sp.toString();
@@ -924,6 +926,7 @@
         filters.campaigns.length > 0 ||
         filters.subcampaigns.length > 0 ||
         filters.contentTypes.length > 0 ||
+        filters.stages.length > 0 ||
         filters.strategies.length > 0 ||
         filters.products.length > 0
       );
@@ -1560,6 +1563,21 @@
             <//>
 
             <${FilterPopover}
+              label="Etapa"
+              summary=${arrSummary(filters.stages, (baseMeta.stages || []).length)}
+              badgeCount=${filters.stages.length}
+            >
+              ${() => html`<${MultiSelectPanel}
+                options=${baseMeta.stages || []}
+                selected=${filters.stages}
+                onToggle=${toggleArr('stages')}
+                onSelectAll=${selectAll('stages', baseMeta.stages || [])}
+                onClear=${clearKey('stages')}
+                emptyLabel="Sin etapas"
+              />`}
+            <//>
+
+            <${FilterPopover}
               label="Pauta"
               summary=${arrSummary(filters.strategies, (baseMeta.strategies || []).length)}
               badgeCount=${filters.strategies.length}
@@ -1784,7 +1802,7 @@
     // ============================================================
     // PlatformsGrid
     // ============================================================
-    function PlatformCard({ name, stat, weekly, dailySeries }) {
+    function PlatformCard({ name, stat, weekly, dailySeries, onClick, active }) {
       const color = PLAT_COLORS[name];
       // Si recibimos dailySeries, la usamos directo (modo single-week).
       // Si no, derivamos serie semanal a partir de `weekly`.
@@ -1794,12 +1812,16 @@
             .map(w => ({ w:+w, reach: weekly[w].reach }));
 
       return html`
-        <div className="rounded-xl bg-surface border border-line p-4 flex flex-col gap-3 hover:border-line2 transition-colors">
+        <div onClick=${onClick}
+             title="Clic para filtrar el dashboard a ${name}"
+             className=${"rounded-xl bg-surface border p-4 flex flex-col gap-3 transition-colors cursor-pointer " +
+               (active ? "border-accent2 ring-1 ring-accent2/50 bg-accent2/[0.04]" : "border-line hover:border-line2")}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded"
                     style=${{ background: color }}>${PLAT_LETTERS[name]}</span>
               <span className="text-[13px] text-txt">${name}</span>
+              ${active && html`<span className="text-[9px] font-mono uppercase tracking-wider text-accent2 border border-accent2/40 rounded-full px-1.5 py-0.5">filtrado</span>`}
             </div>
             <span className="font-mono text-[10px] text-txt4">${stat.posts} posts</span>
           </div>
@@ -1839,9 +1861,18 @@
         </div>`;
     }
 
-    function PlatformsGrid({ D }) {
+    function PlatformsGrid({ D, filters, setFilters }) {
       const platforms = Object.keys(D.by_platform)
         .sort((a,b) => D.by_platform[b].reach - D.by_platform[a].reach);
+
+      // Clic en una tarjeta = filtrar todo el dashboard a esa plataforma.
+      // Clic de nuevo sobre la misma (única) plataforma activa = quitar el filtro.
+      const handlePlatformClick = (name) => {
+        setFilters(prev => {
+          const isOnlyThis = prev.platforms.length === 1 && prev.platforms[0] === name;
+          return { ...prev, platforms: isOnlyThis ? [] : [name] };
+        });
+      };
 
       // Single-week mode: calculamos serie diaria por plataforma
       // (mismos 7 días Dom→Sáb que TrendSection)
@@ -1890,7 +1921,9 @@
                 name=${p}
                 stat=${D.by_platform[p]}
                 weekly=${dailyByPlatform ? null : D.by_plat_week[p]}
-                dailySeries=${dailyByPlatform ? dailyByPlatform[p] : null} />
+                dailySeries=${dailyByPlatform ? dailyByPlatform[p] : null}
+                onClick=${() => handlePlatformClick(p)}
+                active=${filters.platforms.length === 1 && filters.platforms[0] === p} />
             `)}
           </div>
         </section>`;
@@ -2063,8 +2096,12 @@
       const fmts = Object.entries(D.by_format)
         .map(([k,v]) => ({ name:k, ...v }))
         .sort((a,b) => b.reach - a.reach);
+      const stagesArr = Object.entries(D.by_stage || {})
+        .map(([k,v]) => ({ name:k, ...v }))
+        .sort((a,b) => b.reach - a.reach);
       const totalPosts = D.global.posts;
       const max = fmts[0]?.reach || 1;
+      const maxStage = stagesArr[0]?.reach || 1;
 
       return html`
         <section id="sec-mezcla" className="px-7 py-7 relative group">
@@ -2074,7 +2111,7 @@
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 04</div>
               <h2 className="text-[18px] font-medium text-txt">Mezcla</h2>
             </div>
-            <div className="text-[11px] font-mono text-txt4">Estrategia · formato</div>
+            <div className="text-[11px] font-mono text-txt4">Estrategia · formato · etapa</div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="rounded-xl bg-surface border border-line p-5">
@@ -2128,6 +2165,34 @@
                     </div>`;
                 })}
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-surface border border-line p-5 mt-3">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-4">Por etapa</div>
+            ${stagesArr.length === 0 && html`<div className="text-faint text-sm">Sin datos de etapa. Revisa que la columna "Etapa" tenga valores en tu Sheet.</div>`}
+            <div className="grid grid-cols-12 items-baseline gap-3 mb-2 pb-2 border-b border-line/40">
+              <div className="col-span-3 text-[9px] font-mono uppercase tracking-wider text-faint">Etapa</div>
+              <div className="col-span-5"></div>
+              <div className="col-span-2 text-right text-[9px] font-mono uppercase tracking-wider text-faint">Alcance</div>
+              <div className="col-span-1 text-right text-[9px] font-mono uppercase tracking-wider text-faint">ER</div>
+              <div className="col-span-1 text-right text-[9px] font-mono uppercase tracking-wider text-faint">Posts</div>
+            </div>
+            <div className="space-y-2.5">
+              ${stagesArr.map(s => {
+                const w = (s.reach / maxStage) * 100;
+                return html`
+                  <div key=${s.name} className="grid grid-cols-12 items-baseline gap-3">
+                    <div className="col-span-3 text-[13px] text-txt2 truncate" title=${s.name}>${s.name}</div>
+                    <div className="col-span-5 h-px bg-white/[0.06] relative">
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 rounded-sm bg-accent2"
+                           style=${{ width: w + '%' }}/>
+                    </div>
+                    <div className="col-span-2 text-right font-mono text-[11px] text-txt">${fmt(s.reach)}</div>
+                    <div className="col-span-1 text-right font-mono text-[11px] text-txt4 tabular-nums" title="ER total">${erFmt(s.er_avg)}</div>
+                    <div className="col-span-1 text-right font-mono text-[11px] text-txt4 tabular-nums">${s.posts}</div>
+                  </div>`;
+              })}
             </div>
           </div>
         </section>`;
@@ -3293,7 +3358,7 @@
               <main>
                 <${HeroSection}    D=${D}/>
                 <${KpiRow}         D=${D}/>
-                <${PlatformsGrid}  D=${D}/>
+                <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D}/>
                 <${MixSection}     D=${D}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected}/>
