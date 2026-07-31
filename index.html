@@ -567,6 +567,17 @@
       formats: 'format',
     };
 
+    // Dimensiones habilitadas para la comparativa "Entidad vs. entidad"
+    // (§ 08 · Comparativas) — reutiliza FACET_FIELD_MAP para saber en qué
+    // campo de cada post filtrar.
+    const COMPARE_DIMENSIONS = [
+      { key: 'campaigns',    label: 'Campaña' },
+      { key: 'subcampaigns', label: 'Subcampaña' },
+      { key: 'stages',       label: 'Etapa' },
+      { key: 'strategies',   label: 'Pauta' },
+      { key: 'contentTypes', label: 'Tipo contenido' },
+    ];
+
     // Para cada dimensión, calcula el set de valores que siguen existiendo
     // si se aplican TODOS los demás filtros activos (año incluido) pero se
     // ignora la propia dimensión — así su selección nunca se autolimita.
@@ -3111,8 +3122,13 @@
       };
     }
 
-    function ComparativasSection({ D, rawPosts, filters }) {
-      // Auto-activación: si el filtro tiene exactamente una semana, activamos WoW
+    function ComparativasSection({ D, rawPosts, filters, chartTheme }) {
+      const ct = chartTheme || CHART_THEME.dark;
+      const [mode, setMode] = useState('wow'); // 'wow' | 'entities'
+
+      // ============================================================
+      // Modo 1 · Week-over-Week (semana actual vs. semana anterior)
+      // ============================================================
       const selWeeks = filters?.weeks;
       const isSingleWeek = selWeeks && selWeeks.length === 1;
       const currentWeek = isSingleWeek ? selWeeks[0] : null;
@@ -3156,99 +3172,278 @@
         };
       }, [rawPosts, filters, isSingleWeek, currentWeek, prevWeek]);
 
-      // Estado vacío 1: no hay filtro de semana
-      if (!isSingleWeek) {
+      // ============================================================
+      // Modo 2 · Entidad vs. entidad (campaña, subcampaña, etapa,
+      // pauta o tipo de contenido — una contra otra dentro del mismo
+      // campo). Se alinean por "semana relativa" (S1, S2, S3... desde
+      // el primer post de cada lado) para poder comparar el ritmo aunque
+      // hayan vivido en semanas distintas del calendario.
+      // ============================================================
+      const [dim, setDim] = useState('campaigns');
+      const [entA, setEntA] = useState(null);
+      const [entB, setEntB] = useState(null);
+
+      // Al cambiar de dimensión la selección anterior ya no aplica
+      useEffect(() => { setEntA(null); setEntB(null); }, [dim]);
+
+      const dimField = FACET_FIELD_MAP[dim];
+      const dimLabel = COMPARE_DIMENSIONS.find(d => d.key === dim)?.label || dim;
+
+      // Universo base: todos los filtros activos MENOS la dimensión
+      // que se está comparando (así Lado A / Lado B pueden tomar
+      // cualquier valor de esa dimensión, no solo lo ya filtrado arriba)
+      const entityPool = useMemo(() => {
+        return applyFilters(rawPosts || [], { ...filters, [dim]: [] });
+      }, [rawPosts, filters, dim]);
+
+      const entityOptions = useMemo(() => {
+        const set = new Set();
+        for (const p of entityPool) {
+          const v = p[dimField];
+          if (v != null && v !== '') set.add(v);
+        }
+        return [...set].sort();
+      }, [entityPool, dimField]);
+
+      const entityCompare = useMemo(() => {
+        if (!entA || !entB) return null;
+        const postsA = entityPool.filter(p => p[dimField] === entA);
+        const postsB = entityPool.filter(p => p[dimField] === entB);
+        if (postsA.length === 0 || postsB.length === 0) return { empty: true };
+
+        const seriesFor = (posts) => {
+          const byWeek = {};
+          for (const p of posts) {
+            if (p.week == null) continue;
+            (byWeek[p.week] = byWeek[p.week] || []).push(p);
+          }
+          return Object.keys(byWeek).map(Number).sort((a, b) => a - b)
+            .map((w, i) => ({ relIndex: i + 1, week: w, ...quickAgg(byWeek[w]) }));
+        };
+        const seriesA = seriesFor(postsA);
+        const seriesB = seriesFor(postsB);
+        const maxLen = Math.max(seriesA.length, seriesB.length);
+        const trend = Array.from({ length: maxLen }, (_, i) => ({
+          relIndex: i + 1,
+          reachA: seriesA[i] ? seriesA[i].reach : null,
+          reachB: seriesB[i] ? seriesB[i].reach : null,
+        }));
+
+        const platforms = [...new Set([...postsA, ...postsB].map(p => p.platform))].sort();
+        const byPlatform = platforms.map(plat => ({
+          name: plat,
+          curr: quickAgg(postsA.filter(p => p.platform === plat)),
+          prev: quickAgg(postsB.filter(p => p.platform === plat)),
+        }));
+
+        return {
+          curr: quickAgg(postsA), prev: quickAgg(postsB),
+          trend, byPlatform,
+          weeksA: seriesA.length, weeksB: seriesB.length,
+          postsA: postsA.length, postsB: postsB.length,
+        };
+      }, [entA, entB, entityPool, dimField]);
+
+      const ModeHeader = html`
+        <div className="flex flex-wrap items-baseline justify-between gap-4 mb-5">
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
+            <h2 className="text-[18px] font-medium text-txt">Comparativas</h2>
+            <p className="text-txt4 text-[12px] mt-1">
+              ${mode === 'wow' ? 'Compara una semana contra la anterior.' : `Compara dos ${dimLabel.toLowerCase()}s, semana relativa a semana relativa.`}
+            </p>
+          </div>
+          <div className="flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden shrink-0">
+            <button onClick=${() => setMode('wow')}
+              className=${"px-3 py-1.5 text-[11px] transition-colors " + (mode === 'wow' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+              Semana vs. anterior
+            </button>
+            <button onClick=${() => setMode('entities')}
+              className=${"px-3 py-1.5 text-[11px] border-l border-line transition-colors " + (mode === 'entities' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+              Comparar entidades
+            </button>
+          </div>
+        </div>`;
+
+      // ---------------- Render: Modo WoW ----------------
+      if (mode === 'wow') {
+        if (!isSingleWeek) {
+          return html`
+            <section id="sec-comparativas" className="px-7 py-7 relative group">
+              <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
+              ${ModeHeader}
+              <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+                <div className="text-txt3 text-[13px] mb-1">Filtra exactamente una semana en la barra superior</div>
+                <div className="text-faint text-[11px] font-mono">para activar la comparativa Week-over-Week</div>
+              </div>
+            </section>`;
+        }
+
+        if (!compareData || compareData.noPrev) {
+          return html`
+            <section id="sec-comparativas" className="px-7 py-7 relative group">
+              <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
+              ${ModeHeader}
+              <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+                <div className="text-txt3 text-[13px] mb-1">No hay datos en S${prevWeek} para comparar</div>
+                <div className="text-faint text-[11px] font-mono">Prueba con una semana posterior o limpia los demás filtros</div>
+              </div>
+            </section>`;
+        }
+
+        const c = compareData;
         return html`
           <section id="sec-comparativas" className="px-7 py-7 relative group">
             <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
-            <div className="flex items-baseline justify-between mb-5">
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
-                <h2 className="text-[18px] font-medium text-txt">Comparativas · WoW</h2>
-                <p className="text-txt4 text-[12px] mt-1">Compara una semana contra la anterior.</p>
-              </div>
+            ${ModeHeader}
+            <div className="text-[11px] font-mono text-txt4 -mt-3 mb-4">
+              S${c.currentWeek} (${c.currentPostsCount} posts) vs S${c.prevWeek} (${c.prevPostsCount} posts)
             </div>
-            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
-              <div className="text-txt3 text-[13px] mb-1">Filtra exactamente una semana en la barra superior</div>
-              <div className="text-faint text-[11px] font-mono">para activar la comparativa Week-over-Week</div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 mb-3">
+              <${CompareKpiCard} label="Alcance"        curr=${c.curr.reach}        prev=${c.prev.reach}        />
+              <${CompareKpiCard} label="Interacciones"  curr=${c.curr.inter}        prev=${c.prev.inter}        />
+              <${CompareKpiCard} label="Reproducciones" curr=${c.curr.views}        prev=${c.prev.views}        />
+              <${CompareKpiCard} label="Posts"          curr=${c.curr.posts}        prev=${c.prev.posts}        />
+              <${CompareKpiCard} label="ER total"       curr=${c.curr.er_avg}       prev=${c.prev.er_avg}       isPercent />
+              <${CompareKpiCard} label="ER básico"      curr=${c.curr.basic_er_avg} prev=${c.prev.basic_er_avg} isPercent />
+              <${CompareKpiCard} label="VTR"            curr=${c.curr.vtr_avg}      prev=${c.prev.vtr_avg}      isPercent />
+              <${CompareKpiCard} label="Alcance/post"   curr=${c.curr.reach_per_post} prev=${c.prev.reach_per_post} />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <${CompareTable}
+                title="Por plataforma"
+                rows=${c.byPlatform}
+                rightLabel=${`S${c.currentWeek} → S${c.prevWeek}`}
+                showBadge=${true}
+              />
+              <${CompareTable}
+                title="Por formato"
+                rows=${c.byFormat}
+                rightLabel=${`S${c.currentWeek} → S${c.prevWeek}`}
+                showBadge=${false}
+              />
             </div>
           </section>`;
       }
 
-      // Estado vacío 2: no hay datos en semana anterior
-      if (!compareData || compareData.noPrev) {
-        return html`
-          <section id="sec-comparativas" className="px-7 py-7 relative group">
-            <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
-            <div className="flex items-baseline justify-between mb-5">
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
-                <h2 className="text-[18px] font-medium text-txt">Comparativas · WoW</h2>
-                <p className="text-txt4 text-[12px] mt-1">S${currentWeek} vs S${prevWeek}</p>
-              </div>
-            </div>
-            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
-              <div className="text-txt3 text-[13px] mb-1">No hay datos en S${prevWeek} para comparar</div>
-              <div className="text-faint text-[11px] font-mono">Prueba con una semana posterior o limpia los demás filtros</div>
-            </div>
-          </section>`;
-      }
-
-      const c = compareData;
-
+      // ---------------- Render: Modo Entidad vs. entidad ----------------
+      const e = entityCompare;
       return html`
         <section id="sec-comparativas" className="px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
-          <div className="flex items-baseline justify-between mb-5">
+          ${ModeHeader}
+
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            ${COMPARE_DIMENSIONS.map(d => html`
+              <button key=${d.key} onClick=${() => setDim(d.key)}
+                className=${"px-2.5 py-1 rounded-full text-[11px] border transition-colors " +
+                  (dim === d.key ? "border-accent2/40 bg-accent2/12 text-txt" : "border-line text-txt3 hover:text-txt2 hover:border-line2")}>
+                ${d.label}
+              </button>`)}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 08</div>
-              <h2 className="text-[18px] font-medium text-txt">Comparativas · WoW</h2>
-              <p className="text-txt4 text-[12px] mt-1">
-                S${c.currentWeek} (${c.currentPostsCount} posts) vs S${c.prevWeek} (${c.prevPostsCount} posts)
-              </p>
+              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Lado A</div>
+              <select value=${entA || ''} onChange=${ev => setEntA(ev.target.value || null)}
+                className="w-full px-3 py-2 rounded-lg border border-line bg-onSurface/[0.02] text-[12px] text-txt focus:outline-none focus:border-accent2/50">
+                <option value="">Elige ${dimLabel.toLowerCase()}...</option>
+                ${entityOptions.map(o => html`<option key=${o} value=${o} disabled=${o === entB}>${o}</option>`)}
+              </select>
+            </div>
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Lado B</div>
+              <select value=${entB || ''} onChange=${ev => setEntB(ev.target.value || null)}
+                className="w-full px-3 py-2 rounded-lg border border-line bg-onSurface/[0.02] text-[12px] text-txt focus:outline-none focus:border-accent2/50">
+                <option value="">Elige ${dimLabel.toLowerCase()}...</option>
+                ${entityOptions.map(o => html`<option key=${o} value=${o} disabled=${o === entA}>${o}</option>`)}
+              </select>
             </div>
           </div>
 
-          <!-- KPI deltas -->
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 mb-3">
-            <${CompareKpiCard} label="Alcance"        curr=${c.curr.reach}        prev=${c.prev.reach}        />
-            <${CompareKpiCard} label="Interacciones"  curr=${c.curr.inter}        prev=${c.prev.inter}        />
-            <${CompareKpiCard} label="Reproducciones" curr=${c.curr.views}        prev=${c.prev.views}        />
-            <${CompareKpiCard} label="Posts"          curr=${c.curr.posts}        prev=${c.prev.posts}        />
-            <${CompareKpiCard} label="ER total"       curr=${c.curr.er_avg}       prev=${c.prev.er_avg}       isPercent />
-            <${CompareKpiCard} label="ER básico"      curr=${c.curr.basic_er_avg} prev=${c.prev.basic_er_avg} isPercent />
-            <${CompareKpiCard} label="VTR"            curr=${c.curr.vtr_avg}      prev=${c.prev.vtr_avg}      isPercent />
-            <${CompareKpiCard} label="Alcance/post"   curr=${c.curr.reach_per_post} prev=${c.prev.reach_per_post} />
-          </div>
+          ${(!entA || !entB) && html`
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px] mb-1">Elige ${dimLabel.toLowerCase()} para Lado A y otra distinta para Lado B</div>
+              <div className="text-faint text-[11px] font-mono">Las opciones respetan los demás filtros activos arriba</div>
+            </div>
+          `}
 
-          <!-- Tablas WoW por plataforma y por formato -->
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <${CompareTable}
-              title="Por plataforma"
-              rows=${c.byPlatform}
-              currentWeek=${c.currentWeek}
-              prevWeek=${c.prevWeek}
-              showBadge=${true}
-            />
-            <${CompareTable}
-              title="Por formato"
-              rows=${c.byFormat}
-              currentWeek=${c.currentWeek}
-              prevWeek=${c.prevWeek}
-              showBadge=${false}
-            />
-          </div>
+          ${entA && entB && e?.empty && html`
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px] mb-1">Sin posts para esta combinación</div>
+              <div className="text-faint text-[11px] font-mono">Prueba con otra selección o limpia los demás filtros</div>
+            </div>
+          `}
+
+          ${entA && entB && e && !e.empty && html`
+            <${Fragment}>
+              <div className="text-[11px] font-mono text-txt4 mb-4">
+                <span className="text-accent">${entA}</span> (${e.postsA} posts, ${e.weeksA} sem.) vs
+                <span className="text-amber"> ${entB}</span> (${e.postsB} posts, ${e.weeksB} sem.)
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 mb-3">
+                <${CompareKpiCard} label="Alcance"        curr=${e.curr.reach}        prev=${e.prev.reach}        />
+                <${CompareKpiCard} label="Interacciones"  curr=${e.curr.inter}        prev=${e.prev.inter}        />
+                <${CompareKpiCard} label="Reproducciones" curr=${e.curr.views}        prev=${e.prev.views}        />
+                <${CompareKpiCard} label="Posts"          curr=${e.curr.posts}        prev=${e.prev.posts}        />
+                <${CompareKpiCard} label="ER total"       curr=${e.curr.er_avg}       prev=${e.prev.er_avg}       isPercent />
+                <${CompareKpiCard} label="ER básico"      curr=${e.curr.basic_er_avg} prev=${e.prev.basic_er_avg} isPercent />
+                <${CompareKpiCard} label="VTR"            curr=${e.curr.vtr_avg}      prev=${e.prev.vtr_avg}      isPercent />
+                <${CompareKpiCard} label="Alcance/post"   curr=${e.curr.reach_per_post} prev=${e.prev.reach_per_post} />
+              </div>
+
+              <div className="rounded-xl bg-surface border border-line p-5 mb-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">Tendencia · alcance por semana relativa</div>
+                  <div className="flex gap-4 text-[10px] font-mono text-txt4">
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block" style=${{ background: '#AFA9EC' }}></span>${entA}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block" style=${{ background: '#F0B358' }}></span>${entB}</span>
+                  </div>
+                </div>
+                <div className="h-64">
+                  <${ResponsiveContainer}>
+                    <${LineChart} data=${e.trend} margin=${{ top: 10, right: 16, left: 8, bottom: 8 }}>
+                      <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
+                      <${XAxis} dataKey="relIndex" tickFormatter=${(i) => 'S' + i}
+                                stroke=${ct.axisStrong} fontSize=${11} tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }} />
+                      <${YAxis} stroke=${ct.axisStrong} fontSize=${11} tickLine=${false} axisLine=${false}
+                                tickFormatter=${fmt} width=${48} />
+                      <${Tooltip}
+                        contentStyle=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 6, padding: '8px 12px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText }}
+                        labelStyle=${{ color: ct.tooltipLabel }}
+                        labelFormatter=${(i) => `Semana relativa ${i}`}
+                        formatter=${(v, name) => [v == null ? '—' : fmt(v), name === 'reachA' ? entA : entB]} />
+                      <${Line} type="monotone" dataKey="reachA" stroke="#AFA9EC" strokeWidth=${2}
+                               dot=${{ fill: '#AFA9EC', r: 3, strokeWidth: 0 }} activeDot=${{ r: 5 }} connectNulls />
+                      <${Line} type="monotone" dataKey="reachB" stroke="#F0B358" strokeWidth=${2} strokeDasharray="4 3"
+                               dot=${{ fill: '#F0B358', r: 3, strokeWidth: 0 }} activeDot=${{ r: 5 }} connectNulls />
+                    <//>
+                  <//>
+                </div>
+                <div className="text-[10px] font-mono text-faint mt-2">
+                  "S1" = primera semana con posts de cada lado — no necesariamente la misma semana del calendario.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <${CompareTable} title="Por plataforma" rows=${e.byPlatform} rightLabel=${`${entA} → ${entB}`} showBadge=${true} />
+              </div>
+            <//>
+          `}
         </section>`;
     }
 
-    function CompareTable({ title, rows, currentWeek, prevWeek, showBadge }) {
+    function CompareTable({ title, rows, rightLabel, showBadge }) {
       // Ordenar por alcance del periodo actual descendente
       const sorted = [...rows].sort((a, b) => (b.curr.reach || 0) - (a.curr.reach || 0));
       return html`
         <div className="rounded-xl bg-surface border border-line p-5">
           <div className="flex items-baseline justify-between mb-4">
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">${title}</div>
-            <div className="text-[10px] font-mono text-faint">S${currentWeek} → S${prevWeek}</div>
+            <div className="text-[10px] font-mono text-faint truncate max-w-[55%]">${rightLabel}</div>
           </div>
           <div className="overflow-x-auto">
             <table className="text-[12px] font-mono w-full">
@@ -3992,7 +4187,7 @@
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters}/>
                 <${VtrSection}         D=${D}/>
                 <${AveragesSection}    D=${D}/>
-                <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters}/>
+                <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
                 <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
               </main>
             `}
