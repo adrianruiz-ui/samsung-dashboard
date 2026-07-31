@@ -3593,7 +3593,7 @@
       // Si cambian los parámetros del reporte, borra un resultado/error
       // viejo para que no se quede pegado un "listo" que ya no aplica.
       useEffect(() => {
-        setStatus('idle'); setResultUrl(null); setErrorMsg(null);
+        setStatus('idle'); setErrorMsg(null);
       }, [mode, groupBy, selectedMetrics, selectedColumns]);
 
       // Sugiere un título automáticamente mientras el usuario no lo edite.
