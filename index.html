@@ -2127,6 +2127,162 @@
     }
 
     // ============================================================
+    // InsightsPanel — lecturas automáticas del periodo filtrado.
+    // Reglas deterministas sobre D (nada de llamadas externas): cada
+    // función evalúa una condición y, si es lo bastante notable, agrega
+    // una oración corta. Se ordenan por relevancia y se muestran las
+    // primeras 4, para no saturar con obviedades.
+    // ============================================================
+    function computeInsights(D) {
+      const insights = [];
+      const g = D.global;
+      if (!g || !g.posts) return insights;
+
+      // 1) Plataforma líder (solo si hay más de una en el filtro actual
+      // y de verdad domina — si no, no aporta nada decirlo)
+      {
+        const entries = Object.entries(D.by_platform || {});
+        if (entries.length > 1 && g.reach > 0) {
+          const [name, agg] = [...entries].sort((a, b) => b[1].reach - a[1].reach)[0];
+          const share = (agg.reach / g.reach) * 100;
+          if (share >= 25) {
+            insights.push({
+              id: 'platform-leader', tone: 'neutral', priority: share,
+              parts: [
+                { t: name, strong: true },
+                { t: ' lideró el alcance con ' },
+                { t: `${share.toFixed(0)}%`, strong: true },
+                { t: ' de participación (' },
+                { t: `${agg.posts} posts`, strong: true },
+                { t: ').' },
+              ],
+            });
+          }
+        }
+      }
+
+      // 2) Tendencia semana a semana (últimas dos semanas con datos
+      // dentro del filtro actual)
+      {
+        const weekKeys = Object.keys(D.by_week || {}).map(Number).sort((a, b) => a - b);
+        if (weekKeys.length >= 2) {
+          const currW = weekKeys[weekKeys.length - 1];
+          const prevW = weekKeys[weekKeys.length - 2];
+          const currReach = D.by_week[currW].reach;
+          const prevReach = D.by_week[prevW].reach;
+          if (prevReach > 0) {
+            const delta = ((currReach - prevReach) / prevReach) * 100;
+            if (Math.abs(delta) >= 8) {
+              const up = delta > 0;
+              insights.push({
+                id: 'wow-trend', tone: up ? 'positive' : 'negative', priority: Math.abs(delta) * 0.9,
+                parts: [
+                  { t: 'El alcance ' },
+                  { t: up ? 'subió' : 'bajó', strong: true },
+                  { t: ` ${Math.abs(delta).toFixed(0)}%`, strong: true },
+                  { t: ` en la semana ${currW} vs. la semana ${prevW}.` },
+                ],
+              });
+            }
+          }
+        }
+      }
+
+      // 3) Mejor formato por ER — se exige un mínimo de posts para no
+      // premiar a un formato con 1 publicación afortunada
+      {
+        const MIN = 3;
+        const entries = Object.entries(D.by_format || {}).filter(([, v]) => v.posts >= MIN && v.er_avg > 0);
+        if (entries.length >= 2) {
+          const [name, agg] = entries.sort((a, b) => b[1].er_avg - a[1].er_avg)[0];
+          insights.push({
+            id: 'best-format', tone: 'positive', priority: 38,
+            parts: [
+              { t: name, strong: true },
+              { t: ' fue el formato con mejor ER (' },
+              { t: erFmt(agg.er_avg), strong: true },
+              { t: `) entre los que tuvieron ${MIN}+ posts.` },
+            ],
+          });
+        }
+      }
+
+      // 4) Campaña que concentra el alcance
+      {
+        const MIN = 3;
+        const entries = Object.entries(D.by_campaign || {}).filter(([, v]) => v.posts >= MIN);
+        if (entries.length >= 2 && g.reach > 0) {
+          const [name, agg] = entries.sort((a, b) => b[1].reach - a[1].reach)[0];
+          const share = (agg.reach / g.reach) * 100;
+          if (share >= 15) {
+            insights.push({
+              id: 'top-campaign', tone: 'neutral', priority: share * 0.8,
+              parts: [
+                { t: 'La campaña ' },
+                { t: name, strong: true },
+                { t: ' concentró ' },
+                { t: `${share.toFixed(0)}%`, strong: true },
+                { t: ` del alcance total (${fmt(agg.reach)}).` },
+              ],
+            });
+          }
+        }
+      }
+
+      // 5) Post con mayor alcance del periodo filtrado
+      {
+        const posts = D.allPosts || [];
+        if (posts.length >= 5) {
+          const top = [...posts].sort((a, b) => (b.reach || 0) - (a.reach || 0))[0];
+          if (top && top.reach) {
+            insights.push({
+              id: 'top-post', tone: 'positive', priority: 33,
+              parts: [
+                { t: 'El post con mayor alcance fue ' },
+                { t: `${top.format || 'contenido'} de ${top.platform}`, strong: true },
+                { t: top.campaign ? ` (${top.campaign})` : '' },
+                { t: ' con ' },
+                { t: fmt(top.reach), strong: true },
+                { t: ' de alcance.' },
+              ],
+            });
+          }
+        }
+      }
+
+      return insights.sort((a, b) => b.priority - a.priority).slice(0, 4);
+    }
+
+    function InsightLine({ insight }) {
+      const toneColor = insight.tone === 'positive' ? 'text-success' : insight.tone === 'negative' ? 'text-amber' : 'text-accent';
+      const glyph = insight.tone === 'positive' ? '↑' : insight.tone === 'negative' ? '↓' : '•';
+      return html`
+        <div className="flex items-start gap-2.5 py-2 first:pt-0 last:pb-0 border-b border-line/40 last:border-0">
+          <span className=${"font-mono text-[13px] leading-[1.4] mt-0.5 shrink-0 " + toneColor}>${glyph}</span>
+          <p className="text-[13px] text-txt3 leading-relaxed">
+            ${insight.parts.map((part, i) => part.strong
+              ? html`<span key=${i} className="text-txt2 font-medium">${part.t}</span>`
+              : html`<span key=${i}>${part.t}</span>`)}
+          </p>
+        </div>`;
+    }
+
+    function InsightsPanel({ D }) {
+      const insights = useMemo(() => computeInsights(D), [D]);
+      if (!insights.length) return null;
+      return html`
+        <section className="px-7 pb-5">
+          <div className="rounded-xl bg-surface border border-line p-5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Lecturas del periodo</div>
+            <div className="text-[10px] font-mono text-faint mb-3">Generadas automáticamente a partir del filtro actual</div>
+            <div>
+              ${insights.map(ins => html`<${InsightLine} key=${ins.id} insight=${ins} />`)}
+            </div>
+          </div>
+        </section>`;
+    }
+
+    // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
     function KpiCell({ label, value, sub, accent }) {
@@ -4180,6 +4336,7 @@
             ` : html`
               <main>
                 <${HeroSection}    D=${D} chartTheme=${chartTheme}/>
+                <${InsightsPanel}  D=${D}/>
                 <${KpiRow}         D=${D}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
