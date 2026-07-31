@@ -547,6 +547,67 @@
       });
     }
 
+    // ============================================================
+    // FILTROS ENCADENADOS ("faceted filtering")
+    // Cada selector solo debe ofrecer las opciones que en verdad existen
+    // dentro del universo ya acotado por los DEMÁS filtros activos. Ej:
+    // si Año=2026, "Campaña" solo lista campañas con posts en 2026; si
+    // Campaña=H8Q8B8, "Subcampaña"/"Semana"/"Plataforma"/etc. solo listan
+    // lo que vive dentro de esa campaña. Y viceversa entre cualquier par.
+    // ============================================================
+    const FACET_FIELD_MAP = {
+      weeks: 'week',
+      platforms: 'platform',
+      campaigns: 'campaign',
+      subcampaigns: 'subcampaign',
+      contentTypes: 'content_type',
+      stages: 'stage',
+      strategies: 'strategy',
+      products: 'product',
+      formats: 'format',
+    };
+
+    // Para cada dimensión, calcula el set de valores que siguen existiendo
+    // si se aplican TODOS los demás filtros activos (año incluido) pero se
+    // ignora la propia dimensión — así su selección nunca se autolimita.
+    function computeFacetSets(allPosts, filters) {
+      const sets = {};
+      for (const key of Object.keys(FACET_FIELD_MAP)) {
+        const field = FACET_FIELD_MAP[key];
+        const scoped = applyFilters(allPosts, { ...filters, [key]: [] });
+        const set = new Set();
+        for (const p of scoped) {
+          const v = p[field];
+          if (v != null && v !== '') set.add(v);
+        }
+        sets[key] = set;
+      }
+      return sets;
+    }
+
+    // Recorta cada filtro array a solo los valores que siguen siendo
+    // válidos tras un cambio — evita el caso "0 resultados" en silencio
+    // por una combinación que ya no tiene sentido (ej. una subcampaña que
+    // no pertenece a la campaña recién elegida, o una semana que no
+    // existe en el año recién elegido).
+    function sanitizeFilters(allPosts, filters) {
+      if (!allPosts || allPosts.length === 0) return filters;
+      const sets = computeFacetSets(allPosts, filters);
+      let changed = false;
+      const next = { ...filters };
+      for (const key of Object.keys(FACET_FIELD_MAP)) {
+        const current = filters[key] || [];
+        if (current.length === 0) continue;
+        const allowed = sets[key];
+        const pruned = current.filter((v) => allowed.has(v));
+        if (pruned.length !== current.length) {
+          next[key] = pruned;
+          changed = true;
+        }
+      }
+      return changed ? next : filters;
+    }
+
     /**
      * Computa todos los agregados sobre un set de posts (ya filtrado o no).
      * Esta función SÍ se ejecuta en cada cambio de filtros.
@@ -1102,7 +1163,7 @@
       } catch {}
     }
 
-    function useFilters(initial = EMPTY_FILTERS) {
+    function useFilters(allPosts, initial = EMPTY_FILTERS) {
       const [filters, setFiltersRaw] = useState(() => {
         // Hidrata desde URL al cargar
         try {
@@ -1113,11 +1174,16 @@
 
       const setFilters = useCallback((updater) => {
         setFiltersRaw(prev => {
-          const next = typeof updater === 'function' ? updater(prev) : updater;
+          const raw = typeof updater === 'function' ? updater(prev) : updater;
+          // Filtros encadenados: si el cambio deja alguna selección de
+          // otra dimensión sin sentido (ej. una subcampaña que ya no
+          // pertenece a la campaña elegida), la recorta automáticamente
+          // en vez de dejar el dashboard en "0 resultados" en silencio.
+          const next = sanitizeFilters(allPosts, raw);
           writeFiltersToUrl(next);
           return next;
         });
-      }, []);
+      }, [allPosts]);
 
       const isActive = (
         (filters.year != null && filters.year !== 2026) ||
@@ -1649,9 +1715,16 @@
     /**
      * Componente principal: la barra completa de filtros.
      */
-    function FilterBar({ baseMeta, filters, setFilters, clear, isActive, postsInScope, totalPosts }) {
-      const { weeks, platforms, campaigns, subcampaignsByCampaign } = baseMeta;
+    function FilterBar({ baseMeta, filters, setFilters, clear, isActive, postsInScope, totalPosts, allPosts }) {
+      const { weeks, platforms, campaigns } = baseMeta;
       const [linkCopied, setLinkCopied] = useState(false);
+
+      // Filtros encadenados: para cada dimensión, qué valores siguen
+      // existiendo dado el resto de los filtros activos ahora mismo.
+      const facetSets = useMemo(
+        () => computeFacetSets(allPosts || [], filters),
+        [allPosts, filters]
+      );
 
       const copyFilteredLink = async () => {
         try {
@@ -1671,36 +1744,29 @@
         setTimeout(() => setLinkCopied(false), 1800);
       };
 
-      // Semanas disponibles para el slider — dependen del año filtrado
-      const availableWeeks = useMemo(() => {
-        if (filters.year === 'all') return weeks;
-        return baseMeta.weeks_by_year?.[filters.year] || [];
-      }, [filters.year, weeks, baseMeta.weeks_by_year]);
+      // Listas de opciones por dimensión: el catálogo completo (ya
+      // ordenado, viene de baseMeta) recortado a lo que sigue existiendo
+      // dados los DEMÁS filtros activos ahora mismo (encadenado en ambas
+      // direcciones: Año → Campaña, Campaña → Subcampaña/Semana/
+      // Plataforma, y así con cualquier combinación).
+      const availableWeeks        = useMemo(() => weeks.filter((w) => facetSets.weeks.has(w)), [weeks, facetSets.weeks]);
+      const availablePlatforms    = useMemo(() => platforms.filter((v) => facetSets.platforms.has(v)), [platforms, facetSets.platforms]);
+      const availableCampaigns    = useMemo(() => campaigns.filter((v) => facetSets.campaigns.has(v)), [campaigns, facetSets.campaigns]);
+      const availableSubcampaigns = useMemo(() => (baseMeta.subcampaigns || []).filter((v) => facetSets.subcampaigns.has(v)), [baseMeta.subcampaigns, facetSets.subcampaigns]);
+      const availableContentTypes = useMemo(() => (baseMeta.content_types || []).filter((v) => facetSets.contentTypes.has(v)), [baseMeta.content_types, facetSets.contentTypes]);
+      const availableStages       = useMemo(() => (baseMeta.stages || []).filter((v) => facetSets.stages.has(v)), [baseMeta.stages, facetSets.stages]);
+      const availableStrategies   = useMemo(() => (baseMeta.strategies || []).filter((v) => facetSets.strategies.has(v)), [baseMeta.strategies, facetSets.strategies]);
+      const availableProducts     = useMemo(() => (baseMeta.products || []).filter((v) => facetSets.products.has(v)), [baseMeta.products, facetSets.products]);
 
-      // Subcampañas disponibles en función de las campañas seleccionadas
-      const availableSubcampaigns = useMemo(() => {
-        if (!filters.campaigns.length) return baseMeta.subcampaigns;
-        const set = new Set();
-        for (const c of filters.campaigns) {
-          (subcampaignsByCampaign[c] || []).forEach(s => set.add(s));
-        }
-        return [...set].sort();
-      }, [filters.campaigns, baseMeta.subcampaigns, subcampaignsByCampaign]);
-
-      // Toggles
+      // Toggles — el recorte de selecciones que dejan de tener sentido
+      // (ej. una subcampaña que ya no pertenece a la campaña elegida) lo
+      // hace sanitizeFilters() de forma centralizada dentro de setFilters,
+      // así que aquí no hace falta lógica especial por campo.
       const toggleArr = (key) => (val) => {
         setFilters(prev => {
           const arr = prev[key];
           const next = arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val];
-          // Si cambian campañas, limpia subcampañas que ya no son válidas
-          let cleaned = { ...prev, [key]: next };
-          if (key === 'campaigns') {
-            const newSubsAvail = next.length === 0
-              ? baseMeta.subcampaigns
-              : [...new Set(next.flatMap(c => subcampaignsByCampaign[c] || []))];
-            cleaned.subcampaigns = prev.subcampaigns.filter(s => newSubsAvail.includes(s));
-          }
-          return cleaned;
+          return { ...prev, [key]: next };
         });
       };
 
@@ -1712,10 +1778,10 @@
       };
 
       const setYear = (y) => {
-        // Al cambiar de año, limpiamos las semanas seleccionadas porque se
-        // reinterpretan en el contexto del año seleccionado y la selección
-        // anterior podría no aplicar (o ser confusa).
-        setFilters(prev => ({ ...prev, year: y, weeks: [] }));
+        // No hace falta limpiar semanas a mano: sanitizeFilters recorta
+        // automáticamente las que ya no existan en el año elegido, y
+        // conserva las que sí siguen aplicando (ej. semana 3 en ambos años).
+        setFilters(prev => ({ ...prev, year: y }));
       };
 
       const yearOptions = [
@@ -1771,30 +1837,32 @@
 
             <${FilterPopover}
               label="Plataforma"
-              summary=${arrSummary(filters.platforms, platforms.length)}
+              summary=${arrSummary(filters.platforms, availablePlatforms.length)}
               badgeCount=${filters.platforms.length}
             >
               ${() => html`<${MultiSelectPanel}
-                options=${platforms}
+                options=${availablePlatforms}
                 selected=${filters.platforms}
                 onToggle=${toggleArr('platforms')}
-                onSelectAll=${selectAll('platforms', platforms)}
+                onSelectAll=${selectAll('platforms', availablePlatforms)}
                 onClear=${clearKey('platforms')}
+                emptyLabel="Sin plataformas para esta selección"
               />`}
             <//>
 
             <${FilterPopover}
               label="Campaña"
-              summary=${arrSummary(filters.campaigns, campaigns.length)}
+              summary=${arrSummary(filters.campaigns, availableCampaigns.length)}
               badgeCount=${filters.campaigns.length}
               wide
             >
               ${() => html`<${MultiSelectPanel}
-                options=${campaigns}
+                options=${availableCampaigns}
                 selected=${filters.campaigns}
                 onToggle=${toggleArr('campaigns')}
-                onSelectAll=${selectAll('campaigns', campaigns)}
+                onSelectAll=${selectAll('campaigns', availableCampaigns)}
                 onClear=${clearKey('campaigns')}
+                emptyLabel="Sin campañas para esta selección"
               />`}
             <//>
 
@@ -1816,62 +1884,62 @@
 
             <${FilterPopover}
               label="Tipo contenido"
-              summary=${arrSummary(filters.contentTypes, (baseMeta.content_types || []).length)}
+              summary=${arrSummary(filters.contentTypes, availableContentTypes.length)}
               badgeCount=${filters.contentTypes.length}
             >
               ${() => html`<${MultiSelectPanel}
-                options=${baseMeta.content_types || []}
+                options=${availableContentTypes}
                 selected=${filters.contentTypes}
                 onToggle=${toggleArr('contentTypes')}
-                onSelectAll=${selectAll('contentTypes', baseMeta.content_types || [])}
+                onSelectAll=${selectAll('contentTypes', availableContentTypes)}
                 onClear=${clearKey('contentTypes')}
-                emptyLabel="Sin tipos de contenido"
+                emptyLabel="Sin tipos de contenido para esta selección"
               />`}
             <//>
 
             <${FilterPopover}
               label="Etapa"
-              summary=${arrSummary(filters.stages, (baseMeta.stages || []).length)}
+              summary=${arrSummary(filters.stages, availableStages.length)}
               badgeCount=${filters.stages.length}
             >
               ${() => html`<${MultiSelectPanel}
-                options=${baseMeta.stages || []}
+                options=${availableStages}
                 selected=${filters.stages}
                 onToggle=${toggleArr('stages')}
-                onSelectAll=${selectAll('stages', baseMeta.stages || [])}
+                onSelectAll=${selectAll('stages', availableStages)}
                 onClear=${clearKey('stages')}
-                emptyLabel="Sin etapas"
+                emptyLabel="Sin etapas para esta selección"
               />`}
             <//>
 
             <${FilterPopover}
               label="Pauta"
-              summary=${arrSummary(filters.strategies, (baseMeta.strategies || []).length)}
+              summary=${arrSummary(filters.strategies, availableStrategies.length)}
               badgeCount=${filters.strategies.length}
             >
               ${() => html`<${MultiSelectPanel}
-                options=${baseMeta.strategies || []}
+                options=${availableStrategies}
                 selected=${filters.strategies}
                 onToggle=${toggleArr('strategies')}
-                onSelectAll=${selectAll('strategies', baseMeta.strategies || [])}
+                onSelectAll=${selectAll('strategies', availableStrategies)}
                 onClear=${clearKey('strategies')}
-                emptyLabel="Sin tipos de pauta"
+                emptyLabel="Sin tipos de pauta para esta selección"
               />`}
             <//>
 
             <${FilterPopover}
               label="Producto"
-              summary=${arrSummary(filters.products, (baseMeta.products || []).length)}
+              summary=${arrSummary(filters.products, availableProducts.length)}
               badgeCount=${filters.products.length}
               wide
             >
               ${() => html`<${MultiSelectPanel}
-                options=${baseMeta.products || []}
+                options=${availableProducts}
                 selected=${filters.products}
                 onToggle=${toggleArr('products')}
-                onSelectAll=${selectAll('products', baseMeta.products || [])}
+                onSelectAll=${selectAll('products', availableProducts)}
                 onClear=${clearKey('products')}
-                emptyLabel="Sin productos"
+                emptyLabel="Sin productos para esta selección"
               />`}
             <//>
 
@@ -3806,7 +3874,8 @@
       const { data, loading, refreshing, error, errors, fetchedAt, refresh, autoRefreshMin } = useDashboardData();
       const [selected, setSelected] = useState(null);
       const [exportOpen, setExportOpen] = useState(false);
-      const { filters, setFilters, clear, isActive } = useFilters();
+      const allPosts = data?.allPosts || [];
+      const { filters, setFilters, clear, isActive } = useFilters(allPosts);
       const { theme, toggleTheme, chart: chartTheme } = useTheme();
 
       const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -3823,7 +3892,8 @@
       // baseMeta y filteredData se recalculan SOLO cuando cambian
       // los datos crudos o los filtros — nunca durante un re-render normal.
       const baseMeta = data?.meta || null;
-      const allPosts = data?.allPosts || [];
+      // allPosts ya se calculó arriba, antes de useFilters (lo necesita
+      // para poder recortar selecciones que dejan de tener sentido).
 
       const filteredData = useMemo(() => {
         if (!data || !baseMeta) return null;
@@ -3865,6 +3935,7 @@
               isActive=${isActive}
               postsInScope=${D.global.posts}
               totalPosts=${baseMeta.total_posts}
+              allPosts=${allPosts}
             />
 
             <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin}/>
