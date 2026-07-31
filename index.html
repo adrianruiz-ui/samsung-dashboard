@@ -18,6 +18,8 @@
   <!-- Libs para snapshots (PNG por sección + PDF global) -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- Lib para exportar reportes a Excel (.xlsx) — 100% en el navegador -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -172,13 +174,6 @@
     const SHEET_ID = '1TcmeDE08Df6Qk4lzRe6PhIBq5qOBUCC_vvHZq4UWD98';
     const CACHE_TTL_MIN = 5;       // cuánto tiempo cachea localmente
     const AUTO_REFRESH_MIN = 5;    // polling automático en background; 0 = desactivado
-
-    // Exportar reportes a Google Sheets ("Exportar reporte" en el sidebar).
-    // Requiere desplegar el Apps Script (Code.gs) que crea/actualiza una hoja
-    // maestra de Google Sheets y pegar aquí la URL /exec que te da al implementar.
-    // Mientras REPORTS_API_URL esté vacío, el botón muestra un aviso de configuración.
-    const REPORTS_API_URL = ''; // ej: 'https://script.google.com/macros/s/AKfycb.../exec'
-    const REPORTS_API_KEY = 'smx-reports-2026'; // debe coincidir con API_KEY en el Apps Script
 
     // ============================================================
     // CLIENTE GOOGLE SHEETS
@@ -781,6 +776,24 @@
       else if (filters.weeks.length > 1) parts.push(`${filters.weeks.length} semanas`);
       parts.push(new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }));
       return parts.join(' · ');
+    }
+
+    // Nombre de archivo seguro para el .xlsx descargado (sin caracteres
+    // raros ni acentos problemáticos en distintos SO).
+    function sanitizeFileName(name) {
+      const NFD_MARKS = new RegExp('[̀-ͯ]', 'g'); // marcas de acento tras normalize('NFD')
+      const clean = String(name || 'Reporte')
+        .normalize('NFD').replace(NFD_MARKS, '')
+        .replace(/[\\/:*?"<>|]/g, '-') // caracteres inválidos en nombres de archivo
+        .trim();
+      return clean.length ? clean : 'Reporte';
+    }
+
+    // Nombre de pestaña seguro para el workbook de Excel (máx. 31
+    // caracteres, sin [ ] : * ? / \ que Excel no permite en tabs).
+    function sanitizeSheetTabName(name) {
+      const clean = String(name || 'Reporte').replace(/[\[\]:*?/\\]/g, '-').trim();
+      return (clean.length ? clean : 'Reporte').substring(0, 31);
     }
 
     // === Helpers para vista diaria ===
@@ -1486,7 +1499,7 @@
             <button onClick=${onOpenExport}
                     className=${"inline-flex items-center gap-1.5 rounded-lg border border-accent2/30 text-accent hover:text-white hover:bg-accent2 transition-colors " +
                       (collapsed ? "w-8 h-8 justify-center" : "px-2.5 py-1.5 text-[11px] w-full justify-center")}
-                    title="Exportar reporte a Google Sheets">
+                    title="Exportar reporte a Excel">
               <${SheetIcon} size=${13}/>
               ${!collapsed && html`<span>Exportar reporte</span>`}
             </button>
@@ -3573,7 +3586,6 @@
       const [title, setTitle] = useState('');
       const [titleTouched, setTitleTouched] = useState(false);
       const [status, setStatus] = useState('idle'); // idle | loading | success | error
-      const [resultUrl, setResultUrl] = useState(null);
       const [errorMsg, setErrorMsg] = useState(null);
 
       const dimLabel = REPORT_DIMENSIONS.find((d) => d.key === groupBy)?.label || groupBy;
@@ -3611,12 +3623,9 @@
 
       const postsInScope = D.global.posts;
 
-      const handleGenerate = async () => {
+      const handleGenerate = () => {
         setStatus('loading'); setErrorMsg(null);
         try {
-          if (!REPORTS_API_URL) {
-            throw new Error('Falta conectar este botón a Google Sheets (REPORTS_API_URL sin configurar). Avísale a quien mantiene el dashboard.');
-          }
           let headers, rows;
           if (mode === 'summary') {
             const metrics = REPORT_METRICS.filter((m) => selectedMetrics.includes(m.key));
@@ -3631,16 +3640,22 @@
             rows = (D.allPosts || []).map((p) => cols.map((c) => c.get(p)));
           }
           if (rows.length === 0) throw new Error('No hay datos para los filtros/selección actuales.');
+          if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería de Excel (revisa tu conexión y recarga la página).');
 
-          const resp = await fetch(REPORTS_API_URL, {
-            method: 'POST',
-            body: JSON.stringify({ apiKey: REPORTS_API_KEY, title: title || 'Reporte', headers, rows }),
+          // Arma el workbook 100% en el navegador — no sale ningún dato
+          // a ningún servidor externo.
+          const wb = XLSX.utils.book_new();
+          const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+          ws['!cols'] = headers.map((h, i) => {
+            const maxLen = Math.max(
+              String(h ?? '').length,
+              ...rows.map((r) => String(r[i] ?? '').length)
+            );
+            return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
           });
-          let json;
-          try { json = await resp.json(); }
-          catch { throw new Error('Respuesta inesperada del Apps Script (revisa que esté desplegado como Web App, acceso "Cualquier usuario").'); }
-          if (!json.ok) throw new Error(json.error || 'Error desconocido al generar el reporte.');
-          setResultUrl(json.url);
+          XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetTabName(title || 'Reporte'));
+          XLSX.writeFile(wb, `${sanitizeFileName(title || 'Reporte')}.xlsx`);
+
           setStatus('success');
         } catch (err) {
           setErrorMsg(String(err.message || err));
@@ -3671,7 +3686,7 @@
                 <div className="text-[11px] text-txt3 leading-relaxed mb-4">
                   Usa los filtros que ya tienes activos arriba
                   (<span className="text-txt2 font-medium">${fmtFull(postsInScope)} posts</span> en el rango actual)
-                  y elige qué mandar a Google Sheets.
+                  y elige qué descargar en un Excel (.xlsx) — se abre directo en Excel o se importa a Google Sheets con "Archivo → Importar".
                 </div>
 
                 <div className="flex rounded-lg border border-line overflow-hidden mb-4">
@@ -3764,14 +3779,11 @@
 
                 ${status === 'success' && html`
                   <div className="mb-4 rounded-lg bg-success/10 border border-success/30 px-3 py-3 text-[12px] text-txt2 leading-relaxed">
-                    <div className="flex items-center gap-2 mb-2 text-success">
+                    <div className="flex items-center gap-2 text-success">
                       <${CheckIcon} size=${13}/>
-                      <span className="font-medium">Reporte generado</span>
+                      <span className="font-medium">Excel descargado</span>
                     </div>
-                    <a href=${resultUrl} target="_blank" rel="noopener noreferrer"
-                       className="inline-flex items-center gap-1.5 text-accent hover:text-accent2 underline underline-offset-2">
-                      Abrir en Google Sheets <${ExtIcon} size=${12}/>
-                    </a>
+                    <div className="text-txt3 mt-1">Revisa tu carpeta de Descargas — el archivo ya está listo para abrir o subir a Google Sheets.</div>
                   </div>
                 `}
 
@@ -3779,7 +3791,7 @@
                         className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-accent text-ink text-sm font-medium hover:bg-accent2 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                   ${status === 'loading'
                     ? html`<${SpinnerIcon} size=${14}/> Generando…`
-                    : html`<${SheetIcon} size=${14}/> Generar en Google Sheets`}
+                    : html`<${DownloadIcon} size=${14}/> Descargar Excel`}
                 </button>
               </div>
             </div>
