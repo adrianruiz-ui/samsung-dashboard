@@ -524,15 +524,14 @@
     }
 
     function applyFilters(allPosts, filters) {
-      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products, formats } = filters;
+      const { year, weeks, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products, formats } = filters;
       return allPosts.filter(p => {
         if (year && year !== 'all') {
           const py = postYear(p);
           if (py !== year) return false;
         }
-        if (weekRange) {
-          if (p.week == null) return false;
-          if (p.week < weekRange[0] || p.week > weekRange[1]) return false;
+        if (weeks && weeks.length > 0) {
+          if (p.week == null || !weeks.includes(p.week)) return false;
         }
         if (platforms && platforms.length > 0 && !platforms.includes(p.platform)) return false;
         if (campaigns && campaigns.length > 0 && !campaigns.includes(p.campaign)) return false;
@@ -916,7 +915,7 @@
     // ============================================================
     const EMPTY_FILTERS = {
       year: 2026,             // 2025 | 2026 | 'all'
-      weekRange: null,        // [min, max] o null
+      weeks: [],               // [] = todas; semanas específicas seleccionadas
       platforms: [],          // [] = todas
       campaigns: [],
       subcampaigns: [],
@@ -935,15 +934,12 @@
         if (y === '2025' || y === '2026') f.year = +y;
         else if (y === 'all')              f.year = 'all';
         // si no hay ?y= en URL → conserva el default 2026
-        const wr = sp.get('w');
-        if (wr) {
-          const [a, b] = wr.split('-').map(Number);
-          if (!isNaN(a) && !isNaN(b)) f.weekRange = [Math.min(a,b), Math.max(a,b)];
-        }
         const arr = (k) => {
           const v = sp.get(k);
           return v ? v.split('|').filter(Boolean) : [];
         };
+        const w = sp.get('w');
+        if (w) f.weeks = w.split('|').map(Number).filter(n => !isNaN(n));
         f.platforms = arr('p');
         f.campaigns = arr('c');
         f.subcampaigns = arr('sc');
@@ -961,7 +957,7 @@
         const sp = new URLSearchParams();
         // sólo escribir ?y= si no es el default 2026
         if (f.year !== 2026) sp.set('y', String(f.year));
-        if (f.weekRange) sp.set('w', `${f.weekRange[0]}-${f.weekRange[1]}`);
+        if (f.weeks?.length)         sp.set('w',  f.weeks.join('|'));
         if (f.platforms?.length)    sp.set('p',  f.platforms.join('|'));
         if (f.campaigns?.length)    sp.set('c',  f.campaigns.join('|'));
         if (f.subcampaigns?.length) sp.set('sc', f.subcampaigns.join('|'));
@@ -995,7 +991,7 @@
 
       const isActive = (
         (filters.year != null && filters.year !== 2026) ||
-        (filters.weekRange != null) ||
+        filters.weeks.length > 0 ||
         filters.platforms.length > 0 ||
         filters.campaigns.length > 0 ||
         filters.subcampaigns.length > 0 ||
@@ -1465,7 +1461,7 @@
         </div>`;
     }
 
-    function MultiSelectPanel({ options, selected, onToggle, onSelectAll, onClear, emptyLabel }) {
+    function MultiSelectPanel({ options, selected, onToggle, onSelectAll, onClear, emptyLabel, renderLabel }) {
       return html`
         <div>
           <div className="flex items-center justify-between px-3 py-2 border-b border-line text-[10px] font-mono uppercase tracking-wider text-txt4">
@@ -1484,81 +1480,10 @@
                     (isOn ? "bg-accent border-accent" : "border-line2 bg-onSurface/[0.03]")}>
                     ${isOn && html`<${CheckIcon} size=${10} className="text-ink"/>`}
                   </span>
-                  <span className="text-txt2 flex-1 truncate" title=${opt}>${opt}</span>
+                  <span className="text-txt2 flex-1 truncate" title=${opt}>${renderLabel ? renderLabel(opt) : opt}</span>
                 </button>`;
             })}
           </div>
-        </div>`;
-    }
-
-    function WeekRangeControl({ weeks, value, onChange }) {
-      if (!weeks.length) return null;
-      const min = weeks[0];
-      const max = weeks[weeks.length - 1];
-      const [a, b] = value || [min, max];
-
-      const setLow = (v) => onChange([Math.min(v, b), b]);
-      const setHigh = (v) => onChange([a, Math.max(v, a)]);
-
-      const pctA = max === min ? 0 : ((a - min) / (max - min)) * 100;
-      const pctB = max === min ? 100 : ((b - min) / (max - min)) * 100;
-
-      return html`
-        <div className="px-4 py-4 min-w-[280px]">
-          <div className="flex items-baseline justify-between mb-3">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-txt4">Rango</span>
-            <span className="font-mono text-sm text-txt tabular-nums">
-              S${a} <span className="text-faint">→</span> S${b}
-            </span>
-          </div>
-
-          <div className="relative h-8">
-            <div className="absolute top-1/2 left-0 right-0 h-1 bg-onSurface/[0.08] rounded -translate-y-1/2"></div>
-            <div className="absolute top-1/2 h-1 bg-accent rounded -translate-y-1/2"
-                 style=${{ left: pctA + '%', right: (100 - pctB) + '%' }}></div>
-            <input type="range" min=${min} max=${max} value=${a}
-                   onChange=${e => setLow(parseInt(e.target.value))}
-                   className="absolute top-0 left-0 w-full h-8 appearance-none bg-transparent pointer-events-none"/>
-            <input type="range" min=${min} max=${max} value=${b}
-                   onChange=${e => setHigh(parseInt(e.target.value))}
-                   className="absolute top-0 left-0 w-full h-8 appearance-none bg-transparent pointer-events-none"/>
-          </div>
-
-          <div className="flex justify-between mt-2 text-[10px] font-mono text-faint">
-            <span>S${min}</span>
-            <span>S${max}</span>
-          </div>
-
-          <div className="flex justify-between mt-4 pt-3 border-t border-line text-[10px] font-mono uppercase tracking-wider">
-            <button onClick=${() => onChange(null)} className="text-txt4 hover:text-txt">Quitar filtro</button>
-            <button onClick=${() => onChange([min, max])} className="text-txt4 hover:text-txt">Todo</button>
-          </div>
-
-          <style>${`
-            input[type="range"] { pointer-events: none; }
-            input[type="range"]::-webkit-slider-thumb {
-              pointer-events: auto;
-              -webkit-appearance: none;
-              appearance: none;
-              width: 14px; height: 14px;
-              border-radius: 50%;
-              background: #FFFFFF;
-              border: 2px solid #AFA9EC;
-              box-shadow: 0 0 0 4px rgba(175,169,236,0.15);
-              cursor: pointer;
-            }
-            input[type="range"]::-moz-range-thumb {
-              pointer-events: auto;
-              width: 14px; height: 14px;
-              border-radius: 50%;
-              background: #FFFFFF;
-              border: 2px solid #AFA9EC;
-              box-shadow: 0 0 0 4px rgba(175,169,236,0.15);
-              cursor: pointer;
-            }
-            input[type="range"]::-webkit-slider-runnable-track { background: transparent; }
-            input[type="range"]::-moz-range-track { background: transparent; }
-          `}</style>
         </div>`;
     }
 
@@ -1627,15 +1552,11 @@
         setFilters(prev => ({ ...prev, [key]: [] }));
       };
 
-      const setWeekRange = (range) => {
-        setFilters(prev => ({ ...prev, weekRange: range }));
-      };
-
       const setYear = (y) => {
-        // Al cambiar de año, limpiamos weekRange porque las semanas se
-        // reinterpretan en el contexto del año seleccionado y el rango anterior
-        // podría no aplicar (o ser confuso).
-        setFilters(prev => ({ ...prev, year: y, weekRange: null }));
+        // Al cambiar de año, limpiamos las semanas seleccionadas porque se
+        // reinterpretan en el contexto del año seleccionado y la selección
+        // anterior podría no aplicar (o ser confusa).
+        setFilters(prev => ({ ...prev, year: y, weeks: [] }));
       };
 
       const yearOptions = [
@@ -1643,10 +1564,6 @@
         { v: 2026,  l: '2026' },
         { v: 'all', l: 'Todo' },
       ];
-
-      const weekSummary = filters.weekRange
-        ? `S${filters.weekRange[0]}–S${filters.weekRange[1]}`
-        : 'Todas';
 
       const arrSummary = (arr, total) => {
         if (arr.length === 0) return 'Todas';
@@ -1678,10 +1595,19 @@
 
             <${FilterPopover}
               label="Semana"
-              summary=${weekSummary}
-              badgeCount=${filters.weekRange ? 1 : 0}
+              summary=${filters.weeks.length === 0 ? 'Todas' : filters.weeks.length === 1 ? `S${filters.weeks[0]}` : `${filters.weeks.length} de ${availableWeeks.length}`}
+              badgeCount=${filters.weeks.length}
+              wide
             >
-              ${({}) => html`<${WeekRangeControl} weeks=${availableWeeks} value=${filters.weekRange} onChange=${setWeekRange}/>`}
+              ${() => html`<${MultiSelectPanel}
+                options=${availableWeeks}
+                selected=${filters.weeks}
+                onToggle=${toggleArr('weeks')}
+                onSelectAll=${selectAll('weeks', availableWeeks)}
+                onClear=${clearKey('weeks')}
+                renderLabel=${(w) => `Semana ${w}`}
+                emptyLabel="Sin semanas"
+              />`}
             <//>
 
             <${FilterPopover}
@@ -2960,16 +2886,16 @@
 
     function ComparativasSection({ D, rawPosts, filters }) {
       // Auto-activación: si el filtro tiene exactamente una semana, activamos WoW
-      const weekRange = filters?.weekRange;
-      const isSingleWeek = weekRange && weekRange[0] === weekRange[1];
-      const currentWeek = isSingleWeek ? weekRange[0] : null;
+      const selWeeks = filters?.weeks;
+      const isSingleWeek = selWeeks && selWeeks.length === 1;
+      const currentWeek = isSingleWeek ? selWeeks[0] : null;
       const prevWeek = currentWeek != null ? currentWeek - 1 : null;
 
       // Para comparar manzanas con manzanas, aplicamos TODOS los demás filtros
       // (año, plataformas, campañas, tipo contenido, pauta) pero ignoramos el de semana
       const compareData = useMemo(() => {
         if (!isSingleWeek || prevWeek == null || prevWeek < 1) return null;
-        const filtersNoWeek = { ...filters, weekRange: null };
+        const filtersNoWeek = { ...filters, weeks: [] };
         const scopedPosts = applyFilters(rawPosts || [], filtersNoWeek);
         const currentPosts = scopedPosts.filter(p => p.week === currentWeek);
         const prevPosts = scopedPosts.filter(p => p.week === prevWeek);
@@ -3564,7 +3490,7 @@
               </div>
             `}
 
-            ${baseMeta.orphans_no_week > 0 && filters.weekRange && html`
+            ${baseMeta.orphans_no_week > 0 && filters.weeks.length > 0 && html`
               <div className="px-7 mb-3">
                 <div className="rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber">
                   <span className="font-mono uppercase tracking-wider">Nota</span> ·
