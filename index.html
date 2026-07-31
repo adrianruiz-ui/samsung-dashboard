@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#F8F7F2" />
+  <meta name="theme-color" content="#0A0A0F" />
   <title>Samsung MX — Performance Brief</title>
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23F8F7F2'/%3E%3Ctext x='50' y='74' text-anchor='middle' font-family='Georgia,serif' font-size='78' font-weight='600' fill='%230A0A09' font-style='italic'%3ES%3C/text%3E%3C/svg%3E" />
@@ -23,23 +23,30 @@
       darkMode: 'class',
       theme: {
         extend: {
+          // Los colores apuntan a variables CSS (definidas en <style> más abajo,
+          // con overrides bajo .light) en vez de hex fijos — así el toggle de
+          // modo claro/oscuro no requiere tocar ninguna className del dashboard.
           colors: {
-            ink:        '#0A0A0F',
-            surface:    '#13131A',
-            surface2:   '#1A1A22',
-            sidebar:    '#0F0F15',
-            line:       'rgba(255,255,255,0.06)',
-            line2:      'rgba(255,255,255,0.10)',
-            txt:        '#FFFFFF',
-            txt2:       '#B5B5C0',
-            txt3:       '#888894',
-            txt4:       '#6B6B78',
-            faint:      '#4A4A55',
-            accent:     '#AFA9EC',
-            accent2:    '#8B7FE8',
-            accentDeep: '#5546C9',
-            amber:      '#F0B358',
-            success:    '#5DCAA5',
+            ink:        'rgb(var(--c-ink) / <alpha-value>)',
+            surface:    'rgb(var(--c-surface) / <alpha-value>)',
+            surface2:   'rgb(var(--c-surface2) / <alpha-value>)',
+            sidebar:    'rgb(var(--c-sidebar) / <alpha-value>)',
+            line:       'var(--c-line)',
+            line2:      'var(--c-line2)',
+            txt:        'rgb(var(--c-txt) / <alpha-value>)',
+            txt2:       'rgb(var(--c-txt2) / <alpha-value>)',
+            txt3:       'rgb(var(--c-txt3) / <alpha-value>)',
+            txt4:       'rgb(var(--c-txt4) / <alpha-value>)',
+            faint:      'rgb(var(--c-faint) / <alpha-value>)',
+            accent:     'rgb(var(--c-accent) / <alpha-value>)',
+            accent2:    'rgb(var(--c-accent2) / <alpha-value>)',
+            accentDeep: 'rgb(var(--c-accentDeep) / <alpha-value>)',
+            amber:      'rgb(var(--c-amber) / <alpha-value>)',
+            success:    'rgb(var(--c-success) / <alpha-value>)',
+            // Alias de "txt" pensado para overlays sutiles (bg-onSurface/[0.03]
+            // etc.) — blanco muy transparente en oscuro, negro muy transparente
+            // en claro, en vez de blanco fijo que desaparece sobre fondo claro.
+            onSurface:  'rgb(var(--c-txt) / <alpha-value>)',
           },
           fontFamily: {
             sans: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'],
@@ -53,8 +60,58 @@
   </script>
 
   <style>
-    :root { color-scheme: dark; }
-    html, body, #root { height: 100%; background: #0A0A0F; color: #FFFFFF; }
+    /* ============================================================
+       TEMA — variables CSS. :root = oscuro (default). .light = claro.
+       Formato "R G B" (sin comas) para que funcione con la sintaxis
+       rgb(var(--x) / <alpha-value>) que usa Tailwind para opacidades.
+       ============================================================ */
+    :root {
+      color-scheme: dark;
+      --c-ink: 10 10 15;
+      --c-surface: 19 19 26;
+      --c-surface2: 26 26 34;
+      --c-sidebar: 15 15 21;
+      --c-line: rgba(255,255,255,0.06);
+      --c-line2: rgba(255,255,255,0.10);
+      --c-txt: 255 255 255;
+      --c-txt2: 181 181 192;
+      --c-txt3: 136 136 148;
+      --c-txt4: 107 107 120;
+      --c-faint: 74 74 85;
+      --c-accent: 175 169 236;
+      --c-accent2: 139 127 232;
+      --c-accentDeep: 85 70 201;
+      --c-amber: 240 179 88;
+      --c-success: 93 202 165;
+      --c-glow1: rgba(139,127,232,0.08);
+      --c-glow2: rgba(85,70,201,0.04);
+      --c-scrollbar: rgba(255,255,255,0.08);
+      --c-scrollbar-hover: rgba(255,255,255,0.15);
+    }
+    html.light {
+      color-scheme: light;
+      --c-ink: 248 247 242;
+      --c-surface: 255 255 255;
+      --c-surface2: 243 242 236;
+      --c-sidebar: 238 237 230;
+      --c-line: rgba(10,10,15,0.08);
+      --c-line2: rgba(10,10,15,0.14);
+      --c-txt: 15 15 20;
+      --c-txt2: 66 66 76;
+      --c-txt3: 104 104 114;
+      --c-txt4: 138 138 148;
+      --c-faint: 178 178 186;
+      --c-accent: 85 70 201;
+      --c-accent2: 106 84 217;
+      --c-accentDeep: 68 54 168;
+      --c-amber: 168 110 15;
+      --c-success: 22 128 100;
+      --c-glow1: rgba(139,127,232,0.10);
+      --c-glow2: rgba(85,70,201,0.05);
+      --c-scrollbar: rgba(10,10,15,0.10);
+      --c-scrollbar-hover: rgba(10,10,15,0.20);
+    }
+    html, body, #root { height: 100%; background: rgb(var(--c-ink)); color: rgb(var(--c-txt)); transition: background-color 150ms ease, color 150ms ease; }
     body {
       font-family: 'Bricolage Grotesque', system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
@@ -62,8 +119,8 @@
       font-feature-settings: 'ss01';
       letter-spacing: -0.005em;
       background-image:
-        radial-gradient(ellipse 800px 400px at 30% 0%, rgba(139,127,232,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse 600px 400px at 100% 100%, rgba(85,70,201,0.04) 0%, transparent 60%);
+        radial-gradient(ellipse 800px 400px at 30% 0%, var(--c-glow1) 0%, transparent 60%),
+        radial-gradient(ellipse 600px 400px at 100% 100%, var(--c-glow2) 0%, transparent 60%);
       background-attachment: fixed;
     }
     .font-serif, [class*="font-serif"] { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; }
@@ -71,7 +128,7 @@
     .line-clamp-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
     .tabular-nums { font-variant-numeric: tabular-nums; }
     .recharts-tooltip-wrapper:focus { outline: none; }
-    .recharts-cartesian-grid line { stroke: rgba(255,255,255,0.05); }
+    .recharts-cartesian-grid line { stroke: var(--c-line); }
     @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
     @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
     .slide-in { animation: slideIn 240ms cubic-bezier(0.32, 0.72, 0, 1); }
@@ -81,14 +138,14 @@
 
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 5px; border: 2px solid #0A0A0F; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+    ::-webkit-scrollbar-thumb { background: var(--c-scrollbar); border-radius: 5px; border: 2px solid rgb(var(--c-ink)); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--c-scrollbar-hover); }
 
     .sidebar-collapsed-text { opacity: 0; pointer-events: none; }
     @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
 
-    select option { background: #13131A; color: #FFFFFF; }
+    select option { background: rgb(var(--c-surface)); color: rgb(var(--c-txt)); }
   </style>
 </head>
 <body>
@@ -423,6 +480,14 @@
         orphansByPlatform[p.platform] = (orphansByPlatform[p.platform] || 0) + 1;
       }
 
+      // Igual, pero para Etapa — el desglose §04 "Por etapa" queda incompleto
+      // en silencio si hay filas sin ese campo, así que lo avisamos.
+      const orphansNoStage = allPosts.filter(p => !p.stage);
+      const orphansNoStageByPlatform = {};
+      for (const p of orphansNoStage) {
+        orphansNoStageByPlatform[p.platform] = (orphansNoStageByPlatform[p.platform] || 0) + 1;
+      }
+
       const meta = {
         total_posts: allPosts.length,
         platforms,
@@ -440,6 +505,8 @@
         date_max: dates.length ? dates.reduce((a,b) => a>b?a:b) : null,
         orphans_no_week: orphansNoWeek.length,
         orphans_no_week_by_platform: orphansByPlatform,
+        orphans_no_stage: orphansNoStage.length,
+        orphans_no_stage_by_platform: orphansNoStageByPlatform,
       };
       return { allPosts, meta };
     }
@@ -457,7 +524,7 @@
     }
 
     function applyFilters(allPosts, filters) {
-      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products } = filters;
+      const { year, weekRange, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products, formats } = filters;
       return allPosts.filter(p => {
         if (year && year !== 'all') {
           const py = postYear(p);
@@ -472,6 +539,7 @@
         if (subcampaigns && subcampaigns.length > 0 && !subcampaigns.includes(p.subcampaign)) return false;
         if (contentTypes && contentTypes.length > 0 && !contentTypes.includes(p.content_type)) return false;
         if (stages && stages.length > 0 && !stages.includes(p.stage)) return false;
+        if (formats && formats.length > 0 && !formats.includes(p.format)) return false;
         if (strategies && strategies.length > 0 && !strategies.includes(p.strategy)) return false;
         if (products && products.length > 0 && !products.includes(p.product)) return false;
         return true;
@@ -678,11 +746,14 @@
       if (typeof window.html2canvas !== 'function') {
         throw new Error('html2canvas no está cargado todavía. Recarga la página.');
       }
-      // backgroundColor: '#0A0A0F' replica el bg-ink del dashboard
+      // backgroundColor: lee --c-ink en vivo para que coincida con el tema
+      // actual (claro u oscuro) en vez de asumir siempre fondo oscuro.
       // scale: 2 = retina-quality
       // useCORS: para que las imágenes externas (si las hay) no rompan la captura
+      const inkRgb = getComputedStyle(document.documentElement).getPropertyValue('--c-ink').trim();
+      const bg = inkRgb ? `rgb(${inkRgb.split(/\s+/).join(',')})` : '#0A0A0F';
       return await window.html2canvas(el, {
-        backgroundColor: '#0A0A0F',
+        backgroundColor: bg,
         scale: 2,
         useCORS: true,
         logging: false,
@@ -853,6 +924,7 @@
       stages: [],              // [] = todas (Etapa del funnel/campaña)
       strategies: [],         // [] = todas (Orgánico / Pagado / ...)
       products: [],           // [] = todos (Galaxy S25 / Z Fold7 / Watch / ...)
+      formats: [],             // [] = todos (Reel / Carrusel / Historia / ...)
     };
 
     function readFiltersFromUrl() {
@@ -879,6 +951,7 @@
         f.stages = arr('sg');
         f.strategies = arr('st');
         f.products = arr('pr');
+        f.formats = arr('fm');
         return f;
       } catch { return EMPTY_FILTERS; }
     }
@@ -896,6 +969,7 @@
         if (f.stages?.length)       sp.set('sg', f.stages.join('|'));
         if (f.strategies?.length)   sp.set('st', f.strategies.join('|'));
         if (f.products?.length)     sp.set('pr', f.products.join('|'));
+        if (f.formats?.length)      sp.set('fm', f.formats.join('|'));
         const qs = sp.toString();
         const newUrl = window.location.pathname + (qs ? '?' + qs : '');
         window.history.replaceState(null, '', newUrl);
@@ -928,12 +1002,66 @@
         filters.contentTypes.length > 0 ||
         filters.stages.length > 0 ||
         filters.strategies.length > 0 ||
-        filters.products.length > 0
+        filters.products.length > 0 ||
+        filters.formats.length > 0
       );
 
       const clear = useCallback(() => setFilters(EMPTY_FILTERS), [setFilters]);
 
       return { filters, setFilters, clear, isActive };
+    }
+
+    /**
+     * Toggle genérico para "clic en una fila de desglose = filtrar a ese
+     * único valor; clic de nuevo = quitar el filtro". Usado por las tarjetas
+     * de plataforma y por las filas de etapa/estrategia/formato/campaña/producto.
+     */
+    function toggleSingleFilter(setFilters, key, value) {
+      setFilters(prev => {
+        const isOnlyThis = prev[key].length === 1 && prev[key][0] === value;
+        return { ...prev, [key]: isOnlyThis ? [] : [value] };
+      });
+    }
+
+    // ============================================================
+    // TEMA — claro / oscuro
+    // ============================================================
+    // Colores para props de Recharts que NO pueden ir por className
+    // (stroke/fill de ejes y el contentStyle del Tooltip). Deben calzar
+    // con las variables --c-* definidas en <style> para :root y .light.
+    const CHART_THEME = {
+      dark: {
+        axis: '#4A4A55', axisStrong: '#6B6B78',
+        tooltipBg: '#1A1A22', tooltipBorder: 'rgba(255,255,255,0.10)', tooltipText: '#FFFFFF', tooltipLabel: '#888894',
+      },
+      light: {
+        axis: '#B2B2BA', axisStrong: '#8A8A92',
+        tooltipBg: '#FFFFFF', tooltipBorder: 'rgba(10,10,15,0.12)', tooltipText: '#0F0F14', tooltipLabel: '#686872',
+      },
+    };
+
+    function useTheme() {
+      const [theme, setTheme] = useState(() => {
+        try {
+          const saved = localStorage.getItem('smx-theme');
+          if (saved === 'light' || saved === 'dark') return saved;
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+        } catch {}
+        return 'dark';
+      });
+
+      useEffect(() => {
+        document.documentElement.classList.toggle('light', theme === 'light');
+        try { localStorage.setItem('smx-theme', theme); } catch {}
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', theme === 'light' ? '#F8F7F2' : '#0A0A0F');
+      }, [theme]);
+
+      const toggleTheme = useCallback(() => {
+        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+      }, []);
+
+      return { theme, toggleTheme, chart: CHART_THEME[theme] };
     }
 
     // ============================================================
@@ -957,6 +1085,31 @@
            className=${className}>
         <path d="M18 6 6 18"/>
         <path d="m6 6 12 12"/>
+      </svg>`;
+    const SunIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${2} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/>
+        <path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/>
+        <path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+      </svg>`;
+    const MoonIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${2} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+      </svg>`;
+    const LinkIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${2} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
       </svg>`;
     const ExtIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
@@ -1139,7 +1292,7 @@
       { id: 'catalogo',     label: 'Catálogo',     Icon: BagIcon      },
     ];
 
-    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin }) {
+    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme }) {
       const [active, setActive] = useState('resumen');
 
       const scrollTo = (id) => {
@@ -1180,19 +1333,29 @@
                 `}
               </div>
               <button onClick=${onToggle}
-                      className="w-6 h-6 rounded-md hover:bg-white/[0.05] flex items-center justify-center text-txt4 hover:text-txt2 shrink-0"
+                      className="w-6 h-6 rounded-md hover:bg-onSurface/[0.05] flex items-center justify-center text-txt4 hover:text-txt2 shrink-0"
                       title="Colapsar sidebar">
                 <${ChevronLeftIcon} size=${14}/>
               </button>
             `}
           </div>
 
+          <div className=${"px-4 mb-4 " + (collapsed ? "flex justify-center" : "")}>
+            <button onClick=${onToggleTheme}
+                    className=${"inline-flex items-center gap-1.5 rounded-lg border border-line text-txt3 hover:text-txt hover:bg-onSurface/[0.03] transition-colors " +
+                      (collapsed ? "w-8 h-8 justify-center" : "px-2.5 py-1.5 text-[11px]")}
+                    title=${theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}>
+              ${theme === 'light' ? html`<${MoonIcon} size=${13}/>` : html`<${SunIcon} size=${13}/>`}
+              ${!collapsed && html`<span>${theme === 'light' ? 'Oscuro' : 'Claro'}</span>`}
+            </button>
+          </div>
+
           ${!collapsed && html`
             <div className="mx-3 mb-5 p-3 rounded-xl border border-accent2/20"
                  style=${{ background: 'linear-gradient(135deg, rgba(139,127,232,0.08) 0%, rgba(85,70,201,0.04) 100%)' }}>
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">En vivo</div>
-              <div className="text-[22px] font-medium text-txt leading-none tabular-nums">${fmt(liveAlcance)}</div>
-              <div className="text-[10px] text-txt3 mt-1.5 font-mono">alcance · ${fmtFull(livePosts)} posts</div>
+              <div className="font-medium text-txt leading-tight tabular-nums break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 22px)' }}>${fmt(liveAlcance)}</div>
+              <div className="text-[10px] text-txt3 mt-1.5 font-mono break-all">alcance · ${fmtFull(livePosts)} posts</div>
             </div>
           `}
 
@@ -1207,7 +1370,7 @@
                   <button key=${id} onClick=${() => scrollTo(id)}
                     className=${"flex items-center gap-2.5 rounded-lg transition-colors text-[12px] " +
                       (collapsed ? "justify-center w-10 h-10 mx-auto" : "px-3 py-2 w-full") + " " +
-                      (isOn ? "bg-accent2/10 text-txt" : "text-txt2 hover:bg-white/[0.03] hover:text-txt")}
+                      (isOn ? "bg-accent2/10 text-txt" : "text-txt2 hover:bg-onSurface/[0.03] hover:text-txt")}
                     title=${collapsed ? label : ''}>
                     <${Icon} size=${15} className=${isOn ? "text-accent" : "text-txt3"}/>
                     ${!collapsed && html`<span>${label}</span>`}
@@ -1281,7 +1444,7 @@
                   className=${"inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] transition-all " +
                     (active
                       ? "border-accent2/40 bg-accent2/12 text-txt"
-                      : "border-line bg-white/[0.03] text-txt3 hover:border-line2 hover:text-txt2")}>
+                      : "border-line bg-onSurface/[0.03] text-txt3 hover:border-line2 hover:text-txt2")}>
             <span className="font-medium">${label}</span>
             ${active ? html`
               <span className="bg-accent text-ink rounded px-1.5 leading-tight font-mono text-[10px] font-semibold">
@@ -1316,9 +1479,9 @@
               const isOn = selected.includes(opt);
               return html`
                 <button key=${opt} onClick=${() => onToggle(opt)}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-white/[0.04] transition-colors">
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-onSurface/[0.04] transition-colors">
                   <span className=${"w-4 h-4 rounded border flex items-center justify-center shrink-0 " +
-                    (isOn ? "bg-accent border-accent" : "border-line2 bg-white/[0.03]")}>
+                    (isOn ? "bg-accent border-accent" : "border-line2 bg-onSurface/[0.03]")}>
                     ${isOn && html`<${CheckIcon} size=${10} className="text-ink"/>`}
                   </span>
                   <span className="text-txt2 flex-1 truncate" title=${opt}>${opt}</span>
@@ -1350,7 +1513,7 @@
           </div>
 
           <div className="relative h-8">
-            <div className="absolute top-1/2 left-0 right-0 h-1 bg-white/[0.08] rounded -translate-y-1/2"></div>
+            <div className="absolute top-1/2 left-0 right-0 h-1 bg-onSurface/[0.08] rounded -translate-y-1/2"></div>
             <div className="absolute top-1/2 h-1 bg-accent rounded -translate-y-1/2"
                  style=${{ left: pctA + '%', right: (100 - pctB) + '%' }}></div>
             <input type="range" min=${min} max=${max} value=${a}
@@ -1404,6 +1567,25 @@
      */
     function FilterBar({ baseMeta, filters, setFilters, clear, isActive, postsInScope, totalPosts }) {
       const { weeks, platforms, campaigns, subcampaignsByCampaign } = baseMeta;
+      const [linkCopied, setLinkCopied] = useState(false);
+
+      const copyFilteredLink = async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+        } catch {
+          // Fallback para navegadores/contextos sin permiso de Clipboard API
+          const ta = document.createElement('textarea');
+          ta.value = window.location.href;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch {}
+          document.body.removeChild(ta);
+        }
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 1800);
+      };
 
       // Semanas disponibles para el slider — dependen del año filtrado
       const availableWeeks = useMemo(() => {
@@ -1479,7 +1661,7 @@
               <${FilterIcon} size=${12}/> Filtros
             </div>
 
-            <div className="flex items-center rounded-lg border border-line bg-white/[0.02] overflow-hidden shrink-0">
+            <div className="flex items-center rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden shrink-0">
               <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-faint px-2.5 py-1.5 border-r border-line">Año</span>
               ${yearOptions.map((o, i) => html`
                 <button key=${o.v}
@@ -1488,7 +1670,7 @@
                     (i > 0 ? "border-l border-line " : "") +
                     (filters.year === o.v
                       ? "bg-accent2/15 text-txt"
-                      : "text-txt3 hover:text-txt hover:bg-white/[0.03]")}>
+                      : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
                   ${o.l}
                 </button>
               `)}
@@ -1615,6 +1797,13 @@
               <span className="text-faint"> de ${totalPosts.toLocaleString('es-MX')} posts</span>
             </div>
 
+            <button onClick=${copyFilteredLink}
+                    title="Copia el link con los filtros actuales para compartir esta vista"
+                    className=${"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-colors " +
+                      (linkCopied ? "border-success/40 text-success bg-success/10" : "border-line2 text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+              ${linkCopied ? html`<${CheckIcon} size=${11}/> ¡Copiado!` : html`<${LinkIcon} size=${11}/> Copiar link`}
+            </button>
+
             ${isActive && html`
               <button onClick=${clear}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border border-amber/40 text-amber hover:bg-amber/10 transition-colors">
@@ -1662,13 +1851,13 @@
               </div>
             `}
             <button onClick=${handlePdf} disabled=${pdfBusy}
-                    className="h-8 px-3 rounded-lg border border-line bg-white/[0.03] hover:bg-white/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center gap-1.5 text-txt3 hover:text-txt text-[11px] font-mono"
+                    className="h-8 px-3 rounded-lg border border-line bg-onSurface/[0.03] hover:bg-onSurface/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center gap-1.5 text-txt3 hover:text-txt text-[11px] font-mono"
                     title="Exportar dashboard completo como PDF">
               <${DownloadIcon} size=${13} className=${pdfBusy ? 'animate-pulse' : ''} />
               ${pdfBusy ? (pdfProgress || 'Generando…') : 'PDF'}
             </button>
             <button onClick=${onRefresh} disabled=${refreshing}
-                    className="w-8 h-8 rounded-lg border border-line bg-white/[0.03] hover:bg-white/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center justify-center text-txt3"
+                    className="w-8 h-8 rounded-lg border border-line bg-onSurface/[0.03] hover:bg-onSurface/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center justify-center text-txt3"
                     title="Actualizar ahora">
               <${RefreshIcon} size=${14} className=${refreshing ? 'animate-spin' : ''} />
             </button>
@@ -1697,7 +1886,7 @@
           onClick=${handle}
           disabled=${busy}
           title=${`Exportar ${name} como PNG`}
-          className="absolute top-5 right-5 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono text-txt4 hover:text-accent bg-surface/80 hover:bg-white/[0.04] border border-line hover:border-line2 backdrop-blur transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50">
+          className="absolute top-5 right-5 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono text-txt4 hover:text-accent bg-surface/80 hover:bg-onSurface/[0.04] border border-line hover:border-line2 backdrop-blur transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50">
           <${DownloadIcon} size=${11} />
           ${busy ? 'Generando…' : 'PNG'}
         </button>`;
@@ -1706,7 +1895,8 @@
     // ============================================================
     // HeroSection — compacto
     // ============================================================
-    function HeroSection({ D }) {
+    function HeroSection({ D, chartTheme }) {
+      const ct = chartTheme || CHART_THEME.dark;
       const g = D.global;
       const weekKeys = Object.keys(D.by_week).sort((a,b) => +a - +b);
       const trend = weekKeys.map(w => ({ week:+w, reach: D.by_week[w].reach }));
@@ -1721,13 +1911,13 @@
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-3">
                 § 01 · ${dateFmt(D.meta.date_min)} → ${dateFmt(D.meta.date_max)}
               </div>
-              <div className="flex items-baseline gap-2 mb-3">
-                <span className="text-txt font-medium leading-[0.95] tracking-tightest"
-                      style=${{ fontSize: 'clamp(48px, 6vw, 72px)' }}>
+              <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+                <span className="text-txt font-medium leading-[0.95] tracking-tightest break-all"
+                      style=${{ fontSize: 'clamp(34px, 5vw, 60px)' }}>
                   ${fmt(g.reach)}
                 </span>
                 <span className="font-serif italic text-txt4 font-light"
-                      style=${{ fontSize: 'clamp(20px, 2.5vw, 30px)' }}>
+                      style=${{ fontSize: 'clamp(18px, 2.2vw, 28px)' }}>
                   / alcance
                 </span>
               </div>
@@ -1753,14 +1943,14 @@
                       </linearGradient>
                     </defs>
                     <${XAxis} dataKey="week" tickFormatter=${(w) => 'S' + w}
-                              stroke="#4A4A55" fontSize=${10} tickLine=${false} axisLine=${false}
+                              stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
                               interval=${Math.max(0, Math.floor(trend.length/8))} />
-                    <${YAxis} stroke="#4A4A55" fontSize=${10} tickLine=${false} axisLine=${false}
+                    <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
                               tickFormatter=${fmt} width=${42} />
                     <${Tooltip}
                       cursor=${{ stroke:'#AFA9EC', strokeWidth:1, strokeDasharray:'3 3' }}
-                      contentStyle=${{ background:'#1A1A22', border:'1px solid rgba(255,255,255,0.10)', borderRadius:6, padding:'6px 10px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:'#FFFFFF' }}
-                      labelStyle=${{ color: '#888894' }}
+                      contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'6px 10px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:ct.tooltipText }}
+                      labelStyle=${{ color: ct.tooltipLabel }}
                       labelFormatter=${(w) => `Semana ${w}`}
                       formatter=${(v) => [fmt(v), 'Alcance']} />
                     <${Area} type="monotone" dataKey="reach" stroke="#AFA9EC" strokeWidth=${1.8} fill="url(#heroGrad)" />
@@ -1777,10 +1967,11 @@
     // ============================================================
     function KpiCell({ label, value, sub, accent }) {
       return html`
-        <div className="rounded-xl bg-surface border border-line px-4 py-3.5">
+        <div className="rounded-xl bg-surface border border-line px-4 py-3.5 min-w-0">
           <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">${label}</div>
-          <div className=${"text-[20px] font-medium tabular-nums leading-none " + (accent ? "text-accent" : "text-txt")}>${value}</div>
-          ${sub && html`<div className="text-[10px] text-txt4 mt-1.5 font-mono">${sub}</div>`}
+          <div className=${"font-medium tabular-nums leading-tight break-all " + (accent ? "text-accent" : "text-txt")}
+               style=${{ fontSize: 'clamp(14px, 1.6vw, 20px)' }}>${value}</div>
+          ${sub && html`<div className="text-[10px] text-txt4 mt-1.5 font-mono break-all">${sub}</div>`}
         </div>`;
     }
 
@@ -1826,8 +2017,8 @@
             <span className="font-mono text-[10px] text-txt4">${stat.posts} posts</span>
           </div>
           <div className="flex items-baseline justify-between gap-3">
-            <div>
-              <div className="text-[20px] font-medium text-txt tabular-nums leading-none">${fmt(stat.reach)}</div>
+            <div className="min-w-0">
+              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(14px, 1.6vw, 20px)' }}>${fmt(stat.reach)}</div>
               <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1.5">alcance</div>
             </div>
             <div className="text-right">
@@ -1854,8 +2045,8 @@
             ` : html`<div className="h-full flex items-end"><div className="w-full h-px bg-line2"/></div>`}
           </div>
           <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-line text-[10px] font-mono">
-            <div><div className="text-txt4">Inter.</div><div className="text-txt2 mt-0.5">${fmt(stat.inter)}</div></div>
-            <div><div className="text-txt4">Views</div><div className="text-txt2 mt-0.5">${fmt(stat.views)}</div></div>
+            <div className="min-w-0"><div className="text-txt4">Inter.</div><div className="text-txt2 mt-0.5 break-all">${fmt(stat.inter)}</div></div>
+            <div className="min-w-0"><div className="text-txt4">Views</div><div className="text-txt2 mt-0.5 break-all">${fmt(stat.views)}</div></div>
             <div><div className="text-txt4">VTR</div><div className="text-txt2 mt-0.5">${erFmt(stat.vtr_avg)}</div></div>
           </div>
         </div>`;
@@ -1867,12 +2058,7 @@
 
       // Clic en una tarjeta = filtrar todo el dashboard a esa plataforma.
       // Clic de nuevo sobre la misma (única) plataforma activa = quitar el filtro.
-      const handlePlatformClick = (name) => {
-        setFilters(prev => {
-          const isOnlyThis = prev.platforms.length === 1 && prev.platforms[0] === name;
-          return { ...prev, platforms: isOnlyThis ? [] : [name] };
-        });
-      };
+      const handlePlatformClick = (name) => toggleSingleFilter(setFilters, 'platforms', name);
 
       // Single-week mode: calculamos serie diaria por plataforma
       // (mismos 7 días Dom→Sáb que TrendSection)
@@ -1940,7 +2126,8 @@
       { k:'basic_er_avg',  l:'ER básico',   isPercent:true },
     ];
 
-    function TrendSection({ D }) {
+    function TrendSection({ D, chartTheme }) {
+      const ct = chartTheme || CHART_THEME.dark;
       const [metric, setMetric] = useState('reach');
       const isPercent = TREND_METRICS.find(m => m.k === metric)?.isPercent;
 
@@ -2031,12 +2218,12 @@
                 <div className="text-[10px] font-mono text-txt4 mt-1">Semana ${weeksInScope[0]} · ${weekRangeLabel}</div>
               `}
             </div>
-            <div className="flex rounded-lg border border-line bg-white/[0.02] overflow-hidden">
+            <div className="flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
               ${TREND_METRICS.map((m, i) => html`
                 <button key=${m.k} onClick=${() => setMetric(m.k)}
                   className=${"px-3 py-1.5 text-[11px] transition-colors " +
                     (i > 0 ? "border-l border-line " : "") +
-                    (metric === m.k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-white/[0.03]")}>
+                    (metric === m.k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
                   ${m.l}
                 </button>
               `)}
@@ -2046,29 +2233,29 @@
             <div className="h-72">
               <${ResponsiveContainer}>
                 <${ComposedChart} data=${series} margin=${{ top:10, right:16, left:8, bottom:8 }}>
-                  <${CartesianGrid} stroke="rgba(255,255,255,0.05)" strokeDasharray="0" vertical=${false} />
-                  <${XAxis} dataKey="label" stroke="#6B6B78" fontSize=${11}
-                            tickLine=${false} axisLine=${{ stroke: 'rgba(255,255,255,0.08)' }}
+                  <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
+                  <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11}
+                            tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }}
                             interval=${xTickInterval} />
-                  <${YAxis} yAxisId="left" stroke="#6B6B78" fontSize=${11}
+                  <${YAxis} yAxisId="left" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${false}
                             tickFormatter=${isPercent ? (v) => v.toFixed(1) + '%' : fmt}
                             width=${48} />
-                  <${YAxis} yAxisId="right" orientation="right" stroke="#4A4A55" fontSize=${11}
+                  <${YAxis} yAxisId="right" orientation="right" stroke=${ct.axis} fontSize=${11}
                             tickLine=${false} axisLine=${false} width=${32} />
                   <${Tooltip}
-                    cursor=${{ fill: 'rgba(175,169,236,0.05)' }}
-                    contentStyle=${{ background:'#1A1A22', border:'1px solid rgba(255,255,255,0.10)', borderRadius:6, padding:'8px 12px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:'#FFFFFF' }}
-                    labelStyle=${{ color: '#888894' }}
+                    cursor=${{ fill: 'rgba(175,169,236,0.08)' }}
+                    contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'8px 12px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:ct.tooltipText }}
+                    labelStyle=${{ color: ct.tooltipLabel }}
                     labelFormatter=${(label) => isDailyMode ? label : `Semana ${String(label).slice(1)}`}
                     formatter=${(v, name) => {
                       if (name === 'value') return [isPercent ? erFmt(v) : fmt(v), TREND_METRICS.find(m => m.k === metric)?.l];
                       return [v, 'Posts'];
                     }} />
-                  <${Bar} yAxisId="right" dataKey="posts" fill="rgba(255,255,255,0.06)" />
+                  <${Bar} yAxisId="right" dataKey="posts" fill=${ct.tooltipBorder} />
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
                            stroke="#AFA9EC" strokeWidth=${2}
-                           dot=${{ fill:'#AFA9EC', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:'#FFFFFF', stroke:'#AFA9EC', strokeWidth:2 }} />
+                           dot=${{ fill:'#AFA9EC', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#AFA9EC', strokeWidth:2 }} />
                 <//>
               <//>
             </div>
@@ -2089,7 +2276,7 @@
     // ============================================================
     // MixSection
     // ============================================================
-    function MixSection({ D }) {
+    function MixSection({ D, filters, setFilters }) {
       const strats = Object.entries(D.by_strategy)
         .map(([k,v]) => ({ name:k, ...v }))
         .sort((a,b) => b.posts - a.posts);
@@ -2122,8 +2309,12 @@
                   const isPaid = (s.name||'').toLowerCase().includes('pauta') || (s.name||'').toLowerCase().includes('paid');
                   const color = isPaid ? '#F0B358' : '#AFA9EC';
                   const pctPosts = totalPosts ? Math.round(s.posts/totalPosts*100) : 0;
+                  const isActiveRow = filters?.strategies?.length === 1 && filters.strategies[0] === s.name;
                   return html`
-                    <div key=${s.name}>
+                    <div key=${s.name}
+                         onClick=${() => toggleSingleFilter(setFilters, 'strategies', s.name)}
+                         title="Clic para filtrar por esta estrategia"
+                         className=${"cursor-pointer rounded-lg -mx-2 px-2 py-1 transition-colors " + (isActiveRow ? "bg-accent2/10 ring-1 ring-accent2/40" : "hover:bg-onSurface/[0.03]")}>
                       <div className="flex items-baseline justify-between mb-1.5">
                         <div className="flex items-baseline gap-3">
                           <span className="text-[15px] text-txt font-medium">${s.name || '—'}</span>
@@ -2131,7 +2322,7 @@
                         </div>
                         <div className="font-mono tabular-nums text-[14px] text-txt">${fmt(s.reach)}</div>
                       </div>
-                      <div className="h-1 bg-white/[0.06] rounded"><div className="h-full rounded" style=${{ width: pctPosts + '%', background: color }}/></div>
+                      <div className="h-1 bg-onSurface/[0.06] rounded"><div className="h-full rounded" style=${{ width: pctPosts + '%', background: color }}/></div>
                       <div className="flex justify-between mt-1.5 text-[10px] font-mono text-txt4">
                         <span>${s.posts} posts · ER ${erFmt(s.er_avg)} · básico ${erFmt(s.basic_er_avg)}</span>
                         <span>${fmt(s.inter)} interacciones</span>
@@ -2152,10 +2343,14 @@
               <div className="space-y-2.5">
                 ${fmts.slice(0, 8).map(f => {
                   const w = (f.reach / max) * 100;
+                  const isActiveRow = filters?.formats?.length === 1 && filters.formats[0] === f.name;
                   return html`
-                    <div key=${f.name} className="grid grid-cols-12 items-baseline gap-3">
+                    <div key=${f.name}
+                         onClick=${() => toggleSingleFilter(setFilters, 'formats', f.name)}
+                         title="Clic para filtrar por este formato"
+                         className=${"grid grid-cols-12 items-baseline gap-3 cursor-pointer rounded-lg -mx-2 px-2 py-1 transition-colors " + (isActiveRow ? "bg-accent2/10 ring-1 ring-accent2/40" : "hover:bg-onSurface/[0.03]")}>
                       <div className="col-span-3 text-[13px] text-txt2 truncate" title=${f.name}>${f.name}</div>
-                      <div className="col-span-5 h-px bg-white/[0.06] relative">
+                      <div className="col-span-5 h-px bg-onSurface/[0.06] relative">
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 rounded-sm bg-accent"
                              style=${{ width: w + '%' }}/>
                       </div>
@@ -2169,7 +2364,14 @@
           </div>
 
           <div className="rounded-xl bg-surface border border-line p-5 mt-3">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-4">Por etapa</div>
+            <div className="flex items-baseline justify-between mb-4">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">Por etapa</div>
+              ${D.meta?.orphans_no_stage > 0 && html`
+                <div className="text-[10px] font-mono text-amber" title="Posts sin valor en la columna Etapa — no aparecen en este desglose">
+                  ${D.meta.orphans_no_stage} ${D.meta.orphans_no_stage === 1 ? 'post' : 'posts'} sin etapa (no incluidos)
+                </div>
+              `}
+            </div>
             ${stagesArr.length === 0 && html`<div className="text-faint text-sm">Sin datos de etapa. Revisa que la columna "Etapa" tenga valores en tu Sheet.</div>`}
             <div className="grid grid-cols-12 items-baseline gap-3 mb-2 pb-2 border-b border-line/40">
               <div className="col-span-3 text-[9px] font-mono uppercase tracking-wider text-faint">Etapa</div>
@@ -2181,10 +2383,14 @@
             <div className="space-y-2.5">
               ${stagesArr.map(s => {
                 const w = (s.reach / maxStage) * 100;
+                const isActiveRow = filters?.stages?.length === 1 && filters.stages[0] === s.name;
                 return html`
-                  <div key=${s.name} className="grid grid-cols-12 items-baseline gap-3">
+                  <div key=${s.name}
+                       onClick=${() => toggleSingleFilter(setFilters, 'stages', s.name)}
+                       title="Clic para filtrar por esta etapa"
+                       className=${"grid grid-cols-12 items-baseline gap-3 cursor-pointer rounded-lg -mx-2 px-2 py-1 transition-colors " + (isActiveRow ? "bg-accent2/10 ring-1 ring-accent2/40" : "hover:bg-onSurface/[0.03]")}>
                     <div className="col-span-3 text-[13px] text-txt2 truncate" title=${s.name}>${s.name}</div>
-                    <div className="col-span-5 h-px bg-white/[0.06] relative">
+                    <div className="col-span-5 h-px bg-onSurface/[0.06] relative">
                       <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 rounded-sm bg-accent2"
                            style=${{ width: w + '%' }}/>
                     </div>
@@ -2210,15 +2416,26 @@
       { k:'date',         l:'Más recientes' },
     ];
 
-    function TopPostsTable({ D, onPick }) {
+    function TopPostsTable({ D, onPick, filters }) {
       const [sortBy, setSortBy] = useState('reach');
       const [filterPlat, setFilterPlat] = useState('all');
       const [limit, setLimit] = useState(15);
       const platforms = Object.keys(D.by_platform);
 
+      // Si el filtro GLOBAL ya restringe a una sola plataforma (ej. clic en
+      // una tarjeta de §02), el selector local es redundante — D.allPosts ya
+      // viene filtrado. Lo ocultamos y mostramos la plataforma activa en texto.
+      const globalPlatformLock = filters?.platforms?.length === 1 ? filters.platforms[0] : null;
+
+      useEffect(() => {
+        if (globalPlatformLock) setFilterPlat('all');
+      }, [globalPlatformLock]);
+
       const sorted = useMemo(() => {
         const all = D.allPosts || [];
-        const filtered = filterPlat === 'all' ? all : all.filter(p => p.platform === filterPlat);
+        const filtered = (globalPlatformLock || filterPlat === 'all')
+          ? all
+          : all.filter(p => p.platform === filterPlat);
         if (sortBy === 'date') return [...filtered].sort((a,b) => (b.date||'').localeCompare(a.date||''));
         if (sortBy === 'er' || sortBy === 'basic_er') {
           // Aplicamos umbral mínimo de alcance para evitar que posts con base
@@ -2233,7 +2450,7 @@
             .sort((a,b) => (b.vtr||0) - (a.vtr||0));
         }
         return [...filtered].filter(p => (p[sortBy]||0) > 0).sort((a,b) => (b[sortBy]||0) - (a[sortBy]||0));
-      }, [D, sortBy, filterPlat]);
+      }, [D, sortBy, filterPlat, globalPlatformLock]);
 
       const visible = sorted.slice(0, limit);
 
@@ -2248,14 +2465,21 @@
             </div>
             <div className="flex flex-wrap gap-2">
               <select value=${sortBy} onChange=${e => setSortBy(e.target.value)}
-                      className="text-[11px] bg-white/[0.03] border border-line rounded-lg px-3 py-1.5 text-txt2 hover:border-line2">
+                      className="text-[11px] bg-onSurface/[0.03] border border-line rounded-lg px-3 py-1.5 text-txt2 hover:border-line2">
                 ${SORTS.map(s => html`<option key=${s.k} value=${s.k}>${s.l}</option>`)}
               </select>
-              <select value=${filterPlat} onChange=${e => setFilterPlat(e.target.value)}
-                      className="text-[11px] bg-white/[0.03] border border-line rounded-lg px-3 py-1.5 text-txt2 hover:border-line2">
-                <option value="all">Todas</option>
-                ${platforms.map(p => html`<option key=${p} value=${p}>${p}</option>`)}
-              </select>
+              ${globalPlatformLock ? html`
+                <span className="inline-flex items-center gap-1.5 text-[11px] bg-accent2/10 border border-accent2/30 rounded-lg px-3 py-1.5 text-accent2"
+                      title="Filtro global activo — clic en la tarjeta de plataforma para quitarlo">
+                  ${globalPlatformLock}
+                </span>
+              ` : html`
+                <select value=${filterPlat} onChange=${e => setFilterPlat(e.target.value)}
+                        className="text-[11px] bg-onSurface/[0.03] border border-line rounded-lg px-3 py-1.5 text-txt2 hover:border-line2">
+                  <option value="all">Todas</option>
+                  ${platforms.map(p => html`<option key=${p} value=${p}>${p}</option>`)}
+                </select>
+              `}
             </div>
           </div>
 
@@ -2285,7 +2509,7 @@
                   const color = PLAT_COLORS[p.platform];
                   return html`
                     <tr key=${i} onClick=${() => onPick(p)}
-                        className="border-b border-line/50 last:border-0 hover:bg-white/[0.025] cursor-pointer transition-colors group">
+                        className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] cursor-pointer transition-colors group">
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt4 group-hover:text-txt2">${i+1}</td>
                       <td className="py-2.5 px-4">
                         <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded"
@@ -2413,19 +2637,19 @@
 
           <!-- KPI general -->
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-            <div className="rounded-xl bg-surface border border-line p-5">
+            <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general</div>
-              <div className="text-[28px] font-medium text-accent tabular-nums leading-none">${erFmt(vtr.general.vtr)}</div>
+              <div className="text-[28px] font-medium text-accent tabular-nums leading-none break-all">${erFmt(vtr.general.vtr)}</div>
               <div className="text-[11px] font-mono text-txt4 mt-2">promedio aritmético</div>
             </div>
-            <div className="rounded-xl bg-surface border border-line p-5">
+            <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Videos</div>
-              <div className="text-[28px] font-medium text-txt tabular-nums leading-none">${vtr.totalVideos}</div>
+              <div className="text-[28px] font-medium text-txt tabular-nums leading-none break-all">${vtr.totalVideos}</div>
               <div className="text-[11px] font-mono text-txt4 mt-2">en el filtro actual</div>
             </div>
-            <div className="rounded-xl bg-surface border border-line p-5">
+            <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Reproducciones</div>
-              <div className="text-[28px] font-medium text-txt tabular-nums leading-none">${fmt(vtr.general.views)}</div>
+              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(18px, 2vw, 28px)' }}>${fmt(vtr.general.views)}</div>
               <div className="text-[11px] font-mono text-txt4 mt-2">total views</div>
             </div>
           </div>
@@ -2480,7 +2704,7 @@
                     const b = vtr.byPlatform[plat];
                     const color = PLAT_COLORS[plat];
                     return html`
-                      <tr key=${plat} className="border-b border-line/40 hover:bg-white/[0.02] transition-colors">
+                      <tr key=${plat} className="border-b border-line/40 hover:bg-onSurface/[0.02] transition-colors">
                         <td className="py-2.5 pr-3">
                           <div className="flex items-center gap-2.5">
                             <span className="w-6 h-6 rounded-md flex items-center justify-center text-[9px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[plat]}</span>
@@ -2522,7 +2746,7 @@
                     ${vtr.topVideos.map((p, i) => {
                       const color = PLAT_COLORS[p.platform];
                       return html`
-                        <tr key=${i} className="border-b border-line/40 hover:bg-white/[0.02] transition-colors">
+                        <tr key=${i} className="border-b border-line/40 hover:bg-onSurface/[0.02] transition-colors">
                           <td className="py-2.5 pr-3 text-txt4 tabular-nums">${i + 1}</td>
                           <td className="py-2.5 pr-3">
                             <div className="flex items-center gap-2">
@@ -2588,7 +2812,7 @@
                 ${sorted.map((e, i) => {
                   const color = getColor ? getColor(e) : null;
                   return html`
-                    <tr key=${e.name} className="border-b border-line/40 last:border-0 hover:bg-white/[0.025] transition-colors">
+                    <tr key=${e.name} className="border-b border-line/40 last:border-0 hover:bg-onSurface/[0.025] transition-colors">
                       <td className="py-2.5 pr-3">
                         ${color ? html`
                           <div className="flex items-center gap-2.5">
@@ -2636,19 +2860,19 @@
 
           <!-- KPI row de promedios globales -->
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-3">
-            <div className="rounded-xl bg-surface border border-line px-5 py-4">
+            <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Alcance promedio</div>
-              <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmt(g.reach_per_post)}</div>
+              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmt(g.reach_per_post)}</div>
               <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
             </div>
-            <div className="rounded-xl bg-surface border border-line px-5 py-4">
+            <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Interacciones promedio</div>
-              <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmt(g.inter_per_post)}</div>
+              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmt(g.inter_per_post)}</div>
               <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
             </div>
-            <div className="rounded-xl bg-surface border border-line px-5 py-4">
+            <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Reproducciones promedio</div>
-              <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmt(g.views_per_post)}</div>
+              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmt(g.views_per_post)}</div>
               <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
             </div>
           </div>
@@ -2700,12 +2924,12 @@
       const pct = deltaPct(curr, prev);
       const fmtVal = isPercent ? erFmt : fmt;
       return html`
-        <div className="rounded-xl bg-surface border border-line px-5 py-4">
+        <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
           <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">${label}</div>
-          <div className="text-[24px] font-medium text-txt tabular-nums leading-none">${fmtVal(curr)}</div>
-          <div className="flex items-baseline gap-2 mt-2">
+          <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmtVal(curr)}</div>
+          <div className="flex items-baseline gap-2 mt-2 flex-wrap">
             <${DeltaPill} pct=${pct} />
-            <span className="text-[10px] font-mono text-faint">vs ${fmtVal(prev)}</span>
+            <span className="text-[10px] font-mono text-faint break-all">vs ${fmtVal(prev)}</span>
           </div>
         </div>`;
     }
@@ -2894,7 +3118,7 @@
                   const interDelta = deltaPct(r.curr.inter, r.prev.inter);
                   const color = showBadge ? PLAT_COLORS[r.name] : null;
                   return html`
-                    <tr key=${r.name} className="border-b border-line/40 last:border-0 hover:bg-white/[0.025] transition-colors">
+                    <tr key=${r.name} className="border-b border-line/40 last:border-0 hover:bg-onSurface/[0.025] transition-colors">
                       <td className="py-2.5 pr-3">
                         ${color ? html`
                           <div className="flex items-center gap-2.5">
@@ -2920,7 +3144,7 @@
     // ============================================================
     // CatalogSection (Top productos + campañas)
     // ============================================================
-    function CatalogList({ entries, title, max }) {
+    function CatalogList({ entries, title, max, filterKey, filters, setFilters }) {
       return html`
         <div className="rounded-xl bg-surface border border-line p-5">
           <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-3">${title}</div>
@@ -2938,8 +3162,13 @@
                 </tr>
               </thead>
               <tbody>
-                ${entries.slice(0, max).map(e => html`
-                  <tr key=${e.name} className="border-b border-line/40 last:border-0">
+                ${entries.slice(0, max).map(e => {
+                  const isActiveRow = filterKey && filters?.[filterKey]?.length === 1 && filters[filterKey][0] === e.name;
+                  return html`
+                  <tr key=${e.name}
+                      onClick=${filterKey ? () => toggleSingleFilter(setFilters, filterKey, e.name) : undefined}
+                      title=${filterKey ? `Clic para filtrar por ${e.name}` : undefined}
+                      className=${"border-b border-line/40 last:border-0 " + (filterKey ? "cursor-pointer transition-colors " + (isActiveRow ? "bg-accent2/10" : "hover:bg-onSurface/[0.03]") : "")}>
                     <td className="py-2 text-[12px] text-txt2 truncate max-w-[200px]" title=${e.name}>${e.name}</td>
                     <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt4">${e.posts}</td>
                     <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt">${fmt(e.reach)}</td>
@@ -2948,14 +3177,14 @@
                     <td className="py-2 px-2 text-right font-mono tabular-nums text-[11px] text-txt3">${erFmt(e.er_avg)}</td>
                     <td className="py-2 pl-2 text-right font-mono tabular-nums text-[11px] text-txt4">${erFmt(e.basic_er_avg)}</td>
                   </tr>
-                `)}
+                `;})}
               </tbody>
             </table>
           </div>
         </div>`;
     }
 
-    function CatalogSection({ D }) {
+    function CatalogSection({ D, filters, setFilters }) {
       const products = Object.entries(D.by_product).map(([k,v]) => ({ name:k, ...v })).sort((a,b) => b.reach - a.reach);
       const campaigns = Object.entries(D.by_campaign).map(([k,v]) => ({ name:k, ...v })).sort((a,b) => b.reach - a.reach);
 
@@ -2970,8 +3199,8 @@
             <div className="text-[11px] font-mono text-txt4">Productos · campañas</div>
           </div>
           <div className="grid grid-cols-1 gap-3">
-            <${CatalogList} entries=${products}  title="Top productos por alcance"  max=${10} />
-            <${CatalogList} entries=${campaigns} title="Top campañas por alcance"   max=${10} />
+            <${CatalogList} entries=${products}  title="Top productos por alcance"  max=${10} filterKey="products"  filters=${filters} setFilters=${setFilters} />
+            <${CatalogList} entries=${campaigns} title="Top campañas por alcance"   max=${10} filterKey="campaigns" filters=${filters} setFilters=${setFilters} />
           </div>
         </section>`;
     }
@@ -2981,9 +3210,9 @@
     // ============================================================
     function DrawerStat({ label, value }) {
       return html`
-        <div className="border-b border-line py-3">
+        <div className="border-b border-line py-3 min-w-0">
           <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">${label}</div>
-          <div className="font-mono text-[14px] text-txt tabular-nums">${value}</div>
+          <div className="font-mono text-[14px] text-txt tabular-nums break-all">${value}</div>
         </div>`;
     }
     function DrawerTag({ label, value }) {
@@ -3022,7 +3251,7 @@
                 <span className="text-[14px] text-txt font-medium">${post.platform}</span>
               </div>
               <button onClick=${onClose}
-                      className="w-7 h-7 rounded-md hover:bg-white/[0.06] flex items-center justify-center text-txt3 hover:text-txt transition-colors">
+                      className="w-7 h-7 rounded-md hover:bg-onSurface/[0.06] flex items-center justify-center text-txt3 hover:text-txt transition-colors">
                 <${XIcon} size=${15}/>
               </button>
             </div>
@@ -3043,14 +3272,13 @@
                 `}
 
                 <div className="grid grid-cols-2 gap-2.5 mb-5">
-                  <div className="rounded-xl bg-surface border border-line p-3.5">
+                  <div className="rounded-xl bg-surface border border-line p-3.5 min-w-0">
                     <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Alcance</div>
-                    <div className="text-[22px] text-txt tabular-nums leading-none font-medium">${fmt(post.reach)}</div>
-                    <div className="text-[10px] font-mono text-txt4 mt-1.5">${fmtFull(post.reach)}</div>
+                    <div className="text-txt tabular-nums leading-tight font-medium break-all" style=${{ fontSize: 'clamp(15px, 1.8vw, 22px)' }}>${fmt(post.reach)}</div>
                   </div>
-                  <div className="rounded-xl bg-surface border border-line p-3.5">
+                  <div className="rounded-xl bg-surface border border-line p-3.5 min-w-0">
                     <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">ER</div>
-                    <div className="text-[22px] tabular-nums leading-none font-medium" style=${{ color }}>${erFmt(post.er)}</div>
+                    <div className="text-[22px] tabular-nums leading-none font-medium break-all" style=${{ color }}>${erFmt(post.er)}</div>
                     <div className="text-[10px] font-mono text-txt4 mt-1.5">Básico ${erFmt(post.basic_er)}</div>
                   </div>
                 </div>
@@ -3265,6 +3493,7 @@
       const { data, loading, refreshing, error, errors, fetchedAt, refresh, autoRefreshMin } = useDashboardData();
       const [selected, setSelected] = useState(null);
       const { filters, setFilters, clear, isActive } = useFilters();
+      const { theme, toggleTheme, chart: chartTheme } = useTheme();
 
       const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem('smx-sidebar-collapsed') === '1'; } catch { return false; }
@@ -3308,6 +3537,8 @@
             livePosts=${D.global.posts}
             fetchedAt=${fetchedAt}
             autoRefreshMin=${autoRefreshMin}
+            theme=${theme}
+            onToggleTheme=${toggleTheme}
           />
 
           <div className="flex-1 min-w-0 flex flex-col">
@@ -3344,6 +3575,17 @@
               </div>
             `}
 
+            ${baseMeta.orphans_no_stage > 0 && filters.stages.length > 0 && html`
+              <div className="px-7 mb-3">
+                <div className="rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber">
+                  <span className="font-mono uppercase tracking-wider">Nota</span> ·
+                  Hay ${baseMeta.orphans_no_stage} ${baseMeta.orphans_no_stage === 1 ? 'post' : 'posts'} sin etapa asignada en tu Sheet
+                  (${Object.entries(baseMeta.orphans_no_stage_by_platform).map(([p,n]) => `${p}: ${n}`).join(', ')})
+                  — se excluyen del filtro actual de etapa.
+                </div>
+              </div>
+            `}
+
             ${noResults ? html`
               <div className="px-7 py-32 text-center">
                 <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-amber mb-4">Sin resultados</div>
@@ -3356,16 +3598,16 @@
               </div>
             ` : html`
               <main>
-                <${HeroSection}    D=${D}/>
+                <${HeroSection}    D=${D} chartTheme=${chartTheme}/>
                 <${KpiRow}         D=${D}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
-                <${TrendSection}   D=${D}/>
-                <${MixSection}     D=${D}/>
-                <${TopPostsTable}  D=${D} onPick=${setSelected}/>
+                <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
+                <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
+                <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters}/>
                 <${VtrSection}         D=${D}/>
                 <${AveragesSection}    D=${D}/>
                 <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters}/>
-                <${CatalogSection}     D=${D}/>
+                <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
               </main>
             `}
 
