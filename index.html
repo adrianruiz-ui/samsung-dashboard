@@ -993,6 +993,8 @@
           { id: 'sec-promedios',    name: 'Promedios' },
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
+          { id: 'sec-anomalias',    name: 'Anomalías' },
+          { id: 'sec-cadencia',     name: 'Cadencia' },
         ];
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
         const pageW = pdf.internal.pageSize.getWidth();
@@ -1461,6 +1463,27 @@
         <path d="M12 2 A10 10 0 0 1 22 12"/>
       </svg>`;
 
+    const AlertIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>`;
+
+    const CalendarIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>`;
+
     // ============================================================
     // ESTADOS UI
     // ============================================================
@@ -1512,6 +1535,8 @@
       { id: 'promedios',    label: 'Promedios',    Icon: AvgIcon      },
       { id: 'comparativas', label: 'Comparativas', Icon: CompareIcon  },
       { id: 'catalogo',     label: 'Catálogo',     Icon: BagIcon      },
+      { id: 'anomalias',    label: 'Anomalías',    Icon: AlertIcon    },
+      { id: 'cadencia',     label: 'Cadencia',     Icon: CalendarIcon },
     ];
 
     function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport }) {
@@ -3710,6 +3735,305 @@
     }
 
     // ============================================================
+    // AnomaliesSection — detector de posts atípicos.
+    // Método: por cada plataforma con muestra suficiente, calcula la
+    // mediana y el MAD (desviación absoluta mediana) de alcance y de ER
+    // por post, y marca los que se alejan demasiado del "modified
+    // z-score" (Iglewicz & Hoaglin) — más robusto que media/desv. estándar
+    // cuando la data tiene posts virales que distorsionarían un promedio
+    // normal. Umbral estándar de la literatura: |z| >= 3.5.
+    // ============================================================
+    const ANOMALY_MIN_GROUP = 6;
+    const ANOMALY_Z_THRESHOLD = 3.5;
+
+    function median(arr) {
+      if (!arr.length) return 0;
+      const s = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
+
+    function computeAnomalies(D) {
+      const posts = D.allPosts || [];
+      const byPlatform = {};
+      for (const p of posts) {
+        if (!p.platform) continue;
+        (byPlatform[p.platform] = byPlatform[p.platform] || []).push(p);
+      }
+
+      const found = [];
+      for (const group of Object.values(byPlatform)) {
+        if (group.length < ANOMALY_MIN_GROUP) continue;
+
+        // --- Alcance ---
+        const reaches = group.map(p => p.reach || 0);
+        const medR = median(reaches);
+        const madR = median(reaches.map(r => Math.abs(r - medR)));
+        if (madR > 0) {
+          for (const p of group) {
+            const z = 0.6745 * ((p.reach || 0) - medR) / madR;
+            if (Math.abs(z) >= ANOMALY_Z_THRESHOLD) {
+              found.push({ post: p, metric: 'reach', z, direction: z > 0 ? 'up' : 'down', value: p.reach || 0, baseline: medR });
+            }
+          }
+        }
+
+        // --- ER ---
+        const ers = group.map(p => p.er).filter(v => v != null && v !== 0);
+        if (ers.length >= ANOMALY_MIN_GROUP) {
+          const medE = median(ers);
+          const madE = median(ers.map(v => Math.abs(v - medE)));
+          if (madE > 0) {
+            for (const p of group) {
+              if (p.er == null || p.er === 0) continue;
+              const z = 0.6745 * (p.er - medE) / madE;
+              if (Math.abs(z) >= ANOMALY_Z_THRESHOLD) {
+                found.push({ post: p, metric: 'er', z, direction: z > 0 ? 'up' : 'down', value: p.er, baseline: medE });
+              }
+            }
+          }
+        }
+      }
+
+      // Si un mismo post califica por alcance Y por ER, nos quedamos con
+      // la métrica de mayor severidad para no listarlo dos veces
+      const byPostKey = new Map();
+      for (const a of found) {
+        const key = a.post.link || `${a.post.platform}|${a.post.date}|${a.post.campaign}|${a.post.format}|${a.post.reach}`;
+        const prev = byPostKey.get(key);
+        if (!prev || Math.abs(a.z) > Math.abs(prev.z)) byPostKey.set(key, a);
+      }
+
+      return [...byPostKey.values()].sort((a, b) => Math.abs(b.z) - Math.abs(a.z)).slice(0, 12);
+    }
+
+    function AnomalyRow({ a, onPick }) {
+      const p = a.post;
+      const color = PLAT_COLORS[p.platform];
+      const up = a.direction === 'up';
+      const metricLabel = a.metric === 'reach' ? 'Alcance' : 'ER';
+      const valueFmt = a.metric === 'reach' ? fmt(a.value) : erFmt(a.value);
+      const baselineFmt = a.metric === 'reach' ? fmt(a.baseline) : erFmt(a.baseline);
+      return html`
+        <tr onClick=${() => onPick(p)}
+            className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] cursor-pointer transition-colors group">
+          <td className="py-2.5 px-4">
+            <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
+          </td>
+          <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
+          <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
+          <td className="py-2.5 px-4 text-[11px] text-txt3">${p.format || '—'}</td>
+          <td className="py-2.5 px-4">
+            <span className=${"inline-flex items-center gap-1 text-[11px] font-mono " + (up ? "text-success" : "text-amber")}>
+              ${up ? '↑' : '↓'} ${metricLabel}
+            </span>
+          </td>
+          <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${valueFmt}</td>
+          <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[11px] text-faint">típico ${baselineFmt}</td>
+          <td className="py-2.5 pl-2 pr-4 text-right font-mono tabular-nums text-[11px] text-txt4">z ${a.z.toFixed(1)}</td>
+        </tr>`;
+    }
+
+    function AnomaliesSection({ D, onPick }) {
+      const anomalies = useMemo(() => computeAnomalies(D), [D]);
+      return html`
+        <section id="sec-anomalias" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-anomalias" name="Anomalias" />
+          <div className="flex flex-wrap items-baseline justify-between gap-4 mb-5">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 10</div>
+              <h2 className="text-[18px] font-medium text-txt">Detector de anomalías</h2>
+              <p className="text-txt4 text-[12px] mt-1">Posts que se salen del patrón normal de su plataforma en alcance o ER. Click para ver el detalle.</p>
+            </div>
+            ${anomalies.length > 0 && html`
+              <div className="text-[11px] font-mono text-txt4">${anomalies.length} detectada${anomalies.length === 1 ? '' : 's'}</div>
+            `}
+          </div>
+
+          ${anomalies.length === 0 ? html`
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px] mb-1">Sin anomalías detectadas en este filtro</div>
+              <div className="text-faint text-[11px] font-mono">Se necesitan al menos ${ANOMALY_MIN_GROUP} posts por plataforma para establecer un patrón normal</div>
+            </div>
+          ` : html`
+            <div className="rounded-xl bg-surface border border-line overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">
+                    <th className="text-left py-2.5 px-4 font-medium">Plat.</th>
+                    <th className="text-left py-2.5 px-4 font-medium">Fecha</th>
+                    <th className="text-left py-2.5 px-4 font-medium">Campaña</th>
+                    <th className="text-left py-2.5 px-4 font-medium">Formato</th>
+                    <th className="text-left py-2.5 px-4 font-medium">Tipo</th>
+                    <th className="text-right py-2.5 px-4 font-medium">Valor</th>
+                    <th className="text-right py-2.5 px-4 font-medium">Referencia</th>
+                    <th className="text-right py-2.5 pl-2 pr-4 font-medium">Severidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${anomalies.map((a, i) => html`<${AnomalyRow} key=${i} a=${a} onPick=${onPick} />`)}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </section>`;
+    }
+
+    // ============================================================
+    // CadenceSection — mapa de calor de cadencia de publicación.
+    // Una celda por día del calendario dentro del rango filtrado (estilo
+    // "contribuciones" de GitHub): más oscuro = más posts ese día. Los
+    // días sin publicar quedan visibles como huecos. Al costado, alcance
+    // promedio por día de la semana para ver si conviene publicar en
+    // ciertos días.
+    // ============================================================
+    const WEEKDAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+    function dateKey(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function computeCadence(D) {
+      const posts = D.allPosts || [];
+      const byDate = new Map();
+      for (const p of posts) {
+        const d = parseDate(p.date);
+        if (!d) continue;
+        const key = dateKey(d);
+        if (!byDate.has(key)) byDate.set(key, { date: d, posts: 0, reach: 0 });
+        const rec = byDate.get(key);
+        rec.posts += 1;
+        rec.reach += p.reach || 0;
+      }
+      if (byDate.size === 0) return null;
+
+      const withDates = [...byDate.values()].map(r => r.date);
+      const minDate = D.meta?.date_min_scope || withDates.reduce((a, b) => a < b ? a : b);
+      const maxDate = D.meta?.date_max_scope || withDates.reduce((a, b) => a > b ? a : b);
+
+      // Alinea el inicio de la cuadrícula al domingo anterior para que
+      // las columnas (semanas) queden parejas
+      const start = new Date(minDate);
+      start.setDate(start.getDate() - start.getDay());
+      const end = new Date(maxDate);
+
+      const days = [];
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        const key = dateKey(cursor);
+        const rec = byDate.get(key);
+        days.push({
+          date: new Date(cursor),
+          dow: cursor.getDay(),
+          posts: rec ? rec.posts : 0,
+          reach: rec ? rec.reach : 0,
+          inRange: cursor >= minDate && cursor <= maxDate,
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      const weeks = [];
+      for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+
+      const byWeekday = WEEKDAY_LABELS.map((label, dow) => {
+        const cells = days.filter(d => d.dow === dow && d.inRange && d.posts > 0);
+        const postsCount = cells.reduce((s, d) => s + d.posts, 0);
+        const reachSum = cells.reduce((s, d) => s + d.reach, 0);
+        return { dow, label, posts: postsCount, avgReachPerPost: postsCount > 0 ? reachSum / postsCount : 0 };
+      });
+
+      const maxPostsInDay = Math.max(1, ...days.map(d => d.posts));
+
+      return { weeks, byWeekday, maxPostsInDay };
+    }
+
+    function cadenceCellStyle(posts, maxPosts, inRange) {
+      if (!inRange) return { visibility: 'hidden' };
+      if (posts === 0) return { background: 'rgba(127,127,140,0.10)' };
+      const ratio = Math.min(1, posts / maxPosts);
+      const alpha = 0.22 + ratio * 0.68;
+      return { background: `rgba(139,127,232,${alpha.toFixed(2)})` };
+    }
+
+    function CadenceHeatmap({ cadence }) {
+      const { weeks, maxPostsInDay } = cadence;
+      return html`
+        <div className="overflow-x-auto pb-1">
+          <div className="inline-flex gap-[3px]">
+            <div className="flex flex-col gap-[3px] mr-1.5 shrink-0">
+              ${WEEKDAY_LABELS.map((l, i) => html`
+                <div key=${i} className="text-[8px] font-mono text-faint leading-none flex items-center" style=${{ height: '12px' }}>
+                  ${i % 2 === 1 ? l : ''}
+                </div>
+              `)}
+            </div>
+            ${weeks.map((week, wi) => html`
+              <div key=${wi} className="flex flex-col gap-[3px]">
+                ${week.map((day, di) => html`
+                  <div key=${di}
+                       title=${day.inRange ? `${dateShort(day.date)} · ${day.posts} post${day.posts === 1 ? '' : 's'}${day.posts ? ` · ${fmt(day.reach)} alcance` : ''}` : undefined}
+                       style=${{ width: '12px', height: '12px', borderRadius: '2px', ...cadenceCellStyle(day.posts, maxPostsInDay, day.inRange) }}>
+                  </div>
+                `)}
+              </div>
+            `)}
+          </div>
+        </div>`;
+    }
+
+    function WeekdayBars({ byWeekday }) {
+      const max = Math.max(1, ...byWeekday.map(d => d.avgReachPerPost));
+      return html`
+        <div className="rounded-xl bg-surface border border-line p-5 h-full">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-4">Alcance promedio por día de publicación</div>
+          <div className="space-y-2.5">
+            ${byWeekday.map(d => html`
+              <div key=${d.dow} className="grid grid-cols-12 items-center gap-3">
+                <div className="col-span-3 text-[11px] font-mono text-txt3">${d.label}</div>
+                <div className="col-span-6 relative h-5 rounded bg-onSurface/[0.04] overflow-hidden">
+                  <div className="absolute left-0 top-0 h-full rounded bg-accent2"
+                       style=${{ width: `${(d.avgReachPerPost / max * 100).toFixed(1)}%` }}></div>
+                </div>
+                <div className="col-span-3 text-right font-mono text-[11px] text-txt2 tabular-nums">${d.posts ? fmt(d.avgReachPerPost) : '—'}</div>
+              </div>
+            `)}
+          </div>
+          <div className="text-[10px] font-mono text-faint mt-4 pt-3 border-t border-line/50 leading-relaxed">Alcance promedio por publicación, agrupado por el día de la semana en que se publicó (dentro del filtro actual).</div>
+        </div>`;
+    }
+
+    function CadenceSection({ D }) {
+      const cadence = useMemo(() => computeCadence(D), [D]);
+      return html`
+        <section id="sec-cadencia" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-cadencia" name="Cadencia" />
+          <div className="mb-5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 11</div>
+            <h2 className="text-[18px] font-medium text-txt">Cadencia de publicación</h2>
+            <p className="text-txt4 text-[12px] mt-1">Un cuadro por día — mientras más oscuro, más publicaciones. Útil para detectar huecos y comparar rendimiento por día de la semana.</p>
+          </div>
+
+          ${!cadence ? html`
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px] mb-1">Sin fechas suficientes en este filtro</div>
+            </div>
+          ` : html`
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              <div className="lg:col-span-8 rounded-xl bg-surface border border-line p-5">
+                <${CadenceHeatmap} cadence=${cadence} />
+              </div>
+              <div className="lg:col-span-4">
+                <${WeekdayBars} byWeekday=${cadence.byWeekday} />
+              </div>
+            </div>
+          `}
+        </section>`;
+    }
+
+    // ============================================================
     // DetailDrawer
     // ============================================================
     function DrawerStat({ label, value }) {
@@ -4346,6 +4670,8 @@
                 <${AveragesSection}    D=${D}/>
                 <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
                 <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
+                <${AnomaliesSection}   D=${D} onPick=${setSelected}/>
+                <${CadenceSection}     D=${D}/>
               </main>
             `}
 
