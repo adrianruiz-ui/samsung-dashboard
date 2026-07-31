@@ -1849,7 +1849,7 @@
               </div>
               <p className="max-w-2xl text-txt3 text-[13px] leading-relaxed">
                 <span className="text-txt2 font-medium">${fmtFull(g.posts)} publicaciones</span> en
-                <span className="text-txt2 font-medium"> ${Object.keys(D.by_platform).length} plataformas</span> generaron
+                <span className="text-txt2 font-medium"> ${Object.keys(D.by_platform).length} ${Object.keys(D.by_platform).length === 1 ? 'plataforma' : 'plataformas'}</span> generaron
                 <span className="text-txt2 font-medium"> ${fmt(g.inter)} interacciones</span> y
                 <span className="text-txt2 font-medium"> ${fmt(g.views)} reproducciones</span> a lo largo de
                 <span className="text-txt2 font-medium"> ${(D.meta.weeks_in_scope || D.meta.weeks).length} semanas</span> activas.
