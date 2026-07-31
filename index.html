@@ -1835,7 +1835,7 @@
               <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full pointer-events-none"
                    style=${{ background: 'radial-gradient(circle, rgba(139,127,232,0.18) 0%, transparent 70%)' }}></div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-3">
-                § 01 · ${dateFmt(D.meta.date_min)} → ${dateFmt(D.meta.date_max)}
+                § 01 · ${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} → ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}
               </div>
               <div className="flex items-baseline gap-2 mb-3 flex-wrap">
                 <span className="text-txt font-medium leading-[0.95] tracking-tightest break-all"
@@ -1849,7 +1849,7 @@
               </div>
               <p className="max-w-2xl text-txt3 text-[13px] leading-relaxed">
                 <span className="text-txt2 font-medium">${fmtFull(g.posts)} publicaciones</span> en
-                <span className="text-txt2 font-medium"> ${D.meta.platforms.length} plataformas</span> generaron
+                <span className="text-txt2 font-medium"> ${Object.keys(D.by_platform).length} plataformas</span> generaron
                 <span className="text-txt2 font-medium"> ${fmt(g.inter)} interacciones</span> y
                 <span className="text-txt2 font-medium"> ${fmt(g.views)} reproducciones</span> a lo largo de
                 <span className="text-txt2 font-medium"> ${(D.meta.weeks_in_scope || D.meta.weeks).length} semanas</span> activas.
