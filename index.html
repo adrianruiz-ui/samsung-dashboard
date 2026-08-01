@@ -2310,29 +2310,155 @@
     // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
-    function KpiCell({ label, value, sub, accent }) {
+    function KpiCell({ label, value, sub, accent, onClick }) {
       return html`
-        <div className="rounded-xl bg-surface border border-line px-4 py-3.5 min-w-0">
-          <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">${label}</div>
+        <div onClick=${onClick}
+             className=${"rounded-xl bg-surface border border-line px-4 py-3.5 min-w-0 relative group " +
+               (onClick ? "cursor-pointer hover:border-line2 transition-colors" : "")}
+             title=${onClick ? `Ver de dónde sale ${label}` : undefined}>
+          <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5 flex items-center justify-between">
+            <span>${label}</span>
+            ${onClick && html`<span className="opacity-0 group-hover:opacity-100 transition-opacity text-accent2 normal-case tracking-normal">trazar ↗</span>`}
+          </div>
           <div className=${"font-medium tabular-nums leading-tight break-all " + (accent ? "text-accent" : "text-txt")}
                style=${{ fontSize: 'clamp(14px, 1.6vw, 20px)' }}>${value}</div>
           ${sub && html`<div className="text-[10px] text-txt4 mt-1.5 font-mono break-all">${sub}</div>`}
         </div>`;
     }
 
-    function KpiRow({ D }) {
+    function KpiRow({ D, onTrace }) {
       const g = D.global;
       return html`
         <section className="px-7 pb-5">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} />
-            <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} />
-            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR prom.`} />
-            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent />
-            <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} />
+            <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} onClick=${onTrace ? () => onTrace('reach') : undefined} />
+            <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} onClick=${onTrace ? () => onTrace('inter') : undefined} />
+            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR prom.`} onClick=${onTrace ? () => onTrace('views') : undefined} />
+            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
+            <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} onClick=${onTrace ? () => onTrace('comments') : undefined} />
             <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} />
           </div>
         </section>`;
+    }
+
+    // ============================================================
+    // Trazabilidad de KPI — clic en un número del strip de arriba y ver
+    // exactamente qué posts lo componen y cómo se calculó. Dos tipos:
+    // "sum" (participan todos los posts del filtro, aunque sumen 0) y
+    // "avg" (solo participan los posts con dato registrado — se listan
+    // los excluidos para que quede claro por qué el denominador no es
+    // el total de posts).
+    // ============================================================
+    const KPI_TRACE_CONFIG = {
+      reach:     { field: 'reach',        type: 'sum', label: 'Alcance',        formula: 'Suma del campo "Alcance" de cada post dentro del filtro actual.' },
+      inter:     { field: 'interactions', type: 'sum', label: 'Interacciones',  formula: 'Suma del campo "Interacciones" de cada post dentro del filtro actual.' },
+      views:     { field: 'views',        type: 'sum', label: 'Reproducciones', formula: 'Suma del campo "Reproducciones" de cada post dentro del filtro actual (aplica principalmente a video).' },
+      comments:  { field: 'comments',     type: 'sum', label: 'Comentarios',    formula: 'Suma del campo "Comentarios" de cada post dentro del filtro actual.' },
+      er_avg:    { field: 'er',           type: 'avg', label: 'ER promedio',    formula: 'Promedio aritmético del ER de cada post — se excluyen los posts sin ER registrado o en 0, no se pondera por alcance.' },
+    };
+
+    function computeKpiTrace(D, key) {
+      const cfg = KPI_TRACE_CONFIG[key];
+      if (!cfg) return null;
+      const posts = D.allPosts || [];
+
+      if (cfg.type === 'sum') {
+        const total = posts.reduce((s, p) => s + (p[cfg.field] || 0), 0);
+        const top = [...posts].sort((a, b) => (b[cfg.field] || 0) - (a[cfg.field] || 0)).slice(0, 12);
+        return { ...cfg, key, total, postsCount: posts.length, top };
+      }
+
+      // avg
+      const withValue = posts.filter(p => p[cfg.field] != null && p[cfg.field] !== 0);
+      const sum = withValue.reduce((s, p) => s + p[cfg.field], 0);
+      const avg = withValue.length ? sum / withValue.length : 0;
+      const top = [...withValue].sort((a, b) => b[cfg.field] - a[cfg.field]).slice(0, 12);
+      return {
+        ...cfg, key, avg, sum,
+        includedCount: withValue.length,
+        excludedCount: posts.length - withValue.length,
+        postsCount: posts.length, top,
+      };
+    }
+
+    function TraceRow({ trace, p, onPick }) {
+      const color = PLAT_COLORS[p.platform];
+      const val = trace.field === 'er' ? erFmt(p[trace.field]) : fmt(p[trace.field]);
+      return html`
+        <tr onClick=${() => onPick(p)}
+            className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] cursor-pointer transition-colors">
+          <td className="py-2 px-3">
+            <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
+          </td>
+          <td className="py-2 px-3 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
+          <td className="py-2 px-3 text-[12px] text-txt2 truncate max-w-[160px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
+          <td className="py-2 px-3 text-right font-mono tabular-nums text-[12px] text-txt">${val}</td>
+        </tr>`;
+    }
+
+    function KpiTraceDrawer({ trace, onClose, onPick }) {
+      if (!trace) return null;
+      const isSum = trace.type === 'sum';
+      return html`
+        <div className="fixed inset-0 z-40 flex justify-end" style=${{ background: 'rgba(0,0,0,0.45)' }} onClick=${onClose}>
+          <div className="w-full max-w-[540px] h-full bg-surface border-l border-line overflow-y-auto" onClick=${e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-surface border-b border-line px-6 py-4 flex items-center justify-between z-10">
+              <div className="text-[13px] font-medium text-txt">Trazabilidad · ${trace.label}</div>
+              <button onClick=${onClose} className="text-txt4 hover:text-txt transition-colors"><${XIcon} size=${18}/></button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Valor mostrado en el dashboard</div>
+                <div className="font-medium text-txt tabular-nums" style=${{ fontSize: 'clamp(24px, 3vw, 34px)' }}>
+                  ${isSum ? fmt(trace.total) : erFmt(trace.avg)}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Fórmula</div>
+                <p className="text-[13px] text-txt3 leading-relaxed">${trace.formula}</p>
+              </div>
+
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Alcance del cálculo</div>
+                ${isSum ? html`
+                  <p className="text-[13px] text-txt3 leading-relaxed">
+                    Incluye los <span className="text-txt2 font-medium">${fmtFull(trace.postsCount)} posts</span> del filtro actual (aunque un post no tenga dato, cuenta como 0).
+                  </p>
+                ` : html`
+                  <p className="text-[13px] text-txt3 leading-relaxed">
+                    <span className="text-txt2 font-medium">${fmtFull(trace.includedCount)} de ${fmtFull(trace.postsCount)} posts</span> tienen ${trace.label.toLowerCase()} registrado y entran al promedio
+                    ${trace.excludedCount > 0 ? html` · <span className="text-amber">${fmtFull(trace.excludedCount)} excluido${trace.excludedCount === 1 ? '' : 's'}</span> por no tener valor` : '.'}
+                  </p>
+                  <p className="text-[11px] font-mono text-faint mt-2">suma ${erFmt(trace.sum)} ÷ ${fmtFull(trace.includedCount)} posts = ${erFmt(trace.avg)}</p>
+                `}
+              </div>
+
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">
+                  ${isSum ? 'Principales contribuyentes' : 'Valores más altos que entran al promedio'}
+                </div>
+                <div className="rounded-xl border border-line overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-line text-[9px] font-mono uppercase tracking-[0.15em] text-txt4 bg-onSurface/[0.02]">
+                        <th className="text-left py-2 px-3 font-medium">Plat.</th>
+                        <th className="text-left py-2 px-3 font-medium">Fecha</th>
+                        <th className="text-left py-2 px-3 font-medium">Campaña</th>
+                        <th className="text-right py-2 px-3 font-medium">${trace.label}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${trace.top.map((p, i) => html`<${TraceRow} key=${i} trace=${trace} p=${p} onPick=${onPick} />`)}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-[10px] font-mono text-faint mt-2">Click en una fila para ver el post completo · mostrando los ${trace.top.length} con mayor aporte.</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
     }
 
     // ============================================================
@@ -4549,6 +4675,7 @@
       const { data, loading, refreshing, error, errors, fetchedAt, refresh, autoRefreshMin } = useDashboardData();
       const [selected, setSelected] = useState(null);
       const [exportOpen, setExportOpen] = useState(false);
+      const [kpiTrace, setKpiTrace] = useState(null);
       const allPosts = data?.allPosts || [];
       const { filters, setFilters, clear, isActive } = useFilters(allPosts);
       const { theme, toggleTheme, chart: chartTheme } = useTheme();
@@ -4661,7 +4788,7 @@
               <main>
                 <${HeroSection}    D=${D} chartTheme=${chartTheme}/>
                 <${InsightsPanel}  D=${D}/>
-                <${KpiRow}         D=${D}/>
+                <${KpiRow}         D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
                 <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
@@ -4681,6 +4808,7 @@
           </div>
 
           ${selected && html`<${DetailDrawer} post=${selected} onClose=${() => setSelected(null)}/>`}
+          ${kpiTrace && html`<${KpiTraceDrawer} trace=${kpiTrace} onClose=${() => setKpiTrace(null)} onPick=${(p) => { setKpiTrace(null); setSelected(p); }}/>`}
           <${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} D=${D} filters=${filters}/>
         </div>`;
     }
