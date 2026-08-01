@@ -3562,35 +3562,25 @@
 
     // ============================================================
     // computeHeroDeltas — deltas semana actual vs. semana anterior para
-    // pintar badges de tendencia en el strip de KPIs del hero. Si hay
-    // exactamente una semana seleccionada en los filtros, compara esa
-    // semana contra la anterior (ignorando el filtro de semana, igual
-    // que el modo Week-over-Week de Comparativas). Si no, usa las
-    // últimas dos semanas activas dentro del scope filtrado actual.
+    // pintar badges de tendencia en el strip de KPIs del hero. Solo
+    // aplica cuando el filtro de Semana tiene exactamente una semana
+    // seleccionada (si no, no hay una "semana actual" inequívoca que
+    // comparar, así que no se muestra ningún badge). Compara esa semana
+    // contra la anterior, ignorando el filtro de semana pero respetando
+    // el resto de filtros activos — igual que el modo Week-over-Week de
+    // Comparativas.
     // ============================================================
     function computeHeroDeltas(D, rawPosts, filters) {
       const selWeeks = filters?.weeks;
       const isSingleWeek = selWeeks && selWeeks.length === 1;
-      let currentPosts, prevPosts, currentWeek, prevWeek;
+      if (!isSingleWeek) return null;
 
-      if (isSingleWeek) {
-        currentWeek = selWeeks[0];
-        prevWeek = currentWeek - 1;
-        const filtersNoWeek = { ...filters, weeks: [] };
-        const scoped = applyFilters(rawPosts || [], filtersNoWeek);
-        currentPosts = scoped.filter(p => p.week === currentWeek);
-        prevPosts = scoped.filter(p => p.week === prevWeek);
-      } else {
-        const posts = D.allPosts || [];
-        const weeksSet = new Set();
-        for (const p of posts) { if (p.week != null) weeksSet.add(p.week); }
-        const weeks = [...weeksSet].sort((a, b) => a - b);
-        if (weeks.length < 2) return null;
-        currentWeek = weeks[weeks.length - 1];
-        prevWeek = weeks[weeks.length - 2];
-        currentPosts = posts.filter(p => p.week === currentWeek);
-        prevPosts = posts.filter(p => p.week === prevWeek);
-      }
+      const currentWeek = selWeeks[0];
+      const prevWeek = currentWeek - 1;
+      const filtersNoWeek = { ...filters, weeks: [] };
+      const scoped = applyFilters(rawPosts || [], filtersNoWeek);
+      const currentPosts = scoped.filter(p => p.week === currentWeek);
+      const prevPosts = scoped.filter(p => p.week === prevWeek);
 
       if (!prevPosts || prevPosts.length === 0) return null;
 
