@@ -4885,13 +4885,21 @@
         return result;
       }, [data, allPosts, baseMeta, filters]);
 
+      // OJO: este hook tiene que vivir ANTES de los early-return de abajo
+      // (loading/error) — un useMemo colocado después de un return
+      // condicional rompe las Rules of Hooks (a veces se ejecuta, a veces
+      // no) y React tira el error #310.
+      const anomalyCount = useMemo(() => {
+        if (!filteredData || filteredData.global.posts === 0) return 0;
+        return computeAnomalies(filteredData).length;
+      }, [filteredData]);
+
       if (loading) return html`<${LoadingState}/>`;
       if (error)   return html`<${ErrorState} message=${error} onRetry=${refresh}/>`;
       if (!data || !filteredData) return html`<${ErrorState} message="Sin datos disponibles." onRetry=${refresh}/>`;
 
       const D = filteredData;
       const noResults = D.global.posts === 0;
-      const anomalyCount = useMemo(() => noResults ? 0 : computeAnomalies(D).length, [D, noResults]);
 
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
