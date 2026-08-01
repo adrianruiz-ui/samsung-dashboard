@@ -161,7 +161,7 @@
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
     import {
       ResponsiveContainer, AreaChart, Area, BarChart, Bar,
-      LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid,
+      LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
     } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
@@ -1291,6 +1291,14 @@
         <path d="M18 6 6 18"/>
         <path d="m6 6 12 12"/>
       </svg>`;
+    const SearchIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${2} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <circle cx="11" cy="11" r="8"/>
+        <path d="m21 21-4.3-4.3"/>
+      </svg>`;
     const SunIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1625,12 +1633,17 @@
                 const isOn = active === id;
                 return html`
                   <button key=${id} onClick=${() => scrollTo(id)}
-                    className=${"flex items-center gap-2.5 rounded-lg transition-colors text-[12px] " +
+                    className=${"relative group flex items-center gap-2.5 rounded-lg transition-colors text-[12px] " +
                       (collapsed ? "justify-center w-10 h-10 mx-auto" : "px-3 py-2 w-full") + " " +
                       (isOn ? "bg-accent2/10 text-txt" : "text-txt2 hover:bg-onSurface/[0.03] hover:text-txt")}
                     title=${collapsed ? label : ''}>
                     <${Icon} size=${15} className=${isOn ? "text-accent" : "text-txt3"}/>
                     ${!collapsed && html`<span>${label}</span>`}
+                    ${collapsed && html`
+                      <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-surface border border-line px-2.5 py-1.5 text-[11px] text-txt opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl">
+                        ${label}
+                      </span>
+                    `}
                   </button>`;
               })}
             </div>
@@ -2004,9 +2017,77 @@
     }
 
     // ============================================================
+    // PostSearch — buscador rápido para saltar directo a un post
+    // específico (por campaña, subcampaña, producto, formato, tipo de
+    // contenido, pauta, etapa, objetivo, influencer o plataforma), sin
+    // pasar por el Catálogo. Busca sobre TODO el dataset (sin importar
+    // los filtros activos) para que siempre se pueda encontrar cualquier
+    // post; al elegir uno se abre el mismo DetailDrawer que usa el resto
+    // del dashboard.
+    // ============================================================
+    const POST_SEARCH_FIELDS = ['campaign', 'subcampaign', 'product', 'format', 'content_type', 'strategy', 'stage', 'objective', 'influencer_name', 'platform', 'link'];
+
+    function PostSearch({ allPosts, onPick }) {
+      const [query, setQuery] = useState('');
+      const [open, setOpen] = useState(false);
+      const wrapRef = useRef(null);
+
+      useEffect(() => {
+        const onDocClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', onDocClick);
+        return () => document.removeEventListener('mousedown', onDocClick);
+      }, []);
+
+      const results = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (q.length < 2) return [];
+        const matches = [];
+        for (const p of (allPosts || [])) {
+          for (const f of POST_SEARCH_FIELDS) {
+            const v = p[f];
+            if (v != null && String(v).toLowerCase().includes(q)) { matches.push(p); break; }
+          }
+          if (matches.length >= 60) break;
+        }
+        return matches.sort((a, b) => (b.reach || 0) - (a.reach || 0)).slice(0, 8);
+      }, [query, allPosts]);
+
+      const pick = (p) => { onPick(p); setOpen(false); setQuery(''); };
+
+      return html`
+        <div ref=${wrapRef} className="relative">
+          <div className="relative">
+            <${SearchIcon} size=${13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-txt4 pointer-events-none"/>
+            <input type="text" value=${query}
+                   onChange=${(e) => { setQuery(e.target.value); setOpen(true); }}
+                   onFocus=${() => setOpen(true)}
+                   placeholder="Buscar post…"
+                   className="h-8 pl-8 pr-3 rounded-lg border border-line bg-onSurface/[0.03] text-[11px] text-txt placeholder:text-txt4 focus:outline-none focus:border-line2 focus:bg-onSurface/[0.05] w-[150px] focus:w-[260px] transition-all" />
+          </div>
+          ${open && query.trim().length >= 2 && html`
+            <div className="absolute right-0 mt-1.5 w-[360px] max-h-[420px] overflow-y-auto rounded-xl border border-line bg-surface shadow-2xl z-50">
+              ${results.length === 0 ? html`
+                <div className="px-4 py-6 text-center text-[12px] text-txt4">Sin resultados para "${query}"</div>
+              ` : results.map((p, i) => html`
+                <button key=${i} onClick=${() => pick(p)}
+                        className="w-full text-left px-3.5 py-2.5 border-b border-line/50 last:border-0 hover:bg-onSurface/[0.04] transition-colors flex items-center gap-2.5">
+                  <span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded shrink-0" style=${{ background: PLAT_COLORS[p.platform] || '#666' }}>${PLAT_LETTERS[p.platform] || '?'}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px] text-txt truncate">${p.campaign || p.product || 'Sin campaña'}</div>
+                    <div className="text-[10px] font-mono text-txt4 truncate">${dateShort(p.date)} · ${p.format || '—'}${p.subcampaign ? ' · ' + p.subcampaign : ''}</div>
+                  </div>
+                  <div className="text-[11px] font-mono text-txt3 tabular-nums shrink-0">${fmt(p.reach)}</div>
+                </button>
+              `)}
+            </div>
+          `}
+        </div>`;
+    }
+
+    // ============================================================
     // COMPONENTES — TopBar
     // ============================================================
-    function TopBar({ fetchedAt, onRefresh, refreshing, autoRefreshMin }) {
+    function TopBar({ fetchedAt, onRefresh, refreshing, autoRefreshMin, allPosts, onPick }) {
       const today = new Date().toLocaleDateString('es-MX', {
         weekday:'long', day:'2-digit', month:'long', year:'numeric',
       });
@@ -2033,6 +2114,7 @@
             <h1 className="text-[22px] font-medium text-txt leading-none tracking-tight">Resumen ejecutivo</h1>
           </div>
           <div className="flex items-center gap-2">
+            <${PostSearch} allPosts=${allPosts} onPick=${onPick}/>
             ${fetchedAt && html`
               <div className="hidden lg:block text-right mr-2">
                 <div className="text-[10px] font-mono text-txt4">Actualizado ${timeAgo(fetchedAt)}</div>
@@ -2310,7 +2392,7 @@
     // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
-    function KpiCell({ label, value, sub, accent, onClick }) {
+    function KpiCell({ label, value, sub, accent, onClick, delta, deltaLabel }) {
       return html`
         <div onClick=${onClick}
              className=${"rounded-xl bg-surface border border-line px-4 py-3.5 min-w-0 relative group " +
@@ -2322,21 +2404,29 @@
           </div>
           <div className=${"font-medium tabular-nums leading-tight break-all " + (accent ? "text-accent" : "text-txt")}
                style=${{ fontSize: 'clamp(14px, 1.6vw, 20px)' }}>${value}</div>
-          ${sub && html`<div className="text-[10px] text-txt4 mt-1.5 font-mono break-all">${sub}</div>`}
+          ${delta !== undefined && html`
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <${DeltaPill} pct=${delta} />
+              ${deltaLabel && html`<span className="text-[9px] font-mono text-faint">${deltaLabel}</span>`}
+            </div>
+          `}
+          ${sub && html`<div className=${"text-[10px] text-txt4 font-mono break-all " + (delta !== undefined ? "mt-1" : "mt-1.5")}>${sub}</div>`}
         </div>`;
     }
 
-    function KpiRow({ D, onTrace }) {
+    function KpiRow({ D, onTrace, rawPosts, filters }) {
       const g = D.global;
+      const heroDeltas = useMemo(() => computeHeroDeltas(D, rawPosts, filters), [D, rawPosts, filters]);
+      const dLabel = heroDeltas ? `vs S${heroDeltas.prevWeek}` : null;
       return html`
         <section className="px-7 pb-5">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} onClick=${onTrace ? () => onTrace('reach') : undefined} />
-            <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} onClick=${onTrace ? () => onTrace('inter') : undefined} />
-            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR prom.`} onClick=${onTrace ? () => onTrace('views') : undefined} />
-            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
-            <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} onClick=${onTrace ? () => onTrace('comments') : undefined} />
-            <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} />
+            <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
+            <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
+            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR prom.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
+            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent delta=${heroDeltas?.er_avg} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
+            <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} delta=${heroDeltas?.comments} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('comments') : undefined} />
+            <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} delta=${heroDeltas?.posts} deltaLabel=${dLabel} />
           </div>
         </section>`;
     }
@@ -2678,6 +2768,38 @@
         ? 0   // mostrar todos los días
         : Math.max(0, Math.floor(series.length / 12));
 
+      // Marcadores de lanzamiento de campaña: primera semana con posts de
+      // cada campaña DENTRO del scope filtrado actual (no del histórico
+      // completo), para que la anotación siempre sea coherente con lo que
+      // se está viendo. Solo aplica en vista semanal (en vista diaria de
+      // una sola semana no aporta). Si dos campañas arrancan la misma
+      // semana, se muestra solo la de más volumen para no saturar el eje;
+      // y si hay muchas campañas en el rango, se limita a las 10 más
+      // grandes para que las etiquetas no se amontonen.
+      const campaignLaunches = useMemo(() => {
+        if (isDailyMode) return [];
+        const byCampaign = {};
+        for (const p of (D.allPosts || [])) {
+          if (!p.campaign || p.week == null) continue;
+          if (!byCampaign[p.campaign] || p.week < byCampaign[p.campaign].week) {
+            byCampaign[p.campaign] = { week: p.week, count: 0 };
+          }
+        }
+        for (const p of (D.allPosts || [])) {
+          if (p.campaign && byCampaign[p.campaign]) byCampaign[p.campaign].count++;
+        }
+        let launches = Object.entries(byCampaign).map(([name, v]) => ({ name, week: v.week, count: v.count }));
+        const byWeek = new Map();
+        for (const l of [...launches].sort((a, b) => b.count - a.count)) {
+          if (!byWeek.has(l.week)) byWeek.set(l.week, l);
+        }
+        launches = [...byWeek.values()];
+        if (launches.length > 10) {
+          launches = [...launches].sort((a, b) => b.count - a.count).slice(0, 10);
+        }
+        return launches.sort((a, b) => a.week - b.week);
+      }, [D, isDailyMode]);
+
       return html`
         <section id="sec-tendencia" className="px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-tendencia" name="Tendencia" />
@@ -2703,7 +2825,7 @@
           <div className="rounded-xl bg-surface border border-line p-5">
             <div className="h-72">
               <${ResponsiveContainer}>
-                <${ComposedChart} data=${series} margin=${{ top:10, right:16, left:8, bottom:8 }}>
+                <${ComposedChart} data=${series} margin=${{ top:22, right:16, left:8, bottom:8 }}>
                   <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
                   <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }}
@@ -2727,12 +2849,20 @@
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
                            stroke="#AFA9EC" strokeWidth=${2}
                            dot=${{ fill:'#AFA9EC', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#AFA9EC', strokeWidth:2 }} />
+                  ${campaignLaunches.map(l => html`
+                    <${ReferenceLine} key=${l.name} yAxisId="left" x=${'S' + l.week}
+                      stroke="#F0B358" strokeOpacity=${0.55} strokeDasharray="3 3"
+                      label=${{ value: l.name.length > 16 ? l.name.slice(0, 15) + '…' : l.name, position: 'top', fontSize: 9, fill: '#F0B358' }} />
+                  `)}
                 <//>
               <//>
             </div>
             <div className="flex gap-5 mt-3 pt-3 border-t border-line text-[10px] font-mono text-txt4">
               <div className="flex items-center gap-2"><span className="w-3 h-0.5 bg-accent"></span><span>${TREND_METRICS.find(m => m.k === metric)?.l}</span></div>
               <div className="flex items-center gap-2"><span className="w-3 h-2 bg-white/10 rounded-sm"></span><span>Volumen de posts</span></div>
+              ${campaignLaunches.length > 0 && html`
+                <div className="flex items-center gap-2"><span className="w-3 h-0.5 border-t border-dashed" style=${{ borderColor: '#F0B358' }}></span><span>Lanzamiento de campaña</span></div>
+              `}
               ${isDailyMode && outOfWindow > 0 && html`
                 <div className="text-amber" title="Posts marcados como esta semana pero con fecha fuera del rango Dom→Sáb">
                   ⚠ ${outOfWindow} post${outOfWindow === 1 ? '' : 's'} con fecha fuera de la semana
@@ -3407,11 +3537,12 @@
 
     // Calcula un agregado simple desde una lista de posts (sin pasar por aggAdd)
     function quickAgg(posts) {
-      let reach=0, inter=0, views=0, er_sum=0, er_n=0, basic_sum=0, basic_n=0, vtr_sum=0, vtr_n=0;
+      let reach=0, inter=0, views=0, comments=0, er_sum=0, er_n=0, basic_sum=0, basic_n=0, vtr_sum=0, vtr_n=0;
       for (const p of posts) {
         reach += p.reach || 0;
         inter += p.interactions || 0;
         views += p.views || 0;
+        comments += p.comments || 0;
         if (p.er != null && p.er !== 0)             { er_sum += p.er; er_n++; }
         if (p.basic_er != null && p.basic_er !== 0) { basic_sum += p.basic_er; basic_n++; }
         if (p.vtr != null && p.vtr !== 0)           { vtr_sum += p.vtr; vtr_n++; }
@@ -3419,13 +3550,60 @@
       const n = posts.length;
       return {
         posts: n,
-        reach, inter, views,
+        reach, inter, views, comments,
         er_avg: er_n ? er_sum / er_n : 0,
         basic_er_avg: basic_n ? basic_sum / basic_n : 0,
         vtr_avg: vtr_n ? vtr_sum / vtr_n : 0,
         reach_per_post: n ? reach / n : 0,
         inter_per_post: n ? inter / n : 0,
         views_per_post: n ? views / n : 0,
+      };
+    }
+
+    // ============================================================
+    // computeHeroDeltas — deltas semana actual vs. semana anterior para
+    // pintar badges de tendencia en el strip de KPIs del hero. Si hay
+    // exactamente una semana seleccionada en los filtros, compara esa
+    // semana contra la anterior (ignorando el filtro de semana, igual
+    // que el modo Week-over-Week de Comparativas). Si no, usa las
+    // últimas dos semanas activas dentro del scope filtrado actual.
+    // ============================================================
+    function computeHeroDeltas(D, rawPosts, filters) {
+      const selWeeks = filters?.weeks;
+      const isSingleWeek = selWeeks && selWeeks.length === 1;
+      let currentPosts, prevPosts, currentWeek, prevWeek;
+
+      if (isSingleWeek) {
+        currentWeek = selWeeks[0];
+        prevWeek = currentWeek - 1;
+        const filtersNoWeek = { ...filters, weeks: [] };
+        const scoped = applyFilters(rawPosts || [], filtersNoWeek);
+        currentPosts = scoped.filter(p => p.week === currentWeek);
+        prevPosts = scoped.filter(p => p.week === prevWeek);
+      } else {
+        const posts = D.allPosts || [];
+        const weeksSet = new Set();
+        for (const p of posts) { if (p.week != null) weeksSet.add(p.week); }
+        const weeks = [...weeksSet].sort((a, b) => a - b);
+        if (weeks.length < 2) return null;
+        currentWeek = weeks[weeks.length - 1];
+        prevWeek = weeks[weeks.length - 2];
+        currentPosts = posts.filter(p => p.week === currentWeek);
+        prevPosts = posts.filter(p => p.week === prevWeek);
+      }
+
+      if (!prevPosts || prevPosts.length === 0) return null;
+
+      const curr = quickAgg(currentPosts);
+      const prev = quickAgg(prevPosts);
+      return {
+        currentWeek, prevWeek,
+        reach:    deltaPct(curr.reach, prev.reach),
+        inter:    deltaPct(curr.inter, prev.inter),
+        views:    deltaPct(curr.views, prev.views),
+        er_avg:   deltaPct(curr.er_avg, prev.er_avg),
+        comments: deltaPct(curr.comments, prev.comments),
+        posts:    deltaPct(curr.posts, prev.posts),
       };
     }
 
@@ -4713,6 +4891,7 @@
 
       const D = filteredData;
       const noResults = D.global.posts === 0;
+      const anomalyCount = useMemo(() => noResults ? 0 : computeAnomalies(D).length, [D, noResults]);
 
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
@@ -4740,7 +4919,7 @@
               allPosts=${allPosts}
             />
 
-            <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin}/>
+            <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin} allPosts=${allPosts} onPick=${setSelected}/>
 
             ${errors && errors.length > 0 && html`
               <div className="px-7 mb-3">
@@ -4774,6 +4953,16 @@
               </div>
             `}
 
+            ${!noResults && anomalyCount > 0 && html`
+              <div className="px-7 mb-3">
+                <button onClick=${() => document.getElementById('sec-anomalias')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        className="w-full text-left rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber hover:bg-amber/15 transition-colors flex items-center gap-2">
+                  <${AlertIcon} size=${13}/>
+                  <span><span className="font-mono uppercase tracking-wider">${anomalyCount} anomalía${anomalyCount === 1 ? '' : 's'} detectada${anomalyCount === 1 ? '' : 's'}</span> en el filtro actual — clic para ver el detalle</span>
+                </button>
+              </div>
+            `}
+
             ${noResults ? html`
               <div className="px-7 py-32 text-center">
                 <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-amber mb-4">Sin resultados</div>
@@ -4788,7 +4977,7 @@
               <main>
                 <${HeroSection}    D=${D} chartTheme=${chartTheme}/>
                 <${InsightsPanel}  D=${D}/>
-                <${KpiRow}         D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))}/>
+                <${KpiRow}         D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
                 <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
