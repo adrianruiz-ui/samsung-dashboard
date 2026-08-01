@@ -995,6 +995,7 @@
           { id: 'sec-catalogo',     name: 'Catálogo' },
           { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-cadencia',     name: 'Cadencia' },
+          { id: 'sec-simulador',    name: 'Simulador' },
         ];
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
         const pageW = pdf.internal.pageSize.getWidth();
@@ -1492,6 +1493,16 @@
         <line x1="3" y1="10" x2="21" y2="10"/>
       </svg>`;
 
+    const TargetIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className}>
+        <circle cx="12" cy="12" r="9"/>
+        <circle cx="12" cy="12" r="5"/>
+        <circle cx="12" cy="12" r="1"/>
+      </svg>`;
+
     // ============================================================
     // ESTADOS UI
     // ============================================================
@@ -1545,6 +1556,7 @@
       { id: 'catalogo',     label: 'Catálogo',     Icon: BagIcon      },
       { id: 'anomalias',    label: 'Anomalías',    Icon: AlertIcon    },
       { id: 'cadencia',     label: 'Cadencia',     Icon: CalendarIcon },
+      { id: 'simulador',    label: 'Simulador',    Icon: TargetIcon   },
     ];
 
     function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport }) {
@@ -4328,6 +4340,241 @@
     }
 
     // ============================================================
+    // SimuladorSection — calculadora de metas al revés: en vez de
+    // "hice X posts, obtuve Y", parte de la meta que pide el cliente y
+    // calcula cuántos posts de cada plataforma/formato hacen falta,
+    // usando el promedio histórico por post como base. Se ancla SIEMPRE
+    // al histórico completo de 2026 (a propósito, para que la base de
+    // comparación no cambie con los filtros del resto del dashboard) y
+    // se puede acotar por Tipo de contenido (Local/Regional/Global) y
+    // Pauta (Orgánico/Paid).
+    // ============================================================
+    const SIM_MIN_SAMPLE = 3;
+    const SIM_METRICS = [
+      { key: 'reach', label: 'Alcance',        avgKey: 'avgReach' },
+      { key: 'inter', label: 'Interacciones',  avgKey: 'avgInter' },
+      { key: 'views', label: 'Reproducciones', avgKey: 'avgViews' },
+      { key: 'clics', label: 'Clics',          avgKey: 'avgClics' },
+    ];
+
+    function computeSimGroups(posts2026, contentTypeScope, strategyScope) {
+      const scoped = posts2026.filter(p => {
+        if (contentTypeScope !== 'all' && p.content_type !== contentTypeScope) return false;
+        if (strategyScope !== 'all' && p.strategy !== strategyScope) return false;
+        return true;
+      });
+      const map = new Map();
+      for (const p of scoped) {
+        if (!p.platform || !p.format) continue;
+        const key = p.platform + '|' + p.format;
+        if (!map.has(key)) map.set(key, { platform: p.platform, format: p.format, n: 0, reach: 0, inter: 0, views: 0, clics: 0 });
+        const g = map.get(key);
+        g.n++;
+        g.reach += p.reach || 0;
+        g.inter += p.interactions || 0;
+        g.views += p.views || 0;
+        g.clics += p.clics || 0;
+      }
+      return [...map.values()].map(g => ({
+        ...g,
+        avgReach: g.n ? g.reach / g.n : 0,
+        avgInter: g.n ? g.inter / g.n : 0,
+        avgViews: g.n ? g.views / g.n : 0,
+        avgClics: g.n ? g.clics / g.n : 0,
+      }));
+    }
+
+    function SimScopeToggle({ label, options, value, onChange }) {
+      return html`
+        <div>
+          <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">${label}</div>
+          <div className="inline-flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
+            <button onClick=${() => onChange('all')}
+              className=${"px-3 py-1.5 text-[11px] transition-colors " + (value === 'all' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+              Todos
+            </button>
+            ${options.map(o => html`
+              <button key=${o} onClick=${() => onChange(o)}
+                className=${"px-3 py-1.5 text-[11px] border-l border-line transition-colors " + (value === o ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                ${o}
+              </button>
+            `)}
+          </div>
+        </div>`;
+    }
+
+    function SimuladorSection({ allPosts }) {
+      const posts2026 = useMemo(() => (allPosts || []).filter(p => p.year === 2026), [allPosts]);
+
+      const contentTypeOptions = useMemo(() =>
+        [...new Set(posts2026.map(p => p.content_type).filter(Boolean))].sort(), [posts2026]);
+      const strategyOptions = useMemo(() =>
+        [...new Set(posts2026.map(p => p.strategy).filter(Boolean))].sort(), [posts2026]);
+
+      const [contentTypeScope, setContentTypeScope] = useState('all');
+      const [strategyScope, setStrategyScope] = useState('all');
+      const [goalMetric, setGoalMetric] = useState('reach');
+      const [goalTarget, setGoalTarget] = useState('');
+      const [allocations, setAllocations] = useState({});
+
+      // Si cambia el universo (tipo de contenido / pauta), las filas ya
+      // no son las mismas — se resetea lo planeado para no dejar
+      // números "fantasma" de una combinación que ya no aplica.
+      useEffect(() => { setAllocations({}); }, [contentTypeScope, strategyScope]);
+
+      const groups = useMemo(
+        () => computeSimGroups(posts2026, contentTypeScope, strategyScope),
+        [posts2026, contentTypeScope, strategyScope]
+      );
+
+      const metricCfg = SIM_METRICS.find(m => m.key === goalMetric);
+      const sortedGroups = useMemo(
+        () => [...groups].sort((a, b) => b[metricCfg.avgKey] - a[metricCfg.avgKey]),
+        [groups, metricCfg]
+      );
+
+      const totalHistPosts = groups.reduce((s, g) => s + g.n, 0);
+
+      const setAlloc = (key, val) => {
+        const n = val === '' ? '' : Math.max(0, Math.round(Number(val) || 0));
+        setAllocations(prev => ({ ...prev, [key]: n }));
+      };
+
+      const target = Number(goalTarget) || 0;
+      const totalProjected = sortedGroups.reduce((s, g) => {
+        const key = g.platform + '|' + g.format;
+        const n = Number(allocations[key]) || 0;
+        return s + n * g[metricCfg.avgKey];
+      }, 0);
+      const progressPct = target > 0 ? Math.min(100, (totalProjected / target) * 100) : 0;
+      const delta = target - totalProjected;
+
+      const autocompletar = () => {
+        if (target <= 0 || totalHistPosts === 0) return;
+        const next = {};
+        for (const g of sortedGroups) {
+          const key = g.platform + '|' + g.format;
+          const share = g.n / totalHistPosts;
+          const goalForGroup = target * share;
+          const avg = g[metricCfg.avgKey];
+          next[key] = avg > 0 ? Math.ceil(goalForGroup / avg) : 0;
+        }
+        setAllocations(next);
+      };
+
+      return html`
+        <section id="sec-simulador" className="px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-simulador" name="Simulador" />
+          <div className="mb-5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">§ 12</div>
+            <h2 className="text-[18px] font-medium text-txt">Simulador de metas</h2>
+            <p className="text-txt4 text-[12px] mt-1">
+              Parte de la meta que te piden y calcula cuántos posts de cada plataforma/formato hacen falta, usando el promedio histórico por post.
+              Basado siempre en el histórico completo de 2026 (${fmtFull(totalHistPosts)} posts en el alcance elegido), sin importar los filtros de arriba.
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-surface border border-line p-5 mb-4">
+            <div className="flex flex-wrap gap-6 mb-5">
+              <${SimScopeToggle} label="Tipo de contenido" options=${contentTypeOptions} value=${contentTypeScope} onChange=${setContentTypeScope} />
+              <${SimScopeToggle} label="Pauta" options=${strategyOptions} value=${strategyScope} onChange=${setStrategyScope} />
+            </div>
+
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Métrica meta</div>
+                <div className="inline-flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
+                  ${SIM_METRICS.map((m, i) => html`
+                    <button key=${m.key} onClick=${() => setGoalMetric(m.key)}
+                      className=${"px-3 py-1.5 text-[11px] transition-colors " + (i > 0 ? "border-l border-line " : "") + (goalMetric === m.key ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                      ${m.label}
+                    </button>
+                  `)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Meta</div>
+                <input type="number" min="0" value=${goalTarget}
+                       onChange=${(e) => setGoalTarget(e.target.value)}
+                       placeholder="Ej. 5000000"
+                       className="h-[34px] w-[160px] px-3 rounded-lg border border-line bg-onSurface/[0.03] text-[12px] text-txt tabular-nums placeholder:text-txt4 focus:outline-none focus:border-line2" />
+              </div>
+              <button onClick=${autocompletar} disabled=${target <= 0}
+                      className="h-[34px] px-3.5 rounded-lg border border-accent2/30 text-accent text-[11px] hover:text-white hover:bg-accent2 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-accent transition-colors">
+                Autocompletar
+              </button>
+            </div>
+          </div>
+
+          ${sortedGroups.length === 0 ? html`
+            <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
+              <div className="text-txt3 text-[13px]">Sin posts en 2026 para esta combinación de Tipo de contenido / Pauta.</div>
+            </div>
+          ` : html`
+            <div className="rounded-xl bg-surface border border-line overflow-x-auto mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">
+                    <th className="text-left py-2.5 px-4 font-medium">Plat.</th>
+                    <th className="text-left py-2.5 px-4 font-medium">Formato</th>
+                    <th className="text-right py-2.5 px-4 font-medium">Posts hist. 2026</th>
+                    <th className="text-right py-2.5 px-4 font-medium">Prom. ${metricCfg.label}/post</th>
+                    <th className="text-right py-2.5 px-4 font-medium">Posts a planear</th>
+                    <th className="text-right py-2.5 pl-2 pr-4 font-medium">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${sortedGroups.map(g => {
+                    const key = g.platform + '|' + g.format;
+                    const n = allocations[key] ?? '';
+                    const subtotal = (Number(n) || 0) * g[metricCfg.avgKey];
+                    const lowSample = g.n < SIM_MIN_SAMPLE;
+                    return html`
+                      <tr key=${key} className="border-b border-line/50 last:border-0">
+                        <td className="py-2.5 px-4">
+                          <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[g.platform] }}>${PLAT_LETTERS[g.platform]}</span>
+                        </td>
+                        <td className="py-2.5 px-4 text-[12px] text-txt2">${g.format}</td>
+                        <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[11px]">
+                          <span className=${lowSample ? "text-amber" : "text-txt4"} title=${lowSample ? `Muestra baja (menos de ${SIM_MIN_SAMPLE} posts) — promedio poco confiable` : ''}>${g.n}${lowSample ? ' ⚠' : ''}</span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${fmt(g[metricCfg.avgKey])}</td>
+                        <td className="py-2.5 px-4 text-right">
+                          <input type="number" min="0" value=${n}
+                                 onChange=${(e) => setAlloc(key, e.target.value)}
+                                 placeholder="0"
+                                 className="h-[30px] w-[80px] px-2 rounded-md border border-line bg-onSurface/[0.03] text-[12px] text-txt text-right tabular-nums placeholder:text-txt4 focus:outline-none focus:border-line2" />
+                        </td>
+                        <td className="py-2.5 pl-2 pr-4 text-right font-mono tabular-nums text-[12px] text-txt2">${fmt(subtotal)}</td>
+                      </tr>`;
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="rounded-xl bg-surface border border-line p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">Proyectado vs. meta (${metricCfg.label})</div>
+                <div className="text-[13px] font-mono tabular-nums">
+                  <span className="text-txt">${fmt(totalProjected)}</span>
+                  <span className="text-faint"> / ${target > 0 ? fmt(target) : '—'}</span>
+                </div>
+              </div>
+              <div className="h-2 rounded-full bg-onSurface/[0.06] overflow-hidden">
+                <div className=${"h-full rounded-full transition-all " + (delta <= 0 && target > 0 ? "bg-success" : "bg-accent2")}
+                     style=${{ width: `${progressPct}%` }}></div>
+              </div>
+              ${target > 0 && html`
+                <div className=${"text-[11px] font-mono mt-2 " + (delta <= 0 ? "text-success" : "text-txt3")}>
+                  ${delta <= 0 ? `Meta cubierta — ${fmt(Math.abs(delta))} de sobra` : `Te faltan ${fmt(delta)} para llegar a la meta`}
+                </div>
+              `}
+            </div>
+          `}
+        </section>`;
+    }
+
+    // ============================================================
     // DetailDrawer
     // ============================================================
     function DrawerStat({ label, value }) {
@@ -4986,6 +5233,7 @@
                 <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${AnomaliesSection}   D=${D} onPick=${setSelected}/>
                 <${CadenceSection}     D=${D}/>
+                <${SimuladorSection}   allPosts=${allPosts}/>
               </main>
             `}
 
