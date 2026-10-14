@@ -4962,6 +4962,9 @@
       const [titleTouched, setTitleTouched] = useState(false);
       const [status, setStatus] = useState('idle'); // idle | loading | success | error
       const [errorMsg, setErrorMsg] = useState(null);
+      const [dateFrom, setDateFrom] = useState('');   // 'YYYY-MM-DD' o ''
+      const [dateTo, setDateTo] = useState('');
+      const [splitBy, setSplitBy] = useState('none'); // none | year | month | week
 
       const dimLabel = REPORT_DIMENSIONS.find((d) => d.key === groupBy)?.label || groupBy;
 
@@ -4969,7 +4972,7 @@
       // viejo para que no se quede pegado un "listo" que ya no aplica.
       useEffect(() => {
         setStatus('idle'); setErrorMsg(null);
-      }, [mode, groupBy, selectedMetrics, selectedColumns]);
+      }, [mode, groupBy, selectedMetrics, selectedColumns, dateFrom, dateTo, splitBy]);
 
       // Sugiere un título automáticamente mientras el usuario no lo edite.
       useEffect(() => {
@@ -4996,39 +4999,99 @@
         setSelectedColumns((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
       };
 
-      const postsInScope = D.global.posts;
+      // Posts dentro del alcance de los filtros del dashboard + el rango
+      // de fechas propio del reporte (si lo hay).
+      const scopedPosts = (() => {
+        let list = D.allPosts || [];
+        if (dateFrom || dateTo) {
+          const f = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+          const t = dateTo ? new Date(dateTo + 'T23:59:59') : null;
+          list = list.filter((p) => {
+            const d = parseDate(p.date);
+            if (!d) return false;
+            return (!f || d >= f) && (!t || d <= t);
+          });
+        }
+        return list;
+      })();
+      const postsInScope = scopedPosts.length;
+
+      // Clave/etiqueta del periodo al que pertenece un post según "Dividir por".
+      const periodOf = (p) => {
+        const y = postYear(p);
+        if (!y) return null;
+        if (splitBy === 'year') return { k: y, l: String(y) };
+        if (splitBy === 'month') {
+          const m = postMonth(p);
+          return m ? { k: y * 100 + m, l: `${MONTH_NAMES[m - 1]} ${y}` } : null;
+        }
+        if (splitBy === 'week') {
+          return p.week != null ? { k: y * 100 + p.week, l: `S${String(p.week).padStart(2, '0')} ${y}` } : null;
+        }
+        return null;
+      };
 
       const handleGenerate = () => {
         setStatus('loading'); setErrorMsg(null);
         try {
-          let headers, rows;
-          if (mode === 'summary') {
-            const metrics = REPORT_METRICS.filter((m) => selectedMetrics.includes(m.key));
-            if (metrics.length === 0) throw new Error('Elige al menos una métrica.');
-            headers = [dimLabel, ...metrics.map((m) => m.label)];
-            const groupedRows = groupedReportRows(D, groupBy);
-            rows = groupedRows.map(({ label, agg }) => [label, ...metrics.map((m) => m.fmt(agg[m.key] ?? 0))]);
-          } else {
-            const cols = RAW_COLUMNS.filter((c) => selectedColumns.includes(c.key));
-            if (cols.length === 0) throw new Error('Elige al menos una columna.');
-            headers = cols.map((c) => c.label);
-            rows = (D.allPosts || []).map((p) => cols.map((c) => c.get(p)));
-          }
-          if (rows.length === 0) throw new Error('No hay datos para los filtros/selección actuales.');
+          const metrics = REPORT_METRICS.filter((m) => selectedMetrics.includes(m.key));
+          const cols = RAW_COLUMNS.filter((c) => selectedColumns.includes(c.key));
+          if (mode === 'summary' && metrics.length === 0) throw new Error('Elige al menos una métrica.');
+          if (mode === 'raw' && cols.length === 0) throw new Error('Elige al menos una columna.');
+
+          const buildData = (posts) => {
+            if (mode === 'summary') {
+              const sub = { ...computeAggregates(posts, D.meta), allPosts: posts };
+              return {
+                headers: [dimLabel, ...metrics.map((m) => m.label)],
+                rows: groupedReportRows(sub, groupBy).map(({ label, agg }) => [label, ...metrics.map((m) => m.fmt(agg[m.key] ?? 0))]),
+              };
+            }
+            return { headers: cols.map((c) => c.label), rows: posts.map((p) => cols.map((c) => c.get(p))) };
+          };
+
+          if (scopedPosts.length === 0) throw new Error('No hay datos para los filtros/rango seleccionados.');
           if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería de Excel (revisa tu conexión y recarga la página).');
+
+          // Hojas a generar: una sola, o una "Total" + una por periodo.
+          const sheets = [];
+          if (splitBy === 'none') {
+            sheets.push({ name: title || 'Reporte', posts: scopedPosts });
+          } else {
+            sheets.push({ name: 'Total', posts: scopedPosts });
+            const buckets = new Map();
+            for (const p of scopedPosts) {
+              const per = periodOf(p);
+              if (!per) continue;
+              if (!buckets.has(per.k)) buckets.set(per.k, { l: per.l, posts: [] });
+              buckets.get(per.k).posts.push(p);
+            }
+            [...buckets.entries()].sort((a, b) => a[0] - b[0])
+              .forEach(([, b]) => sheets.push({ name: b.l, posts: b.posts }));
+          }
 
           // Arma el workbook 100% en el navegador — no sale ningún dato
           // a ningún servidor externo.
           const wb = XLSX.utils.book_new();
-          const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-          ws['!cols'] = headers.map((h, i) => {
-            const maxLen = Math.max(
-              String(h ?? '').length,
-              ...rows.map((r) => String(r[i] ?? '').length)
-            );
-            return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
-          });
-          XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetTabName(title || 'Reporte'));
+          const usedNames = new Set();
+          for (const sh of sheets) {
+            const { headers, rows } = buildData(sh.posts);
+            if (rows.length === 0) continue;
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            ws['!cols'] = headers.map((h, i) => {
+              const maxLen = Math.max(
+                String(h ?? '').length,
+                ...rows.slice(0, 500).map((r) => String(r[i] ?? '').length)
+              );
+              return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+            });
+            let name = sanitizeSheetTabName(sh.name);
+            let n = 2;
+            while (usedNames.has(name.toLowerCase())) name = sanitizeSheetTabName(sh.name).substring(0, 28) + ' ' + (n++);
+            usedNames.add(name.toLowerCase());
+            XLSX.utils.book_append_sheet(wb, ws, name);
+          }
+          if (wb.SheetNames.length === 0) throw new Error('No hay datos para los filtros/selección actuales.');
           XLSX.writeFile(wb, `${sanitizeFileName(title || 'Reporte')}.xlsx`);
 
           setStatus('success');
@@ -5138,6 +5201,35 @@
                     </div>
                   </div>
                 `}
+
+                <div className="mb-4">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-txt4 mb-2">Rango de fechas (opcional)</div>
+                  <div className="flex items-center gap-2">
+                    <input type="date" value=${dateFrom} onChange=${(e) => setDateFrom(e.target.value)}
+                           className="flex-1 px-3 py-1.5 rounded-lg border border-line bg-onSurface/[0.02] text-[12px] text-txt focus:outline-none focus:border-accent2/50"/>
+                    <span className="text-txt4 text-[11px]">a</span>
+                    <input type="date" value=${dateTo} onChange=${(e) => setDateTo(e.target.value)}
+                           className="flex-1 px-3 py-1.5 rounded-lg border border-line bg-onSurface/[0.02] text-[12px] text-txt focus:outline-none focus:border-accent2/50"/>
+                    ${(dateFrom || dateTo) && html`
+                      <button onClick=${() => { setDateFrom(''); setDateTo(''); }} className="text-[10px] font-mono uppercase tracking-wider text-txt4 hover:text-txt">Limpiar</button>
+                    `}
+                  </div>
+                </div>
+
+                <div className="mb-5">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-txt4 mb-2">Dividir en pestañas por</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    ${[['none', 'Sin dividir'], ['year', 'Año'], ['month', 'Mes'], ['week', 'Semana']].map(([k, l]) => html`
+                      <button key=${k} onClick=${() => setSplitBy(k)}
+                              className=${"px-2.5 py-1 rounded-full border text-[11px] transition-colors " +
+                                (splitBy === k ? "border-accent2/40 bg-accent2/12 text-txt" : "border-line text-txt3 hover:text-txt2 hover:border-line2")}>
+                        ${l}
+                      </button>`)}
+                  </div>
+                  ${splitBy !== 'none' && html`
+                    <div className="text-[10px] text-txt4 mt-2">Incluye una pestaña "Total" y una pestaña por cada ${splitBy === 'year' ? 'año' : splitBy === 'month' ? 'mes' : 'semana'}.</div>
+                  `}
+                </div>
 
                 <div className="mb-5">
                   <div className="text-[10px] font-mono uppercase tracking-wider text-txt4 mb-2">Título de la hoja</div>
