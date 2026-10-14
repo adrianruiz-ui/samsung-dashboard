@@ -532,8 +532,18 @@
       return null;
     }
 
+    // Mes (1-12) del post, derivado de su fecha — igual que el año, así no
+    // depende de cómo venga escrita la columna "Mes" en el Sheet.
+    const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    function postMonth(p) {
+      const dt = parseDate(p.date);
+      if (dt) return dt.getMonth() + 1;
+      const m = toNum(p.month);
+      return m != null && m >= 1 && m <= 12 ? m : null;
+    }
+
     function applyFilters(allPosts, filters) {
-      const { year, weeks, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products, formats } = filters;
+      const { year, weeks, months, platforms, campaigns, subcampaigns, contentTypes, stages, strategies, products, formats } = filters;
       return allPosts.filter(p => {
         if (year && year !== 'all') {
           const py = postYear(p);
@@ -541,6 +551,10 @@
         }
         if (weeks && weeks.length > 0) {
           if (p.week == null || !weeks.includes(p.week)) return false;
+        }
+        if (months && months.length > 0) {
+          const pm = postMonth(p);
+          if (pm == null || !months.includes(pm)) return false;
         }
         if (platforms && platforms.length > 0 && !platforms.includes(p.platform)) return false;
         if (campaigns && campaigns.length > 0 && !campaigns.includes(p.campaign)) return false;
@@ -564,6 +578,7 @@
     // ============================================================
     const FACET_FIELD_MAP = {
       weeks: 'week',
+      months: 'month_num',
       platforms: 'platform',
       campaigns: 'campaign',
       subcampaigns: 'subcampaign',
@@ -595,7 +610,7 @@
         const scoped = applyFilters(allPosts, { ...filters, [key]: [] });
         const set = new Set();
         for (const p of scoped) {
-          const v = p[field];
+          const v = key === 'months' ? postMonth(p) : p[field];
           if (v != null && v !== '') set.add(v);
         }
         sets[key] = set;
@@ -1128,6 +1143,7 @@
     const EMPTY_FILTERS = {
       year: 2026,             // 2025 | 2026 | 'all'
       weeks: [],               // [] = todas; semanas específicas seleccionadas
+      months: [],              // [] = todos; meses (1-12) seleccionados
       platforms: [],          // [] = todas
       campaigns: [],
       subcampaigns: [],
@@ -1152,6 +1168,8 @@
         };
         const w = sp.get('w');
         if (w) f.weeks = w.split('|').map(Number).filter(n => !isNaN(n));
+        const mo = sp.get('m');
+        if (mo) f.months = mo.split('|').map(Number).filter(n => !isNaN(n) && n >= 1 && n <= 12);
         f.platforms = arr('p');
         f.campaigns = arr('c');
         f.subcampaigns = arr('sc');
@@ -1170,6 +1188,7 @@
         // sólo escribir ?y= si no es el default 2026
         if (f.year !== 2026) sp.set('y', String(f.year));
         if (f.weeks?.length)         sp.set('w',  f.weeks.join('|'));
+        if (f.months?.length)        sp.set('m',  f.months.join('|'));
         if (f.platforms?.length)    sp.set('p',  f.platforms.join('|'));
         if (f.campaigns?.length)    sp.set('c',  f.campaigns.join('|'));
         if (f.subcampaigns?.length) sp.set('sc', f.subcampaigns.join('|'));
@@ -1209,6 +1228,7 @@
       const isActive = (
         (filters.year != null && filters.year !== 2026) ||
         filters.weeks.length > 0 ||
+        filters.months.length > 0 ||
         filters.platforms.length > 0 ||
         filters.campaigns.length > 0 ||
         filters.subcampaigns.length > 0 ||
@@ -1863,6 +1883,7 @@
       // direcciones: Año → Campaña, Campaña → Subcampaña/Semana/
       // Plataforma, y así con cualquier combinación).
       const availableWeeks        = useMemo(() => weeks.filter((w) => facetSets.weeks.has(w)), [weeks, facetSets.weeks]);
+      const availableMonths       = useMemo(() => [1,2,3,4,5,6,7,8,9,10,11,12].filter((m) => facetSets.months.has(m)), [facetSets.months]);
       const availablePlatforms    = useMemo(() => platforms.filter((v) => facetSets.platforms.has(v)), [platforms, facetSets.platforms]);
       const availableCampaigns    = useMemo(() => campaigns.filter((v) => facetSets.campaigns.has(v)), [campaigns, facetSets.campaigns]);
       const availableSubcampaigns = useMemo(() => (baseMeta.subcampaigns || []).filter((v) => facetSets.subcampaigns.has(v)), [baseMeta.subcampaigns, facetSets.subcampaigns]);
@@ -1945,6 +1966,22 @@
                 onClear=${clearKey('weeks')}
                 renderLabel=${(w) => `Semana ${w}`}
                 emptyLabel="Sin semanas"
+              />`}
+            <//>
+
+            <${FilterPopover}
+              label="Mes"
+              summary=${filters.months.length === 0 ? 'Todos' : filters.months.length === 1 ? MONTH_NAMES[filters.months[0] - 1].slice(0, 3) : `${filters.months.length} de ${availableMonths.length}`}
+              badgeCount=${filters.months.length}
+            >
+              ${() => html`<${MultiSelectPanel}
+                options=${availableMonths}
+                selected=${filters.months}
+                onToggle=${toggleArr('months')}
+                onSelectAll=${selectAll('months', availableMonths)}
+                onClear=${clearKey('months')}
+                renderLabel=${(m) => MONTH_NAMES[m - 1]}
+                emptyLabel="Sin meses"
               />`}
             <//>
 
