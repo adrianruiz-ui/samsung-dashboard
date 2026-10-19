@@ -1261,7 +1261,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v21.3';
+    const BUILD_VERSION = '2026-10-19-v21.4';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1834,7 +1834,7 @@
       { id: 'meta',         label: 'Meta followers', Icon: FlagIcon   },
     ];
 
-    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport }) {
+    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0 }) {
       const [active, setActive] = useState('resumen');
 
       // Scroll-spy: el nav resaltaba solo al hacer clic, pero se
@@ -1938,13 +1938,16 @@
                 const isOn = active === id;
                 return html`
                   <button key=${id} onClick=${() => scrollTo(id)}
-                    aria-label=${label} aria-current=${isOn ? 'location' : undefined}
+                    aria-label=${id === 'anomalias' && anomalyCount > 0 ? `${label} (${anomalyCount})` : label} aria-current=${isOn ? 'location' : undefined}
                     className=${"relative group flex items-center gap-2.5 rounded-lg transition-colors text-[12px] " +
                       (collapsed ? "justify-center w-10 h-10 mx-auto" : "px-3 py-2 w-full") + " " +
                       (isOn ? "bg-accent2/10 text-txt" : "text-txt2 hover:bg-onSurface/[0.03] hover:text-txt")}
                     title=${collapsed ? label : ''}>
                     <${Icon} size=${15} className=${isOn ? "text-accent" : "text-txt3"}/>
                     ${!collapsed && html`<span>${label}</span>`}
+                    ${id === 'anomalias' && anomalyCount > 0 && (collapsed
+                      ? html`<span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true"></span>`
+                      : html`<span className="ml-auto font-mono text-[10px] tabular-nums text-amber bg-amber/10 rounded-full px-1.5 py-0.5" aria-hidden="true">${anomalyCount}</span>`)}
                     ${collapsed && html`
                       <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-surface border border-line px-2.5 py-1.5 text-[11px] text-txt opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl">
                         ${label}
@@ -3427,8 +3430,13 @@
     function TopPostsTable({ D, onPick, filters, benchmarks }) {
       const [sortBy, setSortBy] = useState('reach');
       const [filterPlat, setFilterPlat] = useState('all');
+      const [pautaSel, setPautaSel] = useState('org');   // v21.4: por defecto solo orgánico
       const [limit, setLimit] = useState(15);
       const platforms = Object.keys(D.by_platform);
+      // Si el filtro GLOBAL de Pauta está activo, manda ese y el selector local se oculta
+      const globalPautaLock = filters?.strategies?.length > 0;
+      const isOrg = (p) => /org/i.test(p.strategy || '');
+      const isPaid = (p) => /paid|pauta|pagad/i.test(p.strategy || '');
 
       // Si el filtro GLOBAL ya restringe a una sola plataforma (ej. clic en
       // una tarjeta de §02), el selector local es redundante — D.allPosts ya
@@ -3440,11 +3448,16 @@
       }, [globalPlatformLock]);
 
       const sorted = useMemo(() => {
-        const all = D.allPosts || [];
+        const allRaw = D.allPosts || [];
+        const all = (globalPautaLock || pautaSel === 'all') ? allRaw
+          : allRaw.filter(p => pautaSel === 'org' ? isOrg(p) : isPaid(p));
         const filtered = (globalPlatformLock || filterPlat === 'all')
           ? all
           : all.filter(p => p.platform === filterPlat);
-        if (sortBy === 'date') return [...filtered].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+        if (sortBy === 'date') {
+          const ts = (p) => { const d = parseDate(p.date); return d ? d.getTime() : 0; };
+          return [...filtered].sort((a,b) => ts(b) - ts(a));
+        }
         if (sortBy === 'er' || sortBy === 'basic_er') {
           // Aplicamos umbral mínimo de alcance para evitar que posts con base
           // ridículamente pequeña (pero ER 1000%) dominen el ranking.
@@ -3458,7 +3471,7 @@
             .sort((a,b) => (b.vtr||0) - (a.vtr||0));
         }
         return [...filtered].filter(p => (p[sortBy]||0) > 0).sort((a,b) => (b[sortBy]||0) - (a[sortBy]||0));
-      }, [D, sortBy, filterPlat, globalPlatformLock]);
+      }, [D, sortBy, filterPlat, globalPlatformLock, pautaSel, globalPautaLock]);
 
       const visible = sorted.slice(0, limit);
 
@@ -3472,7 +3485,21 @@
               <p className="text-txt4 text-[12px] mt-1">Click en cualquier fila para ver el detalle completo.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <select value=${sortBy} onChange=${e => setSortBy(e.target.value)}
+              ${globalPautaLock ? html`
+                <span className="inline-flex items-center gap-1.5 text-[11px] bg-accent2/10 border border-accent2/30 rounded-lg px-3 py-1.5 text-accent2"
+                      title="Filtro global de Pauta activo">
+                  ${filters.strategies.map(v => /^paid$/i.test(v) ? 'Pauta' : v).join(' + ')}
+                </span>
+              ` : html`
+                <div role="radiogroup" aria-label="Tipo de pauta" className="inline-flex rounded-lg border border-line overflow-hidden text-[11px]">
+                  ${[['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todos']].map(([k, l]) => html`
+                    <button key=${k} role="radio" aria-checked=${pautaSel === k} onClick=${() => { setPautaSel(k); setLimit(15); }}
+                            className=${"px-3 py-1.5 transition-colors " + (pautaSel === k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                      ${l}
+                    </button>`)}
+                </div>
+              `}
+              <select value=${sortBy} onChange=${e => setSortBy(e.target.value)} aria-label="Ordenar por"
                       className="text-[11px] bg-onSurface/[0.03] border border-line rounded-lg px-3 py-1.5 text-txt2 hover:border-line2">
                 ${SORTS.map(s => html`<option key=${s.k} value=${s.k}>${s.l}</option>`)}
               </select>
@@ -3499,6 +3526,7 @@
                   <th scope="col" className="text-left py-2.5 px-4 font-medium">Plat.</th>
                   <th className="text-left py-2.5 px-4 font-medium">Fecha</th>
                   <th className="text-left py-2.5 px-4 font-medium">Sem.</th>
+                  <th scope="col" className="text-left py-2.5 px-4 font-medium">Pauta</th>
                   <th className="text-left py-2.5 px-4 font-medium">Formato</th>
                   <th className="text-left py-2.5 px-4 font-medium">Producto</th>
                   <th className="text-left py-2.5 px-4 font-medium">Campaña</th>
@@ -3512,7 +3540,7 @@
               </thead>
               <tbody>
                 ${visible.length === 0 && html`
-                  <tr><td colSpan=${13} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
+                  <tr><td colSpan=${14} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
                 `}
                 ${visible.map((p, i) => {
                   const color = PLAT_COLORS[p.platform];
@@ -3528,6 +3556,11 @@
                       </td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3 whitespace-nowrap">${dateShort(p.date)}</td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">S${p.week || '—'}</td>
+                      <td className="py-2.5 px-4 text-[11px] whitespace-nowrap">
+                        ${p.strategy
+                          ? html`<span className=${"rounded-full px-2 py-0.5 border " + (isPaid(p) ? "border-accent2/40 text-accent2" : "border-line2 text-txt3")}>${isPaid(p) ? 'Pauta' : p.strategy}</span>`
+                          : html`<span className="text-amber">Sin pauta</span>`}
+                      </td>
                       <td className="py-2.5 px-4 text-[12px] text-txt2">${p.format || '—'}</td>
                       <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.product}>
                         ${p.product || html`<span className="text-faint">—</span>`}
@@ -6005,6 +6038,7 @@
             theme=${theme}
             onToggleTheme=${toggleTheme}
             onOpenExport=${() => setExportOpen(true)}
+            anomalyCount=${noResults ? 0 : anomalyCount}
           />
 
           <div className="flex-1 min-w-0 flex flex-col">
@@ -6050,16 +6084,6 @@
                   (${Object.entries(baseMeta.orphans_no_stage_by_platform).map(([p,n]) => `${p}: ${n}`).join(', ')})
                   — se excluyen del filtro actual de etapa.
                 </div>
-              </div>
-            `}
-
-            ${!noResults && anomalyCount > 0 && html`
-              <div className="px-7 mb-3">
-                <button onClick=${() => document.getElementById('sec-anomalias')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                        className="w-full text-left rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber hover:bg-amber/15 transition-colors flex items-center gap-2">
-                  <${AlertIcon} size=${13}/>
-                  <span><span className="font-mono uppercase tracking-wider">${anomalyCount} anomalía${anomalyCount === 1 ? '' : 's'} detectada${anomalyCount === 1 ? '' : 's'}</span> en el filtro actual — clic para ver el detalle</span>
-                </button>
               </div>
             `}
 
