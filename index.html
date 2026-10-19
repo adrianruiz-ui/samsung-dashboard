@@ -1261,7 +1261,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v21.1';
+    const BUILD_VERSION = '2026-10-19-v21.2';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1819,7 +1819,6 @@
     // ============================================================
     const NAV_ITEMS = [
       { id: 'resumen',      label: 'Resumen',      Icon: SquaresIcon  },
-      { id: 'meta',         label: 'Meta followers', Icon: FlagIcon   },
       { id: 'plataformas',  label: 'Plataformas',  Icon: LayersIcon   },
       { id: 'tendencia',    label: 'Tendencia',    Icon: TrendIcon    },
       { id: 'mezcla',       label: 'Mezcla',       Icon: DonutIcon    },
@@ -1832,6 +1831,7 @@
       { id: 'cadencia',     label: 'Cadencia',     Icon: CalendarIcon },
       { id: 'simulador',    label: 'Simulador',    Icon: TargetIcon   },
       { id: 'calidad',      label: 'Calidad de datos', Icon: ShieldIcon },
+      { id: 'meta',         label: 'Meta followers', Icon: FlagIcon   },
     ];
 
     function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport }) {
@@ -3496,7 +3496,6 @@
               <thead>
                 <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">
                   <th scope="col" className="text-left py-2.5 px-4 font-medium">#</th>
-                  <th scope="col" className="text-left py-2.5 px-2 font-medium"><span className="sr-only">Miniatura</span></th>
                   <th scope="col" className="text-left py-2.5 px-4 font-medium">Plat.</th>
                   <th className="text-left py-2.5 px-4 font-medium">Fecha</th>
                   <th className="text-left py-2.5 px-4 font-medium">Sem.</th>
@@ -3513,7 +3512,7 @@
               </thead>
               <tbody>
                 ${visible.length === 0 && html`
-                  <tr><td colSpan=${14} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
+                  <tr><td colSpan=${13} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
                 `}
                 ${visible.map((p, i) => {
                   const color = PLAT_COLORS[p.platform];
@@ -3523,7 +3522,6 @@
                         ...${kbd(() => onPick(p), `Ver detalle: ${p.format || 'post'} de ${p.platform}, ${dateShort(p.date)}`)}
                         className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors group">
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt4 group-hover:text-txt2">${i+1}</td>
-                      <td className="py-1.5 px-2"><${PostThumb} post=${p} size=${36} /></td>
                       <td className="py-2.5 px-4">
                         <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded"
                               style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
@@ -6086,7 +6084,6 @@
                 <${HeroSection}    D=${D} chartTheme=${chartTheme}/>
                 <${InsightsPanel}  D=${D}/>
                 <${KpiRow}         D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>
-                <${FollowerGoalsSection} fetchedAt=${fetchedAt} chartTheme=${chartTheme}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
                 <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
@@ -6099,6 +6096,7 @@
                 <${CadenceSection}     D=${D}/>
                 <${SimuladorSection}   allPosts=${allPosts}/>
                 <${DataQualitySection} D=${D} onPick=${setSelected}/>
+                <${FollowerGoalsSection} fetchedAt=${fetchedAt} chartTheme=${chartTheme}/>
               </main>
             `}
 
