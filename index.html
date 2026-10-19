@@ -294,7 +294,67 @@
         (out.reach != null && out.reach > 0) ||
         (out.interactions != null && out.interactions > 0);
       if (!hasAnyIdentity) return null;
+      // v20 — VALIDACIÓN: valores imposibles se marcan y se excluyen de las
+      // TASAS (ER, ER Básico, CTR). Los TOTALES no se tocan.
+      //  · ER Básico > 100%  → hay más interacciones básicas que alcance; la
+      //    fila tiene un error de captura y contamina ER Views y ER Básico.
+      //  · CTR > 100%        → más clics que impresiones.
+      // VTR > 100% NO se marca: en Shorts/Reels es válido por repeticiones.
+      out._flags = [];
+      if (out.basic_er != null && out.basic_er > 100) out._flags.push('er');
+      if (out.ctr != null && out.ctr > 100) out._flags.push('ctr');
       return out;
+    }
+
+    // ============================================================
+    // v20 — TASAS PONDERADAS (Σ numerador ÷ Σ denominador)
+    // Replica las fórmulas del Sheet pero sobre el conjunto filtrado:
+    //   ER Views %  = Σ Inter. Totales ÷ Σ Alcance
+    //   ER Básico % = Σ Inter. Básicas ÷ Σ Alcance
+    //   CTR %       = Σ Clics ÷ Σ Impresiones
+    //   VTR %       = VTR de cada video ponderado por sus Views
+    // Así cada post pesa según su tamaño: un post de 200 de alcance ya no
+    // mueve el KPI igual que uno de 2M (sesgo del promedio simple v19).
+    // ============================================================
+    function rateAccum() {
+      return { er_num:0, er_den:0, ber_num:0, ber_den:0, ctr_num:0, ctr_den:0,
+               vtr_num:0, vtr_den:0, flagged:0, er_mean_sum:0, er_mean_n:0 };
+    }
+    function rateAdd(r, p) {
+      const bad = p._flags || [];
+      if (bad.length) r.flagged += 1;
+      if (p.reach > 0 && !bad.includes('er')) {
+        if (p.er != null) {
+          r.er_num += p.interactions != null ? p.interactions : p.er * p.reach / 100;
+          r.er_den += p.reach;
+          if (p.er !== 0) { r.er_mean_sum += p.er; r.er_mean_n += 1; }
+        }
+        if (p.basic_er != null) {
+          r.ber_num += p.basic_interactions != null ? p.basic_interactions : p.basic_er * p.reach / 100;
+          r.ber_den += p.reach;
+        }
+      }
+      // CTR: solo posts con clics registrados (> 0). En pauta y en varias
+      // plataformas el clic no se captura y viene en 0; contarlo como 0 real
+      // hundiría el CTR. Mismo criterio de "registrado" que en v19.
+      if (p.ctr != null && p.ctr > 0 && p.impressions > 0 && !bad.includes('ctr')) {
+        r.ctr_num += p.clics != null ? p.clics : p.ctr * p.impressions / 100;
+        r.ctr_den += p.impressions;
+      }
+      if (p.vtr != null && p.vtr > 0 && p.views > 0) {
+        r.vtr_num += p.vtr * p.views;
+        r.vtr_den += p.views;
+      }
+    }
+    function rateFinal(r) {
+      return {
+        er_avg:       r.er_den  ? (r.er_num  / r.er_den)  * 100 : 0,
+        basic_er_avg: r.ber_den ? (r.ber_num / r.ber_den) * 100 : 0,
+        ctr_avg:      r.ctr_den ? (r.ctr_num / r.ctr_den) * 100 : 0,
+        vtr_avg:      r.vtr_den ? r.vtr_num / r.vtr_den : 0,
+        er_mean:      r.er_mean_n ? r.er_mean_sum / r.er_mean_n : 0,
+        flagged_posts: r.flagged,
+      };
     }
 
     function emptyAgg() {
@@ -302,8 +362,7 @@
         reach:0, impressions:0, inter:0, basic_inter:0, views:0,
         reactions:0, comments:0, shares:0, saves:0, clics:0,
         posts:0,
-        _er_sum:0, _er_n:0, _basic_er_sum:0, _basic_er_n:0,
-        _vtr_sum:0, _vtr_n:0, _ctr_sum:0, _ctr_n:0,
+        _r: rateAccum(),
       };
     }
     function aggAdd(a, p) {
@@ -313,24 +372,15 @@
       a.reactions += p.reactions || 0; a.comments += p.comments || 0;
       a.shares += p.shares || 0; a.saves += p.saves || 0; a.clics += p.clics || 0;
       a.posts += 1;
-      if (p.er != null && p.er !== 0) { a._er_sum += p.er; a._er_n += 1; }
-      if (p.basic_er != null && p.basic_er !== 0) { a._basic_er_sum += p.basic_er; a._basic_er_n += 1; }
-      if (p.vtr != null && p.vtr !== 0) { a._vtr_sum += p.vtr; a._vtr_n += 1; }
-      if (p.ctr != null && p.ctr !== 0) { a._ctr_sum += p.ctr; a._ctr_n += 1; }
+      rateAdd(a._r, p);
     }
     function aggFinalize(a) {
-      const o = { ...a };
-      o.er_avg = a._er_n ? a._er_sum / a._er_n : 0;
-      o.basic_er_avg = a._basic_er_n ? a._basic_er_sum / a._basic_er_n : 0;
-      o.vtr_avg = a._vtr_n ? a._vtr_sum / a._vtr_n : 0;
-      o.ctr_avg = a._ctr_n ? a._ctr_sum / a._ctr_n : 0;
+      const o = { ...a, ...rateFinal(a._r) };
       // Promedios por publicación (totales / # posts)
       o.reach_per_post = a.posts > 0 ? a.reach / a.posts : 0;
       o.inter_per_post = a.posts > 0 ? a.inter / a.posts : 0;
       o.views_per_post = a.posts > 0 ? a.views / a.posts : 0;
-      delete o._er_sum; delete o._er_n; delete o._basic_er_sum; delete o._basic_er_n;
-      delete o._vtr_sum; delete o._vtr_n;
-      delete o._ctr_sum; delete o._ctr_n;
+      delete o._r;
       return o;
     }
     function groupAgg(posts, keyFn) {
@@ -780,10 +830,10 @@
       { key: 'shares',         label: 'Compartidos',            fmt: (v) => Math.round(v || 0) },
       { key: 'saves',          label: 'Guardados',              fmt: (v) => Math.round(v || 0) },
       { key: 'clics',          label: 'Clics',                  fmt: (v) => Math.round(v || 0) },
-      { key: 'er_avg',         label: 'ER Views % (prom.)',     fmt: (v) => Number((v || 0).toFixed(2)) },
-      { key: 'basic_er_avg',   label: 'ER Básico % (prom.)',    fmt: (v) => Number((v || 0).toFixed(2)) },
-      { key: 'vtr_avg',        label: 'VTR % (prom.)',          fmt: (v) => Number((v || 0).toFixed(2)) },
-      { key: 'ctr_avg',        label: 'CTR % (prom.)',          fmt: (v) => Number((v || 0).toFixed(2)) },
+      { key: 'er_avg',         label: 'ER Views % (pond.)',     fmt: (v) => Number((v || 0).toFixed(2)) },
+      { key: 'basic_er_avg',   label: 'ER Básico % (pond.)',    fmt: (v) => Number((v || 0).toFixed(2)) },
+      { key: 'vtr_avg',        label: 'VTR % (pond.)',          fmt: (v) => Number((v || 0).toFixed(2)) },
+      { key: 'ctr_avg',        label: 'CTR % (pond.)',          fmt: (v) => Number((v || 0).toFixed(2)) },
       { key: 'reach_per_post', label: 'Alcance / post',         fmt: (v) => Math.round(v || 0) },
       { key: 'inter_per_post', label: 'Interacciones / post',   fmt: (v) => Math.round(v || 0) },
       { key: 'views_per_post', label: 'Reproducciones / post',  fmt: (v) => Math.round(v || 0) },
@@ -1056,7 +1106,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-05-23-v19';
+    const BUILD_VERSION = '2026-10-19-v20';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2524,12 +2574,63 @@
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
             <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
-            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR prom.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
-            <${KpiCell} label="ER promedio"    value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent delta=${heroDeltas?.er_avg} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
+            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR pond.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
+            <${KpiCell} label="ER ponderado"   value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent delta=${heroDeltas?.er_avg} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
             <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} delta=${heroDeltas?.comments} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('comments') : undefined} />
             <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} delta=${heroDeltas?.posts} deltaLabel=${dLabel} />
           </div>
+          ${g.flagged_posts > 0 && html`
+            <button onClick=${onTrace ? () => onTrace('er_avg') : undefined}
+                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber/40 bg-amber/[0.06] px-3 py-1 text-[11px] text-amber hover:bg-amber/[0.12] transition-colors"
+                    title="Estos posts tienen valores imposibles y no entran a las tasas (ER, ER Básico, CTR). Sí cuentan en los totales.">
+              <${AlertIcon} size=${12} />
+              <span>${g.flagged_posts} post${g.flagged_posts === 1 ? '' : 's'} con valores imposibles excluido${g.flagged_posts === 1 ? '' : 's'} de las tasas · ver detalle</span>
+            </button>
+          `}
+          <${PautaSplit} D=${D} />
         </section>`;
+    }
+
+    // ============================================================
+    // v20 — PautaSplit: orgánico vs. pauta lado a lado. Mezclarlos en un
+    // solo ER esconde el desempeño orgánico (la pauta trae mucho alcance
+    // con ER bajo y arrastra el promedio hacia abajo).
+    // ============================================================
+    function PautaSplit({ D }) {
+      const groups = useMemo(() => groupAgg(D.allPosts || [], p => p.strategy || 'Sin clasificar'), [D]);
+      const totalReach = D.global?.reach || 0;
+      const order = (k) => /org/i.test(k) ? 0 : /paid|pauta|pagad/i.test(k) ? 1 : /sin clasificar/i.test(k) ? 3 : 2;
+      const entries = Object.entries(groups).sort((a, b) => order(a[0]) - order(b[0]) || b[1].reach - a[1].reach);
+      if (entries.length < 2) return null;
+      const labelOf = (k) => /^paid$/i.test(k) ? 'Pauta' : k;
+      return html`
+        <div className="mt-3 grid gap-3" style=${{ gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))` }}>
+          ${entries.map(([k, s]) => {
+            const share = totalReach > 0 ? (s.reach / totalReach) * 100 : 0;
+            const muted = /sin clasificar/i.test(k);
+            return html`
+              <div key=${k} className=${"rounded-xl bg-surface border px-4 py-3.5 min-w-0 " + (muted ? "border-amber/40" : "border-line")}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className=${"text-[9px] font-mono uppercase tracking-[0.18em] " + (muted ? "text-amber" : "text-txt4")}>${labelOf(k)}</span>
+                  <span className="text-[10px] font-mono text-txt4">${s.posts} posts · ${share.toFixed(0)}% del alcance</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[18px] font-medium tabular-nums text-accent leading-tight">${erFmt(s.basic_er_avg)}</div>
+                    <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1">ER básico pond.</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[14px] tabular-nums text-txt2 leading-tight">${erFmt(s.er_avg)}</div>
+                    <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1">ER views pond.</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[14px] tabular-nums text-txt2 leading-tight">${fmt(s.reach)}</div>
+                    <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1">alcance</div>
+                  </div>
+                </div>
+              </div>`;
+          })}
+        </div>`;
     }
 
     // ============================================================
@@ -2545,7 +2646,7 @@
       inter:     { field: 'interactions', type: 'sum', label: 'Interacciones',  formula: 'Suma del campo "Interacciones" de cada post dentro del filtro actual.' },
       views:     { field: 'views',        type: 'sum', label: 'Reproducciones', formula: 'Suma del campo "Reproducciones" de cada post dentro del filtro actual (aplica principalmente a video).' },
       comments:  { field: 'comments',     type: 'sum', label: 'Comentarios',    formula: 'Suma del campo "Comentarios" de cada post dentro del filtro actual.' },
-      er_avg:    { field: 'er',           type: 'avg', label: 'ER promedio',    formula: 'Promedio aritmético del ER de cada post — se excluyen los posts sin ER registrado o en 0, no se pondera por alcance.' },
+      er_avg:    { field: 'er',           type: 'ratio', label: 'ER ponderado', formula: 'Σ Interacciones totales ÷ Σ Alcance de los posts del filtro. Cada post pesa según su alcance (misma fórmula que el Sheet, aplicada al conjunto). Se excluyen posts sin alcance y posts con valores imposibles (ER Básico > 100%).' },
     };
 
     function computeKpiTrace(D, key) {
@@ -2557,6 +2658,23 @@
         const total = posts.reduce((s, p) => s + (p[cfg.field] || 0), 0);
         const top = [...posts].sort((a, b) => (b[cfg.field] || 0) - (a[cfg.field] || 0)).slice(0, 12);
         return { ...cfg, key, total, postsCount: posts.length, top };
+      }
+
+      if (cfg.type === 'ratio') {
+        const included = posts.filter(p => p.reach > 0 && p.er != null && !(p._flags || []).includes('er'));
+        const flagged = posts.filter(p => (p._flags || []).includes('er'));
+        const num = included.reduce((s, p) => s + (p.interactions != null ? p.interactions : p.er * p.reach / 100), 0);
+        const den = included.reduce((s, p) => s + p.reach, 0);
+        const value = den ? (num / den) * 100 : 0;
+        const nz = included.filter(p => p.er !== 0);
+        const mean = nz.length ? nz.reduce((s, p) => s + p.er, 0) / nz.length : 0;
+        const top = [...included].sort((a, b) => (b.reach || 0) - (a.reach || 0)).slice(0, 12);
+        return {
+          ...cfg, key, value, num, den, mean, flagged,
+          includedCount: included.length,
+          excludedCount: posts.length - included.length,
+          postsCount: posts.length, top,
+        };
       }
 
       // avg
@@ -2590,6 +2708,7 @@
     function KpiTraceDrawer({ trace, onClose, onPick }) {
       if (!trace) return null;
       const isSum = trace.type === 'sum';
+      const isRatio = trace.type === 'ratio';
       return html`
         <div className="fixed inset-0 z-40 flex justify-end" style=${{ background: 'rgba(0,0,0,0.45)' }} onClick=${onClose}>
           <div className="w-full max-w-[540px] h-full bg-surface border-l border-line overflow-y-auto" onClick=${e => e.stopPropagation()}>
@@ -2602,7 +2721,7 @@
               <div>
                 <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Valor mostrado en el dashboard</div>
                 <div className="font-medium text-txt tabular-nums" style=${{ fontSize: 'clamp(24px, 3vw, 34px)' }}>
-                  ${isSum ? fmt(trace.total) : erFmt(trace.avg)}
+                  ${isSum ? fmt(trace.total) : isRatio ? erFmt(trace.value) : erFmt(trace.avg)}
                 </div>
               </div>
 
@@ -2617,6 +2736,22 @@
                   <p className="text-[13px] text-txt3 leading-relaxed">
                     Incluye los <span className="text-txt2 font-medium">${fmtFull(trace.postsCount)} posts</span> del filtro actual (aunque un post no tenga dato, cuenta como 0).
                   </p>
+                ` : isRatio ? html`
+                  <p className="text-[13px] text-txt3 leading-relaxed">
+                    <span className="text-txt2 font-medium">${fmtFull(trace.includedCount)} de ${fmtFull(trace.postsCount)} posts</span> entran al cálculo
+                    ${trace.excludedCount > 0 ? html` · <span className="text-amber">${fmtFull(trace.excludedCount)} excluido${trace.excludedCount === 1 ? '' : 's'}</span> (sin alcance, sin ER o con valor imposible)` : '.'}
+                  </p>
+                  <p className="text-[11px] font-mono text-faint mt-2">Σ interacciones ${fmtFull(Math.round(trace.num))} ÷ Σ alcance ${fmtFull(Math.round(trace.den))} = ${erFmt(trace.value)}</p>
+                  <p className="text-[11px] font-mono text-faint mt-1">Referencia · promedio simple por post (método v19): ${erFmt(trace.mean)}</p>
+                  ${trace.flagged.length > 0 && html`
+                    <div className="mt-3 rounded-lg border border-amber/40 bg-amber/[0.06] px-3 py-2.5">
+                      <div className="text-[11px] text-amber font-medium mb-1">${trace.flagged.length} post${trace.flagged.length === 1 ? '' : 's'} con ER Básico > 100% (revisar en el Sheet)</div>
+                      ${trace.flagged.slice(0, 20).map((p, i) => html`
+                        <div key=${i} onClick=${() => onPick(p)} className="text-[11px] font-mono text-txt3 cursor-pointer hover:text-txt py-0.5">
+                          ${p.platform} · ${dateShort(p.date)} · ${p.format || '—'} · alcance ${fmtFull(p.reach || 0)} · ER Básico ${erFmt(p.basic_er)}
+                        </div>`)}
+                    </div>
+                  `}
                 ` : html`
                   <p className="text-[13px] text-txt3 leading-relaxed">
                     <span className="text-txt2 font-medium">${fmtFull(trace.includedCount)} de ${fmtFull(trace.postsCount)} posts</span> tienen ${trace.label.toLowerCase()} registrado y entran al promedio
@@ -2628,7 +2763,7 @@
 
               <div>
                 <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">
-                  ${isSum ? 'Principales contribuyentes' : 'Valores más altos que entran al promedio'}
+                  ${isSum ? 'Principales contribuyentes' : isRatio ? 'Posts con más peso (mayor alcance)' : 'Valores más altos que entran al promedio'}
                 </div>
                 <div className="rounded-xl border border-line overflow-hidden">
                   <table className="w-full text-sm">
@@ -2637,7 +2772,7 @@
                         <th className="text-left py-2 px-3 font-medium">Plat.</th>
                         <th className="text-left py-2 px-3 font-medium">Fecha</th>
                         <th className="text-left py-2 px-3 font-medium">Campaña</th>
-                        <th className="text-right py-2 px-3 font-medium">${trace.label}</th>
+                        <th className="text-right py-2 px-3 font-medium">${isRatio ? 'ER del post' : trace.label}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2812,8 +2947,7 @@
           for (const d of days) {
             byKey[isoDay(d)] = {
               date: d, posts: 0, reach: 0, inter: 0, views: 0,
-              er_sum: 0, er_n: 0,
-              basic_er_sum: 0, basic_er_n: 0,
+              r: rateAccum(),
             };
           }
 
@@ -2829,15 +2963,14 @@
             agg.reach += p.reach || 0;
             agg.inter += p.interactions || 0;
             agg.views += p.views || 0;
-            if (p.er != null) { agg.er_sum += p.er; agg.er_n++; }
-            if (p.basic_er != null) { agg.basic_er_sum += p.basic_er; agg.basic_er_n++; }
+            rateAdd(agg.r, p);
           }
 
           const out = days.map(d => {
             const agg = byKey[isoDay(d)];
             let value;
-            if (metric === 'er_avg')             value = agg.er_n > 0 ? agg.er_sum / agg.er_n : 0;
-            else if (metric === 'basic_er_avg')  value = agg.basic_er_n > 0 ? agg.basic_er_sum / agg.basic_er_n : 0;
+            if (metric === 'er_avg')             value = rateFinal(agg.r).er_avg;
+            else if (metric === 'basic_er_avg')  value = rateFinal(agg.r).basic_er_avg;
             else if (metric === 'inter')         value = agg.inter;
             else                                 value = agg[metric];   // reach | views
             return { week: isoDay(d), label: dayLabel(d), value, posts: agg.posts };
@@ -3263,17 +3396,19 @@
         p.format !== 'Stories'
       );
 
-      // Promedio aritmético simple del VTR%: cada video pesa igual,
-      // independiente del número de views.
+      // v20: VTR ponderado por views — cada video pesa según sus
+      // reproducciones (antes: promedio simple, cada video pesaba igual).
+      // Si ningún video del bucket tiene views, cae al promedio simple.
       function aggBucket(list) {
         if (!list.length) return { n: 0, vtr: null, views: 0, duration_avg: null };
-        const sumVtr = list.reduce((a, p) => a + (p.vtr || 0), 0);
+        const sumVtrW = list.reduce((a, p) => a + (p.views > 0 ? (p.vtr || 0) * p.views : 0), 0);
         const sumViews = list.reduce((a, p) => a + (p.views || 0), 0);
+        const sumVtr = list.reduce((a, p) => a + (p.vtr || 0), 0);
         const sumDur = list.reduce((a, p) => a + (p.duration || 0), 0);
         const nWithDur = list.filter(p => p.duration > 0).length;
         return {
           n: list.length,
-          vtr: sumVtr / list.length,
+          vtr: sumViews > 0 ? sumVtrW / sumViews : sumVtr / list.length,
           views: sumViews,
           duration_avg: nWithDur > 0 ? sumDur / nWithDur : null,
         };
@@ -3640,23 +3775,23 @@
 
     // Calcula un agregado simple desde una lista de posts (sin pasar por aggAdd)
     function quickAgg(posts) {
-      let reach=0, inter=0, views=0, comments=0, er_sum=0, er_n=0, basic_sum=0, basic_n=0, vtr_sum=0, vtr_n=0;
+      let reach=0, inter=0, views=0, comments=0;
+      const r = rateAccum();
       for (const p of posts) {
         reach += p.reach || 0;
         inter += p.interactions || 0;
         views += p.views || 0;
         comments += p.comments || 0;
-        if (p.er != null && p.er !== 0)             { er_sum += p.er; er_n++; }
-        if (p.basic_er != null && p.basic_er !== 0) { basic_sum += p.basic_er; basic_n++; }
-        if (p.vtr != null && p.vtr !== 0)           { vtr_sum += p.vtr; vtr_n++; }
+        rateAdd(r, p);
       }
       const n = posts.length;
+      const rates = rateFinal(r);
       return {
         posts: n,
         reach, inter, views, comments,
-        er_avg: er_n ? er_sum / er_n : 0,
-        basic_er_avg: basic_n ? basic_sum / basic_n : 0,
-        vtr_avg: vtr_n ? vtr_sum / vtr_n : 0,
+        er_avg: rates.er_avg,
+        basic_er_avg: rates.basic_er_avg,
+        vtr_avg: rates.vtr_avg,
         reach_per_post: n ? reach / n : 0,
         inter_per_post: n ? inter / n : 0,
         views_per_post: n ? views / n : 0,
