@@ -1261,7 +1261,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v21.2';
+    const BUILD_VERSION = '2026-10-19-v21.3';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -5128,7 +5128,6 @@
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <${DrawerThumb} post=${post} />
               <div className="px-5 py-5">
                 <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-2">
                   ${dateFmt(post.date)} · Semana ${post.week || '—'}
@@ -5823,7 +5822,6 @@
       const counts = { sinMetricas: 0, sinPauta: 0, sinClasif: 0, imposibles: 0, conMiniatura: 0 };
       for (const p of posts) {
         const tags = [];
-        if (thumbFor(p)) counts.conMiniatura++;
         if (!hasMetrics(p)) { tags.push('Sin métricas'); counts.sinMetricas++; }
         if (!p.strategy) { tags.push('Sin Tipo Pauta'); counts.sinPauta++; }
         if (!p.format || !p.content_type) { tags.push(!p.format && !p.content_type ? 'Sin Formato ni Tipo Contenido' : !p.format ? 'Sin Formato' : 'Sin Tipo Contenido'); counts.sinClasif++; }
@@ -5869,11 +5867,7 @@
             <${QualityStat} label="Valores imposibles" value=${c.imposibles} warn=${c.imposibles > 0} hint="ER Básico o CTR > 100%: fuera de las tasas" />
           </div>
 
-          <p className="text-[11px] text-txt4 mb-5 -mt-1">
-            Miniaturas: <span className="text-txt2 font-medium tabular-nums">${fmtFull(c.conMiniatura)} de ${fmtFull(q.total)}</span> posts tienen imagen
-            (YouTube e Imgur se leen solas; Instagram, Facebook, TikTok, X y Threads no lo permiten sin token).
-            Para completar el resto, agrega la URL de la imagen en una columna <span className="text-txt2 font-medium">"Imagen"</span> al final de cada pestaña del Sheet.
-          </p>
+
 
           <div className="grid lg:grid-cols-[minmax(0,320px)_1fr] gap-4">
             <div className="rounded-xl bg-surface border border-line p-4">
