@@ -205,6 +205,35 @@
       Threads:   '🧵 Threads',
     };
     const PLATFORMS = Object.keys(SHEET_TABS);
+    // v30 — gid de cada pestaña (para saber en qué FILA del Sheet vive cada
+    // post y abrirla directo). gviz se salta las filas vacías, así que el
+    // número de fila se toma del export CSV, que sí las conserva.
+    const SHEET_GIDS = {
+      Facebook: '108585329', Instagram: '47698819', YouTube: '1302908273', TikTok: '17033369',
+      X: '406488930', LinkedIn: '493682597', Threads: '2058997613',
+    };
+    const sheetRowUrl = (platform, row) => SHEET_GIDS[platform] && row
+      ? `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=${SHEET_GIDS[platform]}&range=A${row}` : null;
+    async function fetchRowIndex(platformName) {
+      const gid = SHEET_GIDS[platformName];
+      if (!gid) return null;
+      try {
+        const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`);
+        if (!res.ok) return null;
+        const txt = await res.text();
+        if (txt.trim().startsWith('<')) return null;
+        const rows = Papa.parse(txt, { header: false, skipEmptyLines: false }).data;
+        const idx = new Map();               // "link|fecha" → [filas]
+        for (let i = 2; i < rows.length; i++) {   // i=2 → fila 3 del Sheet
+          const r = rows[i] || [];
+          if (!r.some(c => (c || '').trim())) continue;
+          const k = (r[0] || '').trim() + '|' + (r[1] || '').trim();
+          if (!idx.has(k)) idx.set(k, []);
+          idx.get(k).push(i + 1);
+        }
+        return idx;
+      } catch { return null; }
+    }
 
     function buildSheetUrl(tabName) {
       if (!SHEET_ID) throw new Error('Falta SHEET_ID en la configuración del archivo.');
@@ -221,6 +250,7 @@
 
     async function fetchTab(platformName) {
       const tabName = SHEET_TABS[platformName];
+      const rowIndexP = fetchRowIndex(platformName);   // en paralelo; si falla, solo no hay número de fila
       const res = await fetch(buildSheetUrl(tabName), { redirect: 'follow' });
       if (!res.ok) throw new Error(`Error al cargar "${tabName}": HTTP ${res.status}`);
       const csvText = await res.text();
@@ -230,7 +260,17 @@
       const parsed = Papa.parse(csvText, {
         header: true, skipEmptyLines: 'greedy', dynamicTyping: false,
       });
-      return parsed.data.map(row => ({ ...row, _platform: platformName }));
+      const idx = await rowIndexP;
+      const used = new Map();
+      return parsed.data.map(row => {
+        let _row = null;
+        if (idx) {
+          const k = (row['Link'] || '').trim() + '|' + (row['Fecha'] || '').trim();
+          const list = idx.get(k);
+          if (list) { const n = used.get(k) || 0; _row = list[n] ?? null; used.set(k, n + 1); }
+        }
+        return { ...row, _platform: platformName, _row };
+      });
     }
 
     async function fetchAllPlatforms() {
@@ -586,7 +626,7 @@
         for (const r of rows) {
           raw++;
           const p = normalizeRow(r, platform);
-          if (p) { allPosts.push(p); ok++; }
+          if (p) { p._row = r._row ?? null; allPosts.push(p); ok++; }
         }
         _diagByPlat[platform] = { raw_rows: raw, posts_ok: ok };
       }
@@ -1275,7 +1315,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v29';
+    const BUILD_VERSION = '2026-10-19-v30';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2948,6 +2988,19 @@
            title="Abrir publicación"
            className="inline-flex items-center gap-1 rounded-full bg-accent2/10 hover:bg-accent2/20 text-txt2 hover:text-txt px-2 py-0.5 text-[11px] font-sans whitespace-nowrap transition-colors">
           ${compact ? '' : 'Ver'} <${ExtIcon} size=${11}/>
+        </a>`;
+    }
+
+    function SheetRow({ p }) {
+      const url = p && sheetRowUrl(p.platform, p._row);
+      if (!url) return html`<span className="text-faint text-[11px]" title="No se pudo ubicar la fila">—</span>`;
+      return html`
+        <a href=${url} target="_blank" rel="noopener noreferrer"
+           onClick=${(e) => e.stopPropagation()} onKeyDown=${(e) => e.stopPropagation()}
+           title=${`Abrir el Sheet en ${SHEET_TABS[p.platform]}, fila ${p._row}`}
+           aria-label=${`Abrir el Sheet en la pestaña ${p.platform}, fila ${p._row}`}
+           className="inline-flex items-center gap-1 rounded-full bg-onSurface/[0.05] hover:bg-onSurface/[0.1] text-txt2 hover:text-txt px-2 py-0.5 text-[11px] font-mono whitespace-nowrap transition-colors">
+          ${PLAT_LETTERS[p.platform]} · ${p._row}
         </a>`;
     }
 
@@ -4665,6 +4718,7 @@
           <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${valueFmt}</td>
           <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[11px] text-faint">típico ${baselineFmt}</td>
           <td className="py-2.5 pl-2 pr-4 text-right font-mono tabular-nums text-[11px] text-txt4">z ${a.z.toFixed(1)}</td>
+          <td className="py-2.5 pr-4 text-right"><${SheetRow} p=${p} /></td>
           <td className="py-2.5 pr-4 text-right"><${PostLink} p=${p} /></td>
         </tr>`;
     }
@@ -4702,6 +4756,7 @@
                     <th className="text-right py-2.5 px-4 font-medium">Valor</th>
                     <th className="text-right py-2.5 px-4 font-medium">Referencia</th>
                     <th className="text-right py-2.5 pl-2 pr-4 font-medium">Severidad</th>
+                    <th className="text-right py-2.5 pr-4 font-medium">Fila</th>
                     <th className="text-right py-2.5 pr-4 font-medium">Link</th>
                   </tr>
                 </thead>
@@ -5534,6 +5589,10 @@
               </div>
             </div>
 
+            ${sheetRowUrl(post.platform, post._row) && html`
+              <div className="px-5 pt-4 text-[12px] text-txt3 flex items-center gap-2">
+                En el Sheet: <${SheetRow} p=${post} /> <span className="text-txt4">(${SHEET_TABS[post.platform]}, fila ${post._row})</span>
+              </div>`}
             ${post.link && html`
               <div className="border-t border-line px-5 py-4">
                 <a href=${post.link} target="_blank" rel="noopener noreferrer"
@@ -6242,6 +6301,7 @@
                       <th scope="col" className="text-left py-2.5 px-4 font-medium">Formato</th>
                       <th scope="col" className="text-left py-2.5 px-4 font-medium">Campaña</th>
                       <th scope="col" className="text-left py-2.5 px-4 font-medium">Pendiente</th>
+                      <th scope="col" className="text-right py-2.5 px-4 font-medium">Fila</th>
                       <th scope="col" className="text-right py-2.5 px-4 font-medium">Link</th>
                     </tr>
                   </thead>
@@ -6258,6 +6318,7 @@
                             ${tags.map(t => html`<span key=${t} className="text-[10px] text-amber border border-amber/40 rounded-full px-2 py-0.5 whitespace-nowrap">${t}</span>`)}
                           </div>
                         </td>
+                        <td className="py-2 px-4 text-right"><${SheetRow} p=${p} /></td>
                         <td className="py-2 px-4 text-right"><${PostLink} p=${p} /></td>
                       </tr>`)}
                   </tbody>
