@@ -128,6 +128,7 @@
     .rounded-xl.bg-surface { border-radius: 16px; }
     tbody tr.border-b { border-bottom-color: transparent !important; }
     tbody tr:nth-child(even) { background-color: rgb(var(--c-txt) / 0.025); }
+    table.no-zebra tbody tr { background-color: transparent !important; }
     html, body, #root { height: 100%; background: rgb(var(--c-ink)); color: rgb(var(--c-txt)); transition: background-color 150ms ease, color 150ms ease; }
     body {
       font-family: 'Bricolage Grotesque', system-ui, sans-serif;
@@ -1232,6 +1233,7 @@
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
           { id: 'sec-cadencia',     name: 'Cadencia' },
+          { id: 'sec-horarios',     name: 'Horarios' },
           { id: 'sec-simulador',    name: 'Simulador' },
           { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-calidad',      name: 'Calidad de datos' },
@@ -1273,7 +1275,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v28';
+    const BUILD_VERSION = '2026-10-19-v29';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1733,6 +1735,11 @@
         <line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>`;
 
+    const ClockIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round" className=${className} aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+      </svg>`;
     const CalendarIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1854,6 +1861,7 @@
       { id: 'comparativas', label: 'Comparativas',       Icon: CompareIcon,  group: 'analisis' },
       { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
       { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
+      { id: 'horarios',     label: 'Horarios',           Icon: ClockIcon,    group: 'analisis' },
       { id: 'simulador',    label: 'Simulador',          Icon: TargetIcon,   group: 'analisis' },
       { id: 'anomalias',    label: 'Anomalías',          Icon: AlertIcon,    group: 'control' },
       { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
@@ -4860,6 +4868,222 @@
     }
 
     // ============================================================
+    // v29 — HORARIOS: mejor hora para publicar.
+    // La base no registra la hora, pero el ID de la publicación sí la
+    // trae en varias plataformas (validado contra la columna Fecha: ~98%
+    // coincide al día). TikTok, X y LinkedIn guardan el segundo exacto en
+    // los bits altos del ID; Instagram y Threads en el shortcode (ID de
+    // Meta con época propia). Facebook y YouTube no se pueden: su ID no
+    // contiene la hora. Todo se calcula en el navegador, sin APIs.
+    // ============================================================
+    const PT_B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const POSTTIME_PLATS = ['Instagram', 'TikTok', 'X', 'Threads', 'LinkedIn'];
+    const _ptCache = new Map();
+    function postTimestamp(link) {
+      const l = (link || '').trim();
+      if (!l) return null;
+      if (_ptCache.has(l)) return _ptCache.get(l);
+      let ms = null, m;
+      try {
+        if ((m = l.match(/tiktok\.com\/.*\/(?:video|photo)\/(\d{15,})/i))) ms = Number(BigInt(m[1]) >> 32n) * 1000;
+        else if ((m = l.match(/(?:instagram\.com|threads\.(?:com|net))\/(?:[^/]+\/)?(?:p|reel|reels|post|tv)\/([A-Za-z0-9_-]{11})/i))) {
+          let n = 0n; for (const ch of m[1]) n = n * 64n + BigInt(PT_B64.indexOf(ch));
+          ms = Number(n >> 23n) + 1314220021721;
+        }
+        else if ((m = l.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/i))) ms = Number(BigInt(m[1]) >> 22n) + 1288834974657;
+        else if ((m = l.match(/(?:activity|share|ugcPost)[:-](\d{19})/i))) ms = Number(BigInt(m[1]) >> 22n);
+      } catch { ms = null; }
+      if (ms != null) { const y = new Date(ms).getUTCFullYear(); if (y < 2020 || y > 2030) ms = null; }
+      _ptCache.set(l, ms);
+      return ms;
+    }
+    const _mxFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Mexico_City', hour: 'numeric', hourCycle: 'h23', weekday: 'short' });
+    const WD_IDX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const WD_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    function mxDayHour(ms) {
+      const parts = _mxFmt.formatToParts(new Date(ms));
+      const h = +parts.find(p => p.type === 'hour').value % 24;
+      const d = WD_IDX[parts.find(p => p.type === 'weekday').value];
+      return { d, h };
+    }
+    const HOUR_BANDS = [[6, 9], [9, 12], [12, 14], [14, 16], [16, 18], [18, 20], [20, 22], [22, 30]];
+    const bandOf = (h) => { const hh = h < 6 ? h + 24 : h; return HOUR_BANDS.findIndex(([a, b]) => hh >= a && hh < b); };
+    const bandLabel = (i) => { const [a, b] = HOUR_BANDS[i]; return `${a}–${b > 24 ? (b - 24) : b} h`; };
+    const HORA_METRICS = [
+      { k: 'ber',   l: 'ER básico',      f: (p) => (p.basic_er != null && !(p._flags || []).includes('er')) ? p.basic_er : null, fmtv: (v) => erFmt(v) },
+      { k: 'reach', l: 'Alcance',        f: (p) => p.reach || null, fmtv: (v) => fmtFull(v) },
+      { k: 'inter', l: 'Interacciones',  f: (p) => p.interactions || null, fmtv: (v) => fmtFull(v) },
+    ];
+    const HORA_MIN_N = 4;      // mínimo para pintar una celda
+    const HORA_TOP_N = 8;      // mínimo para recomendar una franja
+    const hMedian = (arr) => { if (!arr.length) return null; const a = [...arr].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+
+    function computeHorarios(posts, metricK, plat, scope) {
+      const M = HORA_METRICS.find(m => m.k === metricK) || HORA_METRICS[0];
+      const eligible = posts.filter(p => POSTTIME_PLATS.includes(p.platform));
+      const rows = [];
+      for (const p of eligible) {
+        if (plat !== 'all' && p.platform !== plat) continue;
+        const paid = isPaidP(p);
+        if (scope === 'org' && paid) continue;
+        if (scope === 'paid' && !paid) continue;
+        const v = M.f(p); if (v == null || !(v > 0)) continue;
+        const ms = postTimestamp(p.link); if (ms == null) continue;
+        rows.push({ p, v, ...mxDayHour(ms) });
+      }
+      // Índice vs. lo típico de su plataforma + formato (1.00 = típico)
+      const segVals = new Map();
+      for (const r of rows) { const k = r.p.platform + '|' + (r.p.format || ''); if (!segVals.has(k)) segVals.set(k, []); segVals.get(k).push(r.v); }
+      const segMed = new Map([...segVals].map(([k, a]) => [k, hMedian(a)]));
+      for (const r of rows) { const md = segMed.get(r.p.platform + '|' + (r.p.format || '')); r.idx = md ? r.v / md : null; r.b = bandOf(r.h); }
+      const valid = rows.filter(r => r.idx != null && r.b >= 0);
+      const cell = (list) => ({ n: list.length, idx: list.length ? hMedian(list.map(r => r.idx)) : null, val: list.length ? hMedian(list.map(r => r.v)) : null });
+      const grid = WD_ES.map((_, d) => HOUR_BANDS.map((__, b) => cell(valid.filter(r => r.d === d && r.b === b))));
+      const byBand = HOUR_BANDS.map((_, b) => cell(valid.filter(r => r.b === b)));
+      const byDay = WD_ES.map((_, d) => cell(valid.filter(r => r.d === d)));
+      const byHour = Array.from({ length: 24 }, (_, h) => valid.filter(r => r.h === h).length);
+      const top = [];
+      grid.forEach((row, d) => row.forEach((c, b) => { if (c.n >= HORA_TOP_N) top.push({ d, b, ...c }); }));
+      top.sort((a, b) => b.idx - a.idx);
+      const perPlat = POSTTIME_PLATS.map(pl => {
+        const list = valid.filter(r => r.p.platform === pl);
+        const bands = HOUR_BANDS.map((_, b) => ({ b, ...cell(list.filter(r => r.b === b)) })).filter(x => x.n >= HORA_TOP_N);
+        bands.sort((a, b) => b.idx - a.idx);
+        const busiest = HOUR_BANDS.map((_, b) => ({ b, n: list.filter(r => r.b === b).length })).sort((a, b) => b.n - a.n)[0];
+        return { platform: pl, n: list.length, best: bands[0] || null, worst: bands.length > 1 ? bands[bands.length - 1] : null, busiest };
+      }).filter(x => x.n > 0);
+      const totalEligible = posts.filter(p => POSTTIME_PLATS.includes(p.platform)).length;
+      const excluded = posts.filter(p => !POSTTIME_PLATS.includes(p.platform)).length;
+      return { M, n: valid.length, grid, byBand, byDay, byHour, top: top.slice(0, 3), perPlat, totalEligible, excluded,
+               decoded: posts.filter(p => POSTTIME_PLATS.includes(p.platform) && postTimestamp(p.link) != null).length };
+    }
+
+    function HorariosSection({ D }) {
+      const [metric, setMetric] = useState('ber');
+      const [plat, setPlat] = useState('all');
+      const [scope, setScope] = useState('org');
+      const H = useMemo(() => computeHorarios(D.allPosts || [], metric, plat, scope), [D, metric, plat, scope]);
+      const idxTxt = (x) => x == null ? '—' : (x >= 1 ? '+' : '') + Math.round((x - 1) * 100) + '%';
+      const heat = (c) => {
+        if (!c.n) return { background: 'transparent' };
+        if (c.n < HORA_MIN_N) return { background: 'rgb(var(--c-txt) / 0.04)' };
+        const t = Math.max(-1, Math.min(1, Math.log2(c.idx)));      // -1 = mitad de lo típico, +1 = doble
+        return t >= 0
+          ? { background: `rgba(93, 202, 165, ${0.15 + 0.7 * t})` }
+          : { background: `rgba(240, 179, 88, ${0.15 + 0.6 * -t})` };
+      };
+      const seg = (opts, cur, set, label) => html`
+        <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5 flex-wrap" role="radiogroup" aria-label=${label}>
+          ${opts.map(([k, l]) => html`
+            <button key=${k} role="radio" aria-checked=${cur === k} onClick=${() => set(k)}
+                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (cur === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+        </div>`;
+      const maxHour = Math.max(1, ...H.byHour);
+
+      return html`
+        <section id="sec-horarios" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-horarios" name="Horarios" />
+          <div className="mb-5">
+            <h2 className="text-[18px] font-medium text-txt">Mejores horarios para publicar</h2>
+            <p className="text-txt4 text-[12px] mt-1 max-w-3xl">
+              La hora se obtiene del link de cada publicación (hora de Ciudad de México). Cada franja se compara contra lo típico de su misma plataforma y formato, así un Reel no compite contra un tuit.
+              Facebook y YouTube no se incluyen: su link no contiene la hora.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            ${seg(HORA_METRICS.map(m => [m.k, m.l]), metric, setMetric, 'Métrica')}
+            ${seg([['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todos']], scope, setScope, 'Pauta')}
+            ${seg([['all', 'Todas'], ...POSTTIME_PLATS.map(p => [p, p])], plat, setPlat, 'Plataforma')}
+          </div>
+
+          ${H.n < 12 ? html`
+            <div className="rounded-xl bg-surface p-8 text-center text-txt3 text-[13px]">
+              Muy pocos posts con hora en este filtro (${H.n}). Amplía el periodo o cambia Orgánico/Pauta.
+            </div>` : html`
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-8 rounded-xl bg-surface p-5 overflow-x-auto">
+              <div className="text-[13px] font-medium text-txt mb-1">${H.M.l} por día y hora</div>
+              <div className="text-[11px] text-txt4 mb-4">Verde: rinde arriba de lo típico · ámbar: abajo · gris: menos de ${HORA_MIN_N} posts (sin lectura) · el número es cuántos posts hay en la franja</div>
+              <table className="no-zebra w-full min-w-[560px] border-separate" style=${{ borderSpacing: 4 }}>
+                <thead>
+                  <tr>
+                    <th></th>
+                    ${HOUR_BANDS.map((_, b) => html`<th key=${b} scope="col" className="text-[10px] font-mono font-normal text-txt4 pb-1">${bandLabel(b)}</th>`)}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${H.grid.map((row, d) => html`
+                    <tr key=${d} style=${{ background: 'transparent' }}>
+                      <th scope="row" className="text-[11px] font-normal text-txt3 text-left pr-2">${WD_ES[d]}</th>
+                      ${row.map((c, b) => html`
+                        <td key=${b} className="rounded-md text-center align-middle h-10"
+                            style=${heat(c)}
+                            title=${c.n ? `${WD_ES[d]} ${bandLabel(b)} · ${c.n} posts · mediana ${H.M.fmtv(c.val)} · ${idxTxt(c.idx)} vs. típico` : `${WD_ES[d]} ${bandLabel(b)} · sin posts`}>
+                          ${c.n >= HORA_MIN_N
+                            ? html`<div className="text-[11px] font-medium text-txt tabular-nums leading-tight">${idxTxt(c.idx)}</div><div className="text-[9px] font-mono text-txt3">${c.n}</div>`
+                            : c.n ? html`<div className="text-[9px] font-mono text-faint">${c.n}</div>` : ''}
+                        </td>`)}
+                    </tr>`)}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="lg:col-span-4 flex flex-col gap-3">
+              <div className="rounded-xl bg-surface p-5">
+                <div className="text-[13px] font-medium text-txt">Mejores franjas</div>
+                <div className="text-[11px] text-txt4 mb-3">Mediana vs. lo típico de su plataforma y formato · solo franjas con ${HORA_TOP_N}+ posts</div>
+                ${H.top.length === 0 ? html`<div className="text-[12px] text-txt4">Ninguna franja junta ${HORA_TOP_N}+ posts todavía.</div>`
+                  : H.top.map((t, i) => html`
+                    <div key=${i} className="flex items-baseline justify-between gap-3 py-1.5">
+                      <div className="text-[13px] text-txt"><span className="text-txt4 font-mono text-[11px] mr-2">${i + 1}</span>${WD_ES[t.d]} · ${bandLabel(t.b)}</div>
+                      <div className="text-right">
+                        <div className="text-[13px] text-success tabular-nums">${idxTxt(t.idx)}</div>
+                        <div className="text-[10px] font-mono text-txt4">${t.n} posts</div>
+                      </div>
+                    </div>`)}
+              </div>
+              <div className="rounded-xl bg-surface p-5">
+                <div className="text-[13px] font-medium text-txt">Mejor franja por plataforma</div>
+                <div className="text-[11px] text-txt4 mb-3">Franjas con ${HORA_TOP_N}+ posts</div>
+                ${H.perPlat.map(pp => html`
+                  <div key=${pp.platform} className="py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-2 text-[12px] text-txt2">
+                        <span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[pp.platform] }}>${PLAT_LETTERS[pp.platform]}</span>
+                        ${pp.platform}
+                      </span>
+                      <span className="text-[12px] tabular-nums ${''}">
+                        ${pp.best ? html`<span className="text-txt">${bandLabel(pp.best.b)}</span> <span className="text-success">${idxTxt(pp.best.idx)}</span>` : html`<span className="text-txt4">sin muestra suficiente</span>`}
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-mono text-txt4 mt-0.5 pl-8">
+                      ${pp.n} posts · donde más publican: ${pp.busiest && pp.busiest.n ? bandLabel(pp.busiest.b) : '—'}${pp.worst ? ` · más bajo: ${bandLabel(pp.worst.b)} ${idxTxt(pp.worst.idx)}` : ''}
+                    </div>
+                  </div>`)}
+              </div>
+            </div>
+
+            <div className="lg:col-span-12 rounded-xl bg-surface p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                <div className="text-[13px] font-medium text-txt">Cuándo publicamos hoy (posts por hora)</div>
+                <div className="text-[11px] text-txt4">${H.n} posts con hora · ${H.decoded} de ${H.totalEligible} links de estas plataformas leídos${H.excluded ? ` · ${H.excluded} de Facebook/YouTube fuera` : ''}</div>
+              </div>
+              <div className="flex items-end gap-1 h-24" role="img" aria-label="Distribución de publicaciones por hora del día">
+                ${H.byHour.map((n, h) => html`
+                  <div key=${h} className="flex-1 flex flex-col items-center justify-end h-full" title=${`${h}:00 · ${n} posts`}>
+                    <div className="w-full rounded-t" style=${{ height: `${(n / maxHour) * 100}%`, minHeight: n ? 2 : 0, background: '#AFA9EC', opacity: 0.75 }}></div>
+                  </div>`)}
+              </div>
+              <div className="flex gap-1 mt-1">
+                ${H.byHour.map((_, h) => html`<div key=${h} className="flex-1 text-center text-[9px] font-mono text-txt4">${h % 3 === 0 ? h : ''}</div>`)}
+              </div>
+            </div>
+          </div>`}
+        </section>`;
+    }
+
+    // ============================================================
     // SimuladorSection — calculadora de metas al revés: en vez de
     // "hice X posts, obtuve Y", parte de la meta que pide el cliente y
     // calcula cuántos posts de cada plataforma/formato hacen falta,
@@ -6843,14 +7067,15 @@
                 <${VtrSection}         D=${D} onPick=${setSelected}/>
                 <${FollowerGoalsSection} fetchedAt=${fetchedAt} chartTheme=${chartTheme}/>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia y simulador"
-                  count=${7} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia, horarios y simulador"
+                  count=${8} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
                   <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
                   <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
                   <${AveragesSection}    D=${D}/>
                   <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
                   <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
                   <${CadenceSection}     D=${D}/>
+                  <${HorariosSection}    D=${D}/>
                   <${SimuladorSection}   allPosts=${allPosts}/>
                 <//>
 
