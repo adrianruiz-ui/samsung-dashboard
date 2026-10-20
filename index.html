@@ -87,14 +87,14 @@
       --c-txt3: 136 136 148;
       --c-txt4: 107 107 120;
       --c-faint: 74 74 85;
-      --c-accent: 175 169 236;
-      --c-accent2: 139 127 232;
-      --c-accentDeep: 85 70 201;
-      --c-accentSoft: 141 138 178;
+      --c-accent: 122 150 255;
+      --c-accent2: 76 110 245;
+      --c-accentDeep: 20 40 160;
+      --c-accentSoft: 140 152 196;
       --c-amber: 240 179 88;
       --c-success: 93 202 165;
-      --c-glow1: rgba(139,127,232,0.08);
-      --c-glow2: rgba(85,70,201,0.04);
+      --c-glow1: rgba(76,110,245,0.08);
+      --c-glow2: rgba(20,40,160,0.04);
       --c-scrollbar: rgba(255,255,255,0.08);
       --c-scrollbar-hover: rgba(255,255,255,0.15);
     }
@@ -102,10 +102,10 @@
     html.light { --logo-samsung: #1428A0; --logo-ganem: #0A0A0F; }
     html.light {
       color-scheme: light;
-      --c-ink: 248 247 242;
+      --c-ink: 245 246 248;
       --c-surface: 255 255 255;
-      --c-surface2: 243 242 236;
-      --c-sidebar: 238 237 230;
+      --c-surface2: 239 241 245;
+      --c-sidebar: 236 238 242;
       --c-line: rgba(10,10,15,0.08);
       --c-line2: rgba(10,10,15,0.14);
       --c-txt: 15 15 20;
@@ -113,14 +113,14 @@
       --c-txt3: 104 104 114;
       --c-txt4: 138 138 148;
       --c-faint: 178 178 186;
-      --c-accent: 85 70 201;
-      --c-accent2: 106 84 217;
-      --c-accentDeep: 68 54 168;
-      --c-accentSoft: 130 122 168;
+      --c-accent: 20 40 160;
+      --c-accent2: 40 70 205;
+      --c-accentDeep: 14 28 120;
+      --c-accentSoft: 104 116 160;
       --c-amber: 168 110 15;
       --c-success: 22 128 100;
-      --c-glow1: rgba(139,127,232,0.10);
-      --c-glow2: rgba(85,70,201,0.05);
+      --c-glow1: rgba(20,40,160,0.08);
+      --c-glow2: rgba(20,40,160,0.04);
       --c-scrollbar: rgba(10,10,15,0.10);
       --c-scrollbar-hover: rgba(10,10,15,0.20);
     }
@@ -131,6 +131,39 @@
     tbody tr.border-b { border-bottom-color: transparent !important; }
     tbody tr:nth-child(even) { background-color: rgb(var(--c-txt) / 0.025); }
     table.no-zebra tbody tr { background-color: transparent !important; }
+
+    /* v40 — Dirección de arte.
+       (2) Etiquetas: fuera mayúsculas espaciadas en monoespaciada; quedan en
+           la tipografía del sistema, tamaño legible y peso medio. La mono se
+           queda solo para cifras. */
+    .font-mono.uppercase {
+      font-family: 'Bricolage Grotesque', system-ui, sans-serif !important;
+      text-transform: none !important; letter-spacing: 0 !important;
+      font-size: 12px !important; font-weight: 500; color: rgb(var(--c-txt3));
+    }
+    .font-mono.uppercase.text-accent, .font-mono.uppercase.text-accentSoft { color: rgb(var(--c-accent)); }
+    .font-mono.uppercase.text-amber { color: rgb(var(--c-amber)); }
+    th.font-mono.uppercase, thead .font-mono.uppercase, thead tr.uppercase th { font-size: 11.5px !important; }
+    thead tr.uppercase { text-transform: none !important; letter-spacing: 0 !important; font-family: 'Bricolage Grotesque', system-ui, sans-serif !important; font-size: 11.5px !important; }
+    /* (3) Sin líneas finas: separadores por espacio y contraste de fondo */
+    .border-b.border-line:not(input):not(select):not(textarea):not(button),
+    .border-t.border-line:not(input):not(select):not(textarea):not(button),
+    .border-b.border-line\/40, .border-b.border-line\/50, .border-t.border-line\/40 { border-color: transparent !important; }
+    thead tr { background-color: rgb(var(--c-txt) / 0.035); }
+    /* (5) Un solo lenguaje de gráficas */
+    .recharts-cartesian-axis-line { display: none; }
+    .recharts-cartesian-axis-tick-line { display: none; }
+    .recharts-cartesian-axis-tick text { font-size: 10.5px; font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
+    .recharts-cartesian-grid-vertical line { stroke-opacity: 0 !important; }
+    .recharts-cartesian-grid-horizontal line { stroke: rgb(var(--c-txt)) !important; stroke-opacity: 0.06 !important; stroke-dasharray: none !important; }
+    .recharts-line-curve { stroke-width: 2px; }
+    .recharts-area-curve { stroke-width: 1.75px; }
+    .recharts-legend-item-text { font-size: 11px; color: rgb(var(--c-txt3)) !important; }
+    .recharts-default-tooltip, .recharts-tooltip-wrapper > div {
+      border-radius: 10px !important; border: none !important;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.18) !important;
+      font-family: 'Bricolage Grotesque', system-ui, sans-serif !important; font-size: 12px !important;
+    }
     html, body, #root { height: 100%; background: rgb(var(--c-ink)); color: rgb(var(--c-txt)); transition: background-color 150ms ease, color 150ms ease; }
     body {
       font-family: 'Bricolage Grotesque', system-ui, sans-serif;
@@ -664,7 +697,7 @@
       }
 
       console.log('%c[Samsung MX dashboard · build ' + BUILD_VERSION + ']',
-        'color:#AFA9EC;font-weight:bold;font-size:13px');
+        'color:#4C6EF5;font-weight:bold;font-size:13px');
       console.log('Filas crudas devueltas por gviz:', _rawCountByPlat);
       console.log('Filas crudas con Semana=18:', _rawS18ByPlat);
       console.log('Posts válidos por plataforma:', _diagByPlat);
@@ -1353,7 +1386,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v39';
+    const BUILD_VERSION = '2026-10-20-v40';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2035,14 +2068,6 @@
             </button>
           </div>
 
-          ${!collapsed && html`
-            <div className="mx-3 mb-5 p-3 rounded-xl border border-accent2/20"
-                 style=${{ background: 'linear-gradient(135deg, rgba(139,127,232,0.08) 0%, rgba(85,70,201,0.04) 100%)' }}>
-              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-accent mb-1.5">En vivo</div>
-              <div className="font-medium text-txt leading-tight tabular-nums break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 22px)' }}>${fmt(liveAlcance)}</div>
-              <div className="text-[10px] text-txt3 mt-1.5 font-mono break-all">alcance · ${fmtFull(livePosts)} posts</div>
-            </div>
-          `}
 
           <nav aria-label="Secciones del dashboard" className=${"flex-1 px-2 " + (collapsed ? "pt-2" : "")}>
             ${NAV_GROUPS.map((grp, gi) => html`
@@ -2579,7 +2604,7 @@
       { k: 'inter', l: 'Interacciones',  f: (p) => p.interactions || 0 },
       { k: 'views', l: 'Reproducciones', f: (p) => p.views || 0 },
     ];
-    const ORG_COLOR = '#5DCAA5', PAID_COLOR = '#AFA9EC';
+    const ORG_COLOR = '#5DCAA5', PAID_COLOR = '#4C6EF5';
 
     function HeroSection({ D, chartTheme, kpis }) {
       const ct = chartTheme || CHART_THEME.dark;
@@ -2620,7 +2645,7 @@
         const row = (c, l, v) => html`<div style=${{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
           <span><span style=${{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 6 }}></span>${l}</span><b>${v}</b></div>`;
         return html`
-          <div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText, minWidth: 240 }}>
+          <div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color: ct.tooltipText, minWidth: 240 }}>
             <div style=${{ color: ct.tooltipLabel, marginBottom: 6 }}>Semana ${d.week} · ${M.l}${d.week === maxW?.week ? ' · pico' : ''}</div>
             ${row(PAID_COLOR, `Pauta (${d.postsPaid} posts)`, fmtFull(d.paid) + ' · ' + pct(d.paid, d.total))}
             ${row(ORG_COLOR, `Orgánico (${d.postsOrg} posts)`, fmtFull(d.org) + ' · ' + pct(d.org, d.total))}
@@ -2689,7 +2714,7 @@
                             interval=${trend.length > 26 ? 1 : 0} />
                   <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
                             tickFormatter=${fmt} width=${92} />
-                  <${Tooltip} content=${TipBox} cursor=${{ fill: 'rgba(175,169,236,0.10)' }} />
+                  <${Tooltip} content=${TipBox} cursor=${{ fill: 'rgba(76,110,245,0.10)' }} />
                   <${ReferenceLine} y=${avg} stroke="#F0B358" strokeDasharray="4 4" strokeOpacity=${0.8}
                     label=${{ value: 'Promedio', position: 'insideTopRight', fontSize: 10, fill: '#F0B358' }} />
                   <${Bar} dataKey="org" stackId="s" fill=${ORG_COLOR} maxBarSize=${26} name="Orgánico" />
@@ -2868,7 +2893,7 @@
     // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
-    function KpiCell({ label, value, sub, accent, onClick, delta, deltaLabel, exact }) {
+    function KpiCell({ label, value, sub, accent, onClick, delta, deltaLabel, exact, big }) {
       return html`
         <div onClick=${onClick} ...${kbd(onClick, `Ver de dónde sale ${label}`)}
              className=${"rounded-xl bg-surface border border-line px-4 py-4 min-w-0 relative group focus:outline-none focus-visible:ring-1 focus-visible:ring-accent2 " +
@@ -2880,7 +2905,7 @@
           </div>
           <div className=${"font-medium tabular-nums break-all " + (accent ? "text-accent" : "text-txt")}
                title=${exact || undefined}
-               style=${{ fontSize: 'clamp(18px, 1.7vw, 24px)', lineHeight: 1.2 }}>${value}</div>
+               style=${{ fontSize: big ? 'clamp(22px, 2vw, 30px)' : 'clamp(18px, 1.7vw, 24px)', lineHeight: 1.15, letterSpacing: '-0.01em' }}>${value}</div>
           ${delta !== undefined && html`
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               <${DeltaPill} pct=${delta} />
@@ -2897,22 +2922,29 @@
       const dLabel = heroDeltas ? `vs S${heroDeltas.prevWeek}` : null;
       return html`
         <section className=${embedded ? '' : 'px-7 pb-5'}>
-          <div className=${"grid grid-cols-1 sm:grid-cols-2 gap-3 " + (embedded ? 'lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-6')}>
-            <${KpiCell} label="Alcance"        exact=${fmtFull(g.reach)} value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
-            <${KpiCell} label="Interacciones"  exact=${fmtFull(g.inter)} value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
-            <${KpiCell} label="Reproducciones" exact=${fmtFull(g.views)} value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR pond.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
-            <${KpiCell} label="ER ponderado"   value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent delta=${heroDeltas?.er_avg} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
-            <${KpiCell} label="Comentarios"    exact=${fmtFull(g.comments)} value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} delta=${heroDeltas?.comments} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('comments') : undefined} />
-            <${KpiCell} label="Posts"          value=${fmtFull(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} delta=${heroDeltas?.posts} deltaLabel=${dLabel} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <${KpiCell} big label="Alcance"        exact=${fmtFull(g.reach)} value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
+            <${KpiCell} big label="Interacciones"  exact=${fmtFull(g.inter)} value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
+            <${KpiCell} big label="Reproducciones" exact=${fmtFull(g.views)} value=${fmt(g.views)}       sub="views totales" delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
+            <${KpiCell} big label="VTR"            value=${erFmt(g.vtr_avg)}  sub="ponderado por views" accent />
           </div>
-          ${g.flagged_posts > 0 && html`
-            <button onClick=${onTrace ? () => onTrace('er_avg') : undefined}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber/40 bg-amber/[0.06] px-3 py-1 text-[11px] text-amber hover:bg-amber/[0.12] transition-colors"
-                    title="Estos posts tienen valores imposibles y no entran a las tasas (ER, ER Básico, CTR). Sí cuentan en los totales.">
-              <${AlertIcon} size=${12} />
-              <span>${g.flagged_posts} post${g.flagged_posts === 1 ? '' : 's'} con valores imposibles excluido${g.flagged_posts === 1 ? '' : 's'} de las tasas · ver detalle</span>
-            </button>
-          `}
+          <div className="mt-3 rounded-xl bg-surface px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 text-[13px]">
+            ${[
+              ['ER ponderado', erFmt(g.er_avg), heroDeltas?.er_avg, onTrace ? () => onTrace('er_avg') : null],
+              ['ER básico', erFmt(g.basic_er_avg)],
+              ['CTR', erFmt(g.ctr_avg)],
+              ['Comentarios', fmt(g.comments), heroDeltas?.comments, onTrace ? () => onTrace('comments') : null],
+              ['Compartidos', fmt(g.shares)],
+              ['Posts', fmtFull(g.posts), heroDeltas?.posts],
+            ].map(([l, v, dv, fn]) => html`
+              <button key=${l} onClick=${fn || undefined} disabled=${!fn}
+                      className=${"inline-flex items-baseline gap-2 text-left " + (fn ? "hover:text-accent cursor-pointer" : "cursor-default")}
+                      title=${fn ? `Ver de dónde sale ${l}` : undefined}>
+                <span className="text-txt3">${l}</span>
+                <span className="text-txt font-medium tabular-nums">${v}</span>
+                ${dv != null && html`<${DeltaPill} pct=${dv} />`}
+              </button>`)}
+          </div>
           <${PautaSplit} D=${D} />
         </section>`;
     }
@@ -3427,8 +3459,8 @@
                   <${YAxis} yAxisId="right" orientation="right" stroke=${ct.axis} fontSize=${11}
                             tickLine=${false} axisLine=${false} width=${32} />
                   <${Tooltip}
-                    cursor=${{ fill: 'rgba(175,169,236,0.08)' }}
-                    contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'8px 12px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:ct.tooltipText }}
+                    cursor=${{ fill: 'rgba(76,110,245,0.08)' }}
+                    contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'8px 12px', fontSize:11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color:ct.tooltipText }}
                     labelStyle=${{ color: ct.tooltipLabel }}
                     labelFormatter=${(label) => isDailyMode ? label : `Semana ${String(label).slice(1)}`}
                     formatter=${(v, name) => {
@@ -3437,8 +3469,8 @@
                     }} />
                   <${Bar} yAxisId="right" dataKey="posts" fill=${ct.tooltipBorder} />
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
-                           stroke="#AFA9EC" strokeWidth=${2}
-                           dot=${{ fill:'#AFA9EC', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#AFA9EC', strokeWidth:2 }} />
+                           stroke="#4C6EF5" strokeWidth=${2}
+                           dot=${{ fill:'#4C6EF5', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#4C6EF5', strokeWidth:2 }} />
                   ${[...campaignLaunches].sort((a, b) => a.week - b.week).map((l, i) => html`
                     <${ReferenceLine} key=${l.name} yAxisId="left" x=${'S' + l.week}
                       stroke="#F0B358" strokeOpacity=${0.55} strokeDasharray="3 3"
@@ -3502,7 +3534,7 @@
               <div className="space-y-4">
                 ${strats.slice(0, 4).map(s => {
                   const isPaid = (s.name||'').toLowerCase().includes('pauta') || (s.name||'').toLowerCase().includes('paid');
-                  const color = isPaid ? '#F0B358' : '#AFA9EC';
+                  const color = isPaid ? '#F0B358' : '#4C6EF5';
                   const pctPosts = totalPosts ? Math.round(s.posts/totalPosts*100) : 0;
                   const isActiveRow = filters?.strategies?.length === 1 && filters.strategies[0] === s.name;
                   return html`
@@ -3878,7 +3910,7 @@
             </div>
             <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Videos</div>
-              <div className="text-[28px] font-medium text-txt tabular-nums leading-none break-all">${vtr.totalVideos}</div>
+              <div className="text-[28px] font-medium text-txt tabular-nums leading-none break-all">${fmtFull(vtr.totalVideos)}</div>
               <div className="text-[11px] font-mono text-txt4 mt-2">en el filtro actual</div>
             </div>
             <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
@@ -4509,7 +4541,7 @@
                 <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
                   <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4">Tendencia · alcance por semana relativa</div>
                   <div className="flex gap-4 text-[10px] font-mono text-txt4">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block" style=${{ background: '#AFA9EC' }}></span>${entA}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block" style=${{ background: '#4C6EF5' }}></span>${entA}</span>
                     <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block" style=${{ background: '#F0B358' }}></span>${entB}</span>
                   </div>
                 </div>
@@ -4522,12 +4554,12 @@
                       <${YAxis} stroke=${ct.axisStrong} fontSize=${11} tickLine=${false} axisLine=${false}
                                 tickFormatter=${fmt} width=${48} />
                       <${Tooltip}
-                        contentStyle=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 6, padding: '8px 12px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText }}
+                        contentStyle=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 6, padding: '8px 12px', fontSize: 11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color: ct.tooltipText }}
                         labelStyle=${{ color: ct.tooltipLabel }}
                         labelFormatter=${(i) => `Semana relativa ${i}`}
                         formatter=${(v, name) => [v == null ? '—' : fmt(v), name === 'reachA' ? entA : entB]} />
-                      <${Line} type="monotone" dataKey="reachA" stroke="#AFA9EC" strokeWidth=${2}
-                               dot=${{ fill: '#AFA9EC', r: 3, strokeWidth: 0 }} activeDot=${{ r: 5 }} connectNulls />
+                      <${Line} type="monotone" dataKey="reachA" stroke="#4C6EF5" strokeWidth=${2}
+                               dot=${{ fill: '#4C6EF5', r: 3, strokeWidth: 0 }} activeDot=${{ r: 5 }} connectNulls />
                       <${Line} type="monotone" dataKey="reachB" stroke="#F0B358" strokeWidth=${2} strokeDasharray="4 3"
                                dot=${{ fill: '#F0B358', r: 3, strokeWidth: 0 }} activeDot=${{ r: 5 }} connectNulls />
                     <//>
@@ -4886,7 +4918,7 @@
       if (posts === 0) return { background: 'rgba(127,127,140,0.10)' };
       const ratio = Math.min(1, posts / maxPosts);
       const alpha = 0.22 + ratio * 0.68;
-      return { background: `rgba(139,127,232,${alpha.toFixed(2)})` };
+      return { background: `rgba(76,110,245,${alpha.toFixed(2)})` };
     }
 
     function CadenceHeatmap({ cadence }) {
@@ -5168,7 +5200,7 @@
               <div className="flex items-end gap-1 h-24" role="img" aria-label="Distribución de publicaciones por hora del día">
                 ${H.byHour.map((n, h) => html`
                   <div key=${h} className="flex-1 flex flex-col items-center justify-end h-full" title=${`${h}:00 · ${n} posts`}>
-                    <div className="w-full rounded-t" style=${{ height: `${(n / maxHour) * 100}%`, minHeight: n ? 2 : 0, background: '#AFA9EC', opacity: 0.75 }}></div>
+                    <div className="w-full rounded-t" style=${{ height: `${(n / maxHour) * 100}%`, minHeight: n ? 2 : 0, background: '#4C6EF5', opacity: 0.75 }}></div>
                   </div>`)}
               </div>
               <div className="flex gap-1 mt-1">
@@ -6193,7 +6225,7 @@
                 <${XAxis} dataKey="w" hide />
                 <${YAxis} hide domain=${[0, (dataMax) => Math.max(dataMax, g.goal)]} />
                 <${Tooltip} formatter=${(v, k) => [fmt(v), k === 'real' ? 'Ganados (real)' : 'Ruta a la meta']}
-                            contentStyle=${{ background: chartTheme?.tooltipBg, border: '1px solid ' + (chartTheme?.tooltipBorder || '#333'), borderRadius: 8, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: chartTheme?.tooltipText }} />
+                            contentStyle=${{ background: chartTheme?.tooltipBg, border: '1px solid ' + (chartTheme?.tooltipBorder || '#333'), borderRadius: 8, fontSize: 11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color: chartTheme?.tooltipText }} />
                 <${Line} type="monotone" dataKey="ruta" stroke="currentColor" className="text-txt4" strokeDasharray="4 4" dot=${false} strokeWidth=${1.2} isAnimationActive=${false} />
                 <${Line} type="monotone" dataKey="real" stroke=${color} dot=${false} strokeWidth=${2} connectNulls=${false} isAnimationActive=${false} />
               <//>
@@ -7352,7 +7384,7 @@
                                   fill=${PROFILE_COLORS[i].stroke} fillOpacity=${0.08} strokeWidth=${2} isAnimationActive=${false}
                                   dot=${{ r: 3, fill: PROFILE_COLORS[i].stroke, strokeWidth: 0 }} />`)}
                       <${Tooltip} formatter=${(v, name) => [Math.round(v), name]}
-                                  contentStyle=${{ background: ct.tooltipBg, border: '1px solid ' + (ct.tooltipBorder || '#333'), borderRadius: 6, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText }} />
+                                  contentStyle=${{ background: ct.tooltipBg, border: '1px solid ' + (ct.tooltipBorder || '#333'), borderRadius: 6, fontSize: 11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color: ct.tooltipText }} />
                     <//>
                   <//>
                 </div>
