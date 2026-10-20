@@ -1263,7 +1263,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v22';
+    const BUILD_VERSION = '2026-10-19-v22.1';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6049,10 +6049,12 @@
         return { plats, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null };
       };
       const cur = inWeek(week), prev = inWeek(week - 1);
+      const series = [];
+      for (let w = 1; w <= week; w++) { const pf = perfOf(inWeek(w)); series.push({ w, reach: pf.reach, inter: pf.inter }); }
       const pending = cur.filter(p => !hasMetrics(p)).length;
       return {
         week, range: pressWeekRange(week),
-        perf: perfOf(cur), prev: perfOf(prev),
+        perf: perfOf(cur), prev: perfOf(prev), series,
         vtr: vtrOf(cur), vtrPrev: vtrOf(prev),
         fol: followers?.[week] ?? null, folPrev: followers?.[week - 1] ?? null,
         pending,
@@ -6094,6 +6096,42 @@
         arrow(2185606, ya[i], 190500, 138300, dv == null || dv === 0 ? null : dv > 0);
         label(2357725, yl[i], pctTxt(dv, i === 3 ? 2 : 0));
       });
+
+      // ---------- Reach & Interactions Over Time
+      frame(3817555, 1694416, 4549200, 1460400);
+      header(3817425, 1450660, 4549200, 252000, 'Reach & Interactions Over Time');
+      const ser = d.series;
+      if (ser.length) {
+        const CX = 3961910, CW = 4305151, CY = 1942562, CH = 1113807;
+        const PL = { x: 0.12, y: 0.06, w: 0.86, h: 0.62 };     // área de trazo fija → píldoras alineadas
+        s.addChart(pptx.ChartType.area, [
+          { name: 'Total Interactions', labels: ser.map(r => String(r.w)), values: ser.map(r => r.inter) },
+          { name: 'Reach', labels: ser.map(r => String(r.w)), values: ser.map(r => r.reach) },
+        ], {
+          x: E(CX), y: E(CY), w: E(CW), h: E(CH), layout: PL,
+          chartColors: ['1F3864', 'A4C2F4'], chartColorsOpacity: 85,
+          showLegend: true, legendPos: 'b', legendFontSize: 6, legendFontFace: 'Arial',
+          catAxisLabelFontSize: 5, catAxisLabelFontFace: 'Arial', catAxisLabelColor: '4285F4', catAxisLineShow: false,
+          valAxisLabelFontSize: 5, valAxisLabelFontFace: 'Arial', valAxisLabelFormatCode: '#,##0,,"M"',
+          valGridLine: { color: 'D9D9D9', style: 'solid', size: 0.5 }, valAxisLineShow: false,
+        });
+        // Píldoras de mes (JAN, FEB, …) sobre las semanas que abarca cada mes
+        const MES_UP = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DEC'];
+        const n = ser.length;
+        const px = (i) => CX + CW * (PL.x + PL.w * ((i + 0.5) / n));
+        const groups = [];
+        ser.forEach((r, i) => {
+          const m = pressWeekRange(r.w)[1].getMonth();   // mes del sábado que cierra la semana (S1 → JAN)
+          if (!groups.length || groups[groups.length - 1].m !== m) groups.push({ m, i0: i, i1: i }); else groups[groups.length - 1].i1 = i;
+        });
+        const step = CW * PL.w / n;
+        groups.forEach(g => {
+          const x0 = px(g.i0) - step / 2, x1 = px(g.i1) + step / 2;
+          s.addText(MES_UP[g.m], { x: E(x0 + 6000), y: E(1802000), w: E(Math.max(x1 - x0 - 12000, 60000)), h: E(139500),
+            fill: { color: '00B0F0' }, line: { color: 'FFFFFF', width: 0.8 }, color: 'FFFFFF', bold: true,
+            fontFace: 'Arial', fontSize: 4, align: 'center', valign: 'middle', margin: 0 });
+        });
+      }
 
       // ---------- VTR
       frame(8430948, 1691879, 3465300, 1460400);
