@@ -1273,7 +1273,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v27';
+    const BUILD_VERSION = '2026-10-19-v28';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2485,34 +2485,60 @@
     // ============================================================
     // HeroSection — compacto
     // ============================================================
+    const HERO_METRICS = [
+      { k: 'reach', l: 'Alcance',        f: (p) => p.reach || 0 },
+      { k: 'inter', l: 'Interacciones',  f: (p) => p.interactions || 0 },
+      { k: 'views', l: 'Reproducciones', f: (p) => p.views || 0 },
+    ];
+    const ORG_COLOR = '#5DCAA5', PAID_COLOR = '#AFA9EC';
+
     function HeroSection({ D, chartTheme, kpis }) {
       const ct = chartTheme || CHART_THEME.dark;
       const g = D.global;
-      const weekKeys = Object.keys(D.by_week).sort((a,b) => +a - +b);
-      const trend = weekKeys.map(w => ({ week: +w, label: 'S' + w, reach: D.by_week[w].reach || 0,
-                                         inter: D.by_week[w].inter || 0, posts: D.by_week[w].posts || 0 }));
-      // Promedio móvil de 4 semanas para leer la tendencia sin el ruido de los picos
-      trend.forEach((d, i) => {
-        const win = trend.slice(Math.max(0, i - 3), i + 1);
-        d.ma4 = win.reduce((a, x) => a + x.reach, 0) / win.length;
-      });
-      const avg = trend.length ? trend.reduce((a, d) => a + d.reach, 0) / trend.length : 0;
-      const maxW = trend.reduce((m, d) => d.reach > (m?.reach ?? -1) ? d : m, null);
+      const [metric, setMetric] = useState(() => { try { return localStorage.getItem('smx-hero-metric') || 'reach'; } catch { return 'reach'; } });
+      const pickMetric = (k) => { setMetric(k); try { localStorage.setItem('smx-hero-metric', k); } catch {} };
+      const M = HERO_METRICS.find(m => m.k === metric) || HERO_METRICS[0];
+
+      // Semana a semana, separado en orgánico y pauta
+      const trend = useMemo(() => {
+        const map = new Map();
+        for (const p of (D.allPosts || [])) {
+          if (!p.week) continue;
+          if (!map.has(p.week)) map.set(p.week, { week: +p.week, label: 'S' + p.week, org: 0, paid: 0, postsOrg: 0, postsPaid: 0 });
+          const r = map.get(p.week), v = M.f(p);
+          if (isPaidP(p)) { r.paid += v; r.postsPaid++; } else { r.org += v; r.postsOrg++; }
+        }
+        const arr = [...map.values()].sort((a, b) => a.week - b.week);
+        arr.forEach((d, i) => {
+          d.total = d.org + d.paid;
+          const win = arr.slice(Math.max(0, i - 3), i + 1);
+          d.ma4 = win.reduce((a, x) => a + x.org + x.paid, 0) / win.length;
+        });
+        return arr;
+      }, [D, metric]);
+      const avg = trend.length ? trend.reduce((a, d) => a + d.total, 0) / trend.length : 0;
+      const maxW = trend.reduce((m, d) => d.total > (m?.total ?? -1) ? d : m, null);
       const lastW = trend[trend.length - 1];
+      const sumOrg = trend.reduce((a, d) => a + d.org, 0), sumPaid = trend.reduce((a, d) => a + d.paid, 0);
+      const shareOrg = (sumOrg + sumPaid) ? sumOrg / (sumOrg + sumPaid) : 0;
       const nPlat = Object.keys(D.by_platform).length;
       const nWeeks = (D.meta.weeks_in_scope || D.meta.weeks).length;
+      const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
 
       const TipBox = ({ active, payload }) => {
         if (!active || !payload || !payload.length) return null;
         const d = payload[0].payload;
+        const row = (c, l, v) => html`<div style=${{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+          <span><span style=${{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 6 }}></span>${l}</span><b>${v}</b></div>`;
         return html`
-          <div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText, minWidth: 210 }}>
-            <div style=${{ color: ct.tooltipLabel, marginBottom: 4 }}>Semana ${d.week}${d.week === maxW?.week ? ' · pico del periodo' : ''}</div>
-            <div>Alcance: <b>${fmtFull(d.reach)}</b></div>
-            <div>Promedio 4 sem.: ${fmtFull(d.ma4)}</div>
-            <div>Interacciones: ${fmtFull(d.inter)}</div>
-            <div>Posts: ${fmtFull(d.posts)}</div>
-            <div style=${{ color: ct.tooltipLabel, marginTop: 4 }}>${avg ? ((d.reach / avg - 1) * 100 >= 0 ? '+' : '') + ((d.reach / avg - 1) * 100).toFixed(0) + '% vs. promedio semanal' : ''}</div>
+          <div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText, minWidth: 240 }}>
+            <div style=${{ color: ct.tooltipLabel, marginBottom: 6 }}>Semana ${d.week} · ${M.l}${d.week === maxW?.week ? ' · pico' : ''}</div>
+            ${row(PAID_COLOR, `Pauta (${d.postsPaid} posts)`, fmtFull(d.paid) + ' · ' + pct(d.paid, d.total))}
+            ${row(ORG_COLOR, `Orgánico (${d.postsOrg} posts)`, fmtFull(d.org) + ' · ' + pct(d.org, d.total))}
+            <div style=${{ height: 6 }}></div>
+            ${row('transparent', 'Total', fmtFull(d.total))}
+            <div style=${{ color: ct.tooltipLabel }}>Promedio 4 sem.: ${fmtFull(d.ma4)}</div>
+            <div style=${{ color: ct.tooltipLabel }}>${avg ? ((d.total / avg - 1) * 100 >= 0 ? '+' : '') + ((d.total / avg - 1) * 100).toFixed(0) + '% vs. promedio semanal' : ''}</div>
           </div>`;
       };
 
@@ -2532,9 +2558,21 @@
 
           <div className="rounded-2xl bg-surface p-5 md:p-6 mt-4">
             <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-              <div>
-                <div className="text-[15px] font-medium text-txt">Alcance semanal</div>
-                <div className="text-[12px] text-txt4 mt-0.5">Barras: alcance de cada semana · línea: promedio móvil de 4 semanas · punteada: promedio del periodo</div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-[15px] font-medium text-txt">${M.l} semanal</div>
+                  <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Métrica de la gráfica">
+                    ${HERO_METRICS.map(m => html`
+                      <button key=${m.k} role="radio" aria-checked=${metric === m.k} onClick=${() => pickMetric(m.k)}
+                              className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (metric === m.k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${m.l}</button>`)}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-txt3 mt-2">
+                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style=${{ background: PAID_COLOR }}></span>Pauta · ${pct(sumPaid, sumOrg + sumPaid)}</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style=${{ background: ORG_COLOR }}></span>Orgánico · ${pct(sumOrg, sumOrg + sumPaid)}</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-4 h-0.5 rounded" style=${{ background: ct.tooltipText, opacity: 0.7 }}></span>Promedio móvil 4 sem.</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t border-dashed" style=${{ borderColor: '#F0B358' }}></span>Promedio del periodo</span>
+                </div>
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-right">
                 <div>
@@ -2543,37 +2581,39 @@
                 </div>
                 ${maxW && html`<div>
                   <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Semana pico · S${maxW.week}</div>
-                  <div className="text-[14px] text-accent tabular-nums">${fmtFull(maxW.reach)}</div>
+                  <div className="text-[14px] text-accent tabular-nums">${fmtFull(maxW.total)}</div>
                 </div>`}
                 ${lastW && html`<div>
                   <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Última semana · S${lastW.week}</div>
-                  <div className="text-[14px] text-txt tabular-nums">${fmtFull(lastW.reach)}</div>
+                  <div className="text-[14px] text-txt tabular-nums">${fmtFull(lastW.total)}</div>
                 </div>`}
               </div>
             </div>
             <div style=${{ height: 300 }}>
               ${trend.length <= 1 ? html`
                 <div className="h-full flex items-center justify-center text-[13px] text-txt4">
-                  Selecciona más de una semana para ver la evolución del alcance.
+                  Selecciona más de una semana para ver la evolución.
                 </div>` : html`
               <${ResponsiveContainer} width="100%" height="100%">
                 <${ComposedChart} data=${trend} margin=${{ top: 18, right: 8, left: 4, bottom: 0 }}>
                   <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
                             interval=${trend.length > 26 ? 1 : 0} />
                   <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                            tickFormatter=${fmt} width=${88} />
+                            tickFormatter=${fmt} width=${92} />
                   <${Tooltip} content=${TipBox} cursor=${{ fill: 'rgba(175,169,236,0.10)' }} />
                   <${ReferenceLine} y=${avg} stroke="#F0B358" strokeDasharray="4 4" strokeOpacity=${0.8}
                     label=${{ value: 'Promedio', position: 'insideTopRight', fontSize: 10, fill: '#F0B358' }} />
-                  <${Bar} dataKey="reach" radius=${[3, 3, 0, 0]} maxBarSize=${26}>
-                    ${trend.map(d => html`<${Cell} key=${d.week}
-                      fill=${d.week === maxW?.week ? '#7F77DD' : '#AFA9EC'}
-                      fillOpacity=${d.week === maxW?.week ? 1 : 0.55} />`)}
-                  <//>
-                  <${Line} type="monotone" dataKey="ma4" stroke=${ct.tooltipText} strokeOpacity=${0.75} strokeWidth=${1.6} dot=${false} />
+                  <${Bar} dataKey="org" stackId="s" fill=${ORG_COLOR} maxBarSize=${26} name="Orgánico" />
+                  <${Bar} dataKey="paid" stackId="s" fill=${PAID_COLOR} radius=${[3, 3, 0, 0]} maxBarSize=${26} name="Pauta" />
+                  <${Line} type="monotone" dataKey="ma4" stroke=${ct.tooltipText} strokeOpacity=${0.7} strokeWidth=${1.6} dot=${false} />
                 <//>
               <//>`}
             </div>
+            ${trend.length > 1 && html`
+              <div className="text-[12px] text-txt3 mt-3">
+                En el periodo, el ${pct(sumPaid, sumOrg + sumPaid)} de ${M.l.toLowerCase()} vino de pauta y el ${pct(sumOrg, sumOrg + sumPaid)} de orgánico.
+                ${maxW && html` La semana pico (S${maxW.week}) fue ${pct(maxW.paid, maxW.total)} pauta.`}
+              </div>`}
           </div>
         </section>`;
     }
