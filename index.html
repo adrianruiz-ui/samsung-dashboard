@@ -122,6 +122,12 @@
       --c-scrollbar: rgba(10,10,15,0.10);
       --c-scrollbar-hover: rgba(10,10,15,0.20);
     }
+    /* v25 — menos líneas finas: tarjetas por contraste de superficie y
+       tablas sin separadores por fila (zebra muy sutil en su lugar) */
+    .bg-surface.border.border-line { border-color: transparent; }
+    .rounded-xl.bg-surface { border-radius: 16px; }
+    tbody tr.border-b { border-bottom-color: transparent !important; }
+    tbody tr:nth-child(even) { background-color: rgb(var(--c-txt) / 0.025); }
     html, body, #root { height: 100%; background: rgb(var(--c-ink)); color: rgb(var(--c-txt)); transition: background-color 150ms ease, color 150ms ease; }
     body {
       font-family: 'Bricolage Grotesque', system-ui, sans-serif;
@@ -897,9 +903,18 @@
     // ============================================================
     // FORMATTERS
     // ============================================================
-    // Antes abreviaba a K/M/B; ahora siempre muestra el número completo
-    // con separadores de miles (petición: ver el dato exacto).
-    const fmt = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('es-MX');
+    // v25: cifras compactas (657.5M, 1.93B, 12.4K) para lectura rápida.
+    // El dato exacto sigue disponible con fmtFull (tooltips, tablas de
+    // detalle, trazabilidad y exportaciones).
+    const fmt = (n) => {
+      if (n == null || isNaN(n)) return '—';
+      const a = Math.abs(n), s = n < 0 ? '-' : '';
+      const trim = (x) => x.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+      if (a >= 1e9)  return s + trim((a / 1e9).toFixed(2)) + 'B';
+      if (a >= 1e6)  return s + trim((a / 1e6).toFixed(a >= 1e8 ? 1 : 2)) + 'M';
+      if (a >= 1e4)  return s + trim((a / 1e3).toFixed(1)) + 'K';
+      return Math.round(n).toLocaleString('es-MX');
+    };
     const fmtFull = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('es-MX');
     const erFmt = (n) => n == null ? '—' : Number(n).toFixed(2) + '%';
 
@@ -1217,15 +1232,18 @@
           { id: 'sec-resumen',      name: 'Resumen' },
           { id: 'sec-plataformas',  name: 'Plataformas' },
           { id: 'sec-tendencia',    name: 'Tendencia' },
-          { id: 'sec-mezcla',       name: 'Mezcla' },
           { id: 'sec-top-posts',    name: 'Top posts' },
           { id: 'sec-vtr',          name: 'VTR' },
+          { id: 'sec-meta',         name: 'Meta followers' },
+          { id: 'sec-mezcla',       name: 'Mezcla' },
+          { id: 'sec-perfil',       name: 'Perfil por formato' },
           { id: 'sec-promedios',    name: 'Promedios' },
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
-          { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-cadencia',     name: 'Cadencia' },
           { id: 'sec-simulador',    name: 'Simulador' },
+          { id: 'sec-anomalias',    name: 'Anomalías' },
+          { id: 'sec-calidad',      name: 'Calidad de datos' },
         ];
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
         const pageW = pdf.internal.pageSize.getWidth();
@@ -1264,7 +1282,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v24';
+    const BUILD_VERSION = '2026-10-19-v25';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1827,25 +1845,30 @@
     // ============================================================
     // SIDEBAR — colapsable
     // ============================================================
+    const NAV_GROUPS = [
+      { key: 'resultados', label: 'Resultados', foldable: false },
+      { key: 'analisis',   label: 'Análisis',   foldable: true  },
+      { key: 'control',    label: 'Control',    foldable: true  },
+    ];
     const NAV_ITEMS = [
-      { id: 'resumen',      label: 'Resumen',      Icon: SquaresIcon  },
-      { id: 'plataformas',  label: 'Plataformas',  Icon: LayersIcon   },
-      { id: 'tendencia',    label: 'Tendencia',    Icon: TrendIcon    },
-      { id: 'mezcla',       label: 'Mezcla',       Icon: DonutIcon    },
-      { id: 'perfil',       label: 'Perfil por formato', Icon: RadarIcon },
-      { id: 'top-posts',    label: 'Top posts',    Icon: RowsIcon     },
-      { id: 'vtr',          label: 'VTR',          Icon: PlayIcon     },
-      { id: 'promedios',    label: 'Promedios',    Icon: AvgIcon      },
-      { id: 'comparativas', label: 'Comparativas', Icon: CompareIcon  },
-      { id: 'catalogo',     label: 'Catálogo',     Icon: BagIcon      },
-      { id: 'anomalias',    label: 'Anomalías',    Icon: AlertIcon    },
-      { id: 'cadencia',     label: 'Cadencia',     Icon: CalendarIcon },
-      { id: 'simulador',    label: 'Simulador',    Icon: TargetIcon   },
-      { id: 'calidad',      label: 'Calidad de datos', Icon: ShieldIcon },
-      { id: 'meta',         label: 'Meta followers', Icon: FlagIcon   },
+      { id: 'resumen',      label: 'Resumen',            Icon: SquaresIcon,  group: 'resultados' },
+      { id: 'plataformas',  label: 'Plataformas',        Icon: LayersIcon,   group: 'resultados' },
+      { id: 'tendencia',    label: 'Tendencia',          Icon: TrendIcon,    group: 'resultados' },
+      { id: 'top-posts',    label: 'Top posts',          Icon: RowsIcon,     group: 'resultados' },
+      { id: 'vtr',          label: 'VTR',                Icon: PlayIcon,     group: 'resultados' },
+      { id: 'meta',         label: 'Meta followers',     Icon: FlagIcon,     group: 'resultados' },
+      { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
+      { id: 'perfil',       label: 'Perfil por formato', Icon: RadarIcon,    group: 'analisis' },
+      { id: 'promedios',    label: 'Promedios',          Icon: AvgIcon,      group: 'analisis' },
+      { id: 'comparativas', label: 'Comparativas',       Icon: CompareIcon,  group: 'analisis' },
+      { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
+      { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
+      { id: 'simulador',    label: 'Simulador',          Icon: TargetIcon,   group: 'analisis' },
+      { id: 'anomalias',    label: 'Anomalías',          Icon: AlertIcon,    group: 'control' },
+      { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
     ];
 
-    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0 }) {
+    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0, openGroups = {}, onOpenGroup, onNavigate }) {
       const [active, setActive] = useState('resumen');
 
       // Scroll-spy: el nav resaltaba solo al hacer clic, pero se
@@ -1864,12 +1887,17 @@
         }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
         els.forEach(el => observer.observe(el));
         return () => observer.disconnect();
-      }, []);
+      }, [JSON.stringify(openGroups)]);
 
       const scrollTo = (id) => {
         setActive(id);
-        const el = document.getElementById('sec-' + id);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const item = NAV_ITEMS.find(n => n.id === id);
+        const go = () => { const el = document.getElementById('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+        if (item && NAV_GROUPS.find(g => g.key === item.group)?.foldable && !openGroups[item.group] && onOpenGroup) {
+          onOpenGroup(item.group);
+          setTimeout(go, 80);
+        } else go();
+        if (onNavigate) onNavigate();
       };
 
       const w = collapsed ? 'w-[60px]' : 'w-[220px]';
@@ -1941,11 +1969,17 @@
           `}
 
           <nav aria-label="Secciones del dashboard" className=${"flex-1 px-2 " + (collapsed ? "pt-2" : "")}>
+            ${NAV_GROUPS.map((grp, gi) => html`
+            <div key=${grp.key} className=${gi ? (collapsed ? 'mt-3' : 'mt-4') : ''}>
             ${!collapsed && html`
-              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2 px-3">Secciones</div>
+              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5 px-3 flex items-center justify-between">
+                <span>${grp.label}</span>
+                ${grp.foldable && !openGroups[grp.key] && html`<span className="normal-case tracking-normal text-faint">plegado</span>`}
+              </div>
             `}
+            ${collapsed && gi > 0 && html`<div className="mx-auto w-5 h-px bg-line2 mb-2" aria-hidden="true"></div>`}
             <div className="flex flex-col gap-0.5">
-              ${NAV_ITEMS.map(({ id, label, Icon }) => {
+              ${NAV_ITEMS.filter(n => n.group === grp.key).map(({ id, label, Icon }) => {
                 const isOn = active === id;
                 return html`
                   <button key=${id} onClick=${() => scrollTo(id)}
@@ -1967,6 +2001,7 @@
                   </button>`;
               })}
             </div>
+            </div>`)}
           </nav>
 
           <div className=${"border-t border-line " + (collapsed ? "p-3 flex justify-center" : "p-4")}>
@@ -2166,190 +2201,140 @@
         return `${arr.length} de ${total}`;
       };
 
+      // ---------- v25: accesos rápidos de periodo
+      const curWeek = pressLastClosedWeek() + 1, lastWeek = curWeek - 1;
+      const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+      const QUICK = [
+        { k: 'this',  l: 'Esta semana',   weeks: [curWeek] },
+        { k: 'last',  l: 'Semana pasada', weeks: [lastWeek] },
+        { k: 'last4', l: 'Últimas 4',     weeks: [lastWeek - 3, lastWeek - 2, lastWeek - 1, lastWeek].filter(w => w >= 1) },
+        { k: 'year',  l: 'Año completo',  weeks: [] },
+      ];
+      const quickOn = (q) => filters.year === PRESS_YEAR && filters.months.length === 0 && sameSet(filters.weeks, q.weeks);
+      const applyQuick = (q) => setFilters(prev => ({ ...prev, year: PRESS_YEAR, weeks: [...q.weeks], months: [] }));
+
+      // ---------- dimensiones agrupadas
+      const DIMS = {
+        weeks:        { label: 'Semana',         opts: availableWeeks, render: (w) => `Semana ${w}`, chip: (w) => `S${w}` },
+        months:       { label: 'Mes',            opts: availableMonths, render: (m) => MONTH_NAMES[m - 1], chip: (m) => MONTH_NAMES[m - 1] },
+        platforms:    { label: 'Plataforma',     opts: availablePlatforms },
+        strategies:   { label: 'Pauta',          opts: availableStrategies, render: (v) => /^paid$/i.test(v) ? 'Pauta' : v, chip: (v) => /^paid$/i.test(v) ? 'Pauta' : v },
+        campaigns:    { label: 'Campaña',        opts: availableCampaigns },
+        subcampaigns: { label: 'Subcampaña',     opts: availableSubcampaigns },
+        contentTypes: { label: 'Tipo contenido', opts: availableContentTypes },
+        stages:       { label: 'Etapa',          opts: availableStages },
+        products:     { label: 'Producto',       opts: availableProducts },
+      };
+      const panelFor = (key) => html`<${MultiSelectPanel}
+        options=${DIMS[key].opts} selected=${filters[key]}
+        onToggle=${toggleArr(key)} onSelectAll=${selectAll(key, DIMS[key].opts)} onClear=${clearKey(key)}
+        renderLabel=${DIMS[key].render} emptyLabel=${'Sin opciones para esta selección'} />`;
+      const countOf = (keys) => keys.reduce((s, k) => s + (filters[k]?.length || 0), 0);
+      const yearLabel = filters.year === 'all' ? 'Todo' : String(filters.year);
+      const periodSummary = filters.weeks.length === 1 ? `S${filters.weeks[0]}` : filters.weeks.length ? `${filters.weeks.length} semanas`
+        : filters.months.length ? filters.months.map(m => MONTH_NAMES[m - 1].slice(0, 3)).join(', ') : yearLabel;
+      const CONTENT_KEYS = ['campaigns', 'subcampaigns', 'contentTypes', 'stages', 'products'];
+      const chips = ['weeks', 'months', 'platforms', 'strategies', ...CONTENT_KEYS]
+        .flatMap(k => (filters[k] || []).map(v => ({ k, v, l: (DIMS[k].chip || ((x) => x))(v) })));
+      const [mobileOpen, setMobileOpen] = useState(false);
+
+      const yearSeg = html`
+        <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Año">
+          ${yearOptions.map(o => html`
+            <button key=${o.v} role="radio" aria-checked=${filters.year === o.v} onClick=${() => setYear(o.v)}
+                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (filters.year === o.v ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${o.l}</button>`)}
+        </div>`;
+      const quickSeg = html`
+        <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5 shrink-0" role="radiogroup" aria-label="Periodo rápido">
+          ${QUICK.map(q => html`
+            <button key=${q.k} role="radio" aria-checked=${quickOn(q)} onClick=${() => applyQuick(q)}
+                    disabled=${q.k === 'this' && filters.year === PRESS_YEAR && !availableWeeks.includes(curWeek)}
+                    title=${q.k === 'this' && filters.year === PRESS_YEAR && !availableWeeks.includes(curWeek) ? `S${curWeek} aún no tiene publicaciones registradas` : q.weeks.length ? 'Semanas ' + q.weeks.map(w => 'S' + w).join(', ') + ' de ' + PRESS_YEAR : 'Todo ' + PRESS_YEAR}
+                    className=${"px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors disabled:opacity-35 disabled:cursor-not-allowed " + (quickOn(q) ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${q.l}</button>`)}
+        </div>`;
+
       return html`
-        <div className="border-b border-line bg-ink/85 sticky top-0 z-20" style=${{backdropFilter: 'blur(12px)'}}>
-          <div className="px-7 py-3 flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-faint shrink-0">
-              <${FilterIcon} size=${12}/> Filtros
+        <div className="bg-ink/90 sticky top-0 z-20" style=${{backdropFilter: 'blur(12px)'}}>
+          <div className="px-4 md:px-7 py-3 flex items-center gap-2.5 flex-wrap">
+            <div className="overflow-x-auto max-w-full -mx-1 px-1">${quickSeg}</div>
+
+            <div className="hidden md:contents">
+              <${FilterPopover} label="Periodo" summary=${periodSummary} badgeCount=${countOf(['weeks', 'months'])} wide>
+                ${() => html`<${TabbedFilter} head=${html`<div className="px-3 pt-3">${yearSeg}</div>`}
+                  tabs=${[['weeks', 'Semana'], ['months', 'Mes']].map(([k, l]) => ({ k, l, n: filters[k].length, body: panelFor(k) }))} />`}
+              <//>
+              <${FilterPopover} label="Plataforma" summary=${arrSummary(filters.platforms, availablePlatforms.length)} badgeCount=${filters.platforms.length}>
+                ${() => panelFor('platforms')}
+              <//>
+              <${FilterPopover} label="Pauta" summary=${arrSummary(filters.strategies.map(v => /^paid$/i.test(v) ? 'Pauta' : v), availableStrategies.length)} badgeCount=${filters.strategies.length}>
+                ${() => panelFor('strategies')}
+              <//>
+              <${FilterPopover} label="Contenido" summary="Todo" badgeCount=${countOf(CONTENT_KEYS)} wide>
+                ${() => html`<${TabbedFilter}
+                  tabs=${CONTENT_KEYS.map(k => ({ k, l: DIMS[k].label, n: filters[k].length, body: panelFor(k) }))} />`}
+              <//>
             </div>
 
-            <div className="flex items-center rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden shrink-0">
-              <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-faint px-2.5 py-1.5 border-r border-line">Año</span>
-              ${yearOptions.map((o, i) => html`
-                <button key=${o.v}
-                  onClick=${() => setYear(o.v)}
-                  className=${"px-2.5 py-1.5 text-[11px] transition-colors " +
-                    (i > 0 ? "border-l border-line " : "") +
-                    (filters.year === o.v
-                      ? "bg-accent2/15 text-txt"
-                      : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
-                  ${o.l}
-                </button>
-              `)}
-            </div>
-
-            <${FilterPopover}
-              label="Semana"
-              summary=${filters.weeks.length === 0 ? 'Todas' : filters.weeks.length === 1 ? `S${filters.weeks[0]}` : `${filters.weeks.length} de ${availableWeeks.length}`}
-              badgeCount=${filters.weeks.length}
-              wide
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableWeeks}
-                selected=${filters.weeks}
-                onToggle=${toggleArr('weeks')}
-                onSelectAll=${selectAll('weeks', availableWeeks)}
-                onClear=${clearKey('weeks')}
-                renderLabel=${(w) => `Semana ${w}`}
-                emptyLabel="Sin semanas"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Mes"
-              summary=${filters.months.length === 0 ? 'Todos' : filters.months.length === 1 ? MONTH_NAMES[filters.months[0] - 1].slice(0, 3) : `${filters.months.length} de ${availableMonths.length}`}
-              badgeCount=${filters.months.length}
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableMonths}
-                selected=${filters.months}
-                onToggle=${toggleArr('months')}
-                onSelectAll=${selectAll('months', availableMonths)}
-                onClear=${clearKey('months')}
-                renderLabel=${(m) => MONTH_NAMES[m - 1]}
-                emptyLabel="Sin meses"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Plataforma"
-              summary=${arrSummary(filters.platforms, availablePlatforms.length)}
-              badgeCount=${filters.platforms.length}
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availablePlatforms}
-                selected=${filters.platforms}
-                onToggle=${toggleArr('platforms')}
-                onSelectAll=${selectAll('platforms', availablePlatforms)}
-                onClear=${clearKey('platforms')}
-                emptyLabel="Sin plataformas para esta selección"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Campaña"
-              summary=${arrSummary(filters.campaigns, availableCampaigns.length)}
-              badgeCount=${filters.campaigns.length}
-              wide
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableCampaigns}
-                selected=${filters.campaigns}
-                onToggle=${toggleArr('campaigns')}
-                onSelectAll=${selectAll('campaigns', availableCampaigns)}
-                onClear=${clearKey('campaigns')}
-                emptyLabel="Sin campañas para esta selección"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Subcampaña"
-              summary=${arrSummary(filters.subcampaigns, availableSubcampaigns.length)}
-              badgeCount=${filters.subcampaigns.length}
-              wide
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableSubcampaigns}
-                selected=${filters.subcampaigns}
-                onToggle=${toggleArr('subcampaigns')}
-                onSelectAll=${selectAll('subcampaigns', availableSubcampaigns)}
-                onClear=${clearKey('subcampaigns')}
-                emptyLabel=${filters.campaigns.length ? 'Esta campaña no tiene subcampañas' : 'Sin subcampañas'}
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Tipo contenido"
-              summary=${arrSummary(filters.contentTypes, availableContentTypes.length)}
-              badgeCount=${filters.contentTypes.length}
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableContentTypes}
-                selected=${filters.contentTypes}
-                onToggle=${toggleArr('contentTypes')}
-                onSelectAll=${selectAll('contentTypes', availableContentTypes)}
-                onClear=${clearKey('contentTypes')}
-                emptyLabel="Sin tipos de contenido para esta selección"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Etapa"
-              summary=${arrSummary(filters.stages, availableStages.length)}
-              badgeCount=${filters.stages.length}
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableStages}
-                selected=${filters.stages}
-                onToggle=${toggleArr('stages')}
-                onSelectAll=${selectAll('stages', availableStages)}
-                onClear=${clearKey('stages')}
-                emptyLabel="Sin etapas para esta selección"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Pauta"
-              summary=${arrSummary(filters.strategies, availableStrategies.length)}
-              badgeCount=${filters.strategies.length}
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableStrategies}
-                selected=${filters.strategies}
-                onToggle=${toggleArr('strategies')}
-                onSelectAll=${selectAll('strategies', availableStrategies)}
-                onClear=${clearKey('strategies')}
-                emptyLabel="Sin tipos de pauta para esta selección"
-              />`}
-            <//>
-
-            <${FilterPopover}
-              label="Producto"
-              summary=${arrSummary(filters.products, availableProducts.length)}
-              badgeCount=${filters.products.length}
-              wide
-            >
-              ${() => html`<${MultiSelectPanel}
-                options=${availableProducts}
-                selected=${filters.products}
-                onToggle=${toggleArr('products')}
-                onSelectAll=${selectAll('products', availableProducts)}
-                onClear=${clearKey('products')}
-                emptyLabel="Sin productos para esta selección"
-              />`}
-            <//>
+            <button onClick=${() => setMobileOpen(o => !o)} aria-expanded=${mobileOpen} aria-controls="mobile-filters"
+                    className=${"md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium " + (chips.length ? "bg-accent2/15 text-txt" : "bg-onSurface/[0.04] text-txt3")}>
+              <${FilterIcon} size=${12}/> Filtros${chips.length ? ` (${chips.length})` : ''}
+            </button>
 
             <div className="flex-1 min-w-[8px]"></div>
-
             <div className="text-[11px] font-mono text-txt4 tabular-nums">
               <span className=${isActive ? "text-txt" : ""}>${postsInScope.toLocaleString('es-MX')}</span>
               <span className="text-faint"> de ${totalPosts.toLocaleString('es-MX')} posts</span>
             </div>
-
             <button onClick=${copyFilteredLink}
                     title="Copia el link con los filtros actuales para compartir esta vista" aria-label="Copia el link con los filtros actuales para compartir esta vista"
-                    className=${"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-colors " +
-                      (linkCopied ? "border-success/40 text-success bg-success/10" : "border-line2 text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
-              ${linkCopied ? html`<${CheckIcon} size=${11}/> ¡Copiado!` : html`<${LinkIcon} size=${11}/> Copiar link`}
+                    className=${"hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors " +
+                      (linkCopied ? "text-success bg-success/10" : "text-txt3 hover:text-txt bg-onSurface/[0.04]")}>
+              ${linkCopied ? html`<${CheckIcon} size=${11}/> <span className="hidden 2xl:inline">¡Copiado!</span>` : html`<${LinkIcon} size=${11}/> <span className="hidden 2xl:inline">Copiar link</span>`}
             </button>
-
-            ${isActive && html`
-              <button onClick=${clear}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border border-amber/40 text-amber hover:bg-amber/10 transition-colors">
-                <${XIcon} size=${11}/> Limpiar
-              </button>
-            `}
           </div>
+
+          ${mobileOpen && html`
+            <div id="mobile-filters" className="md:hidden px-4 pb-3 space-y-2 max-h-[65vh] overflow-y-auto">
+              <div className="flex items-center gap-2">${yearSeg}</div>
+              ${['weeks', 'months', 'platforms', 'strategies', ...CONTENT_KEYS].map(k => html`
+                <details key=${k} className="rounded-xl bg-surface">
+                  <summary className="px-3 py-2.5 text-[12px] text-txt2 cursor-pointer flex justify-between">
+                    <span>${DIMS[k].label}</span>
+                    ${filters[k].length > 0 && html`<span className="font-mono text-[10px] text-accent">${filters[k].length}</span>`}
+                  </summary>
+                  ${panelFor(k)}
+                </details>`)}
+              <button onClick=${() => setMobileOpen(false)} className="w-full py-2 rounded-lg bg-accent text-ink text-[12px] font-medium">Ver resultados</button>
+            </div>`}
+
+          ${chips.length > 0 && html`
+            <div className="px-4 md:px-7 pb-3 flex flex-wrap items-center gap-1.5" aria-label="Filtros activos">
+              ${chips.map(c => html`
+                <button key=${c.k + '|' + c.v} onClick=${() => toggleArr(c.k)(c.v)} aria-label=${`Quitar filtro ${DIMS[c.k].label}: ${c.l}`}
+                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-accent2/12 text-[11px] text-txt hover:bg-accent2/20 transition-colors">
+                  <span className="text-txt4">${DIMS[c.k].label}:</span> ${c.l}
+                  <${XIcon} size=${11} className="text-txt3"/>
+                </button>`)}
+              <button onClick=${clear} className="text-[11px] text-amber hover:underline ml-1">Limpiar todo</button>
+            </div>`}
+        </div>`;
+    }
+
+    // v25 — pestañas dentro de un popover de filtros (Periodo / Contenido)
+    function TabbedFilter({ tabs, head }) {
+      const [cur, setCur] = useState(tabs[0]?.k);
+      const t = tabs.find(x => x.k === cur) || tabs[0];
+      return html`
+        <div className="min-w-[300px]">
+          ${head}
+          <div className="flex flex-wrap gap-1 px-3 pt-3 pb-2" role="tablist">
+            ${tabs.map(x => html`
+              <button key=${x.k} role="tab" aria-selected=${x.k === t.k} onClick=${() => setCur(x.k)}
+                      className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (x.k === t.k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt")}>
+                ${x.l}${x.n ? html` <span className="font-mono text-accent">${x.n}</span>` : ''}
+              </button>`)}
+          </div>
+          <div role="tabpanel">${t.body}</div>
         </div>`;
     }
 
@@ -2445,12 +2430,12 @@
       };
 
       return html`
-        <header className="px-7 pt-6 pb-5 flex items-end justify-between gap-6">
-          <div>
+        <header className="px-4 md:px-7 pt-5 md:pt-6 pb-5 flex flex-wrap items-end justify-between gap-4 md:gap-6">
+          <div className="min-w-0">
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5 capitalize">${today}</div>
             <h1 className="text-[22px] font-medium text-txt leading-none tracking-tight">Resumen ejecutivo</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 max-w-full">
             <${PostSearch} allPosts=${allPosts} onPick=${onPick}/>
             ${fetchedAt && html`
               <div className="hidden lg:block text-right mr-2">
@@ -2509,45 +2494,32 @@
     // ============================================================
     // HeroSection — compacto
     // ============================================================
-    function HeroSection({ D, chartTheme }) {
+    function HeroSection({ D, chartTheme, kpis }) {
       const ct = chartTheme || CHART_THEME.dark;
       const g = D.global;
       const weekKeys = Object.keys(D.by_week).sort((a,b) => +a - +b);
       const trend = weekKeys.map(w => ({ week:+w, reach: D.by_week[w].reach }));
+      const nPlat = Object.keys(D.by_platform).length;
 
       return html`
-        <section id="sec-resumen" className="px-7 pb-5 relative group">
+        <section id="sec-resumen" className="px-4 md:px-7 pb-6 relative group">
           <${SectionExportBtn} sectionId="sec-resumen" name="Resumen" />
-          <div className="grid grid-cols-12 gap-3.5">
-            <div className="col-span-12 lg:col-span-7 rounded-xl bg-surface border border-line p-6 relative overflow-hidden">
-              <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full pointer-events-none"
-                   style=${{ background: 'radial-gradient(circle, rgba(139,127,232,0.18) 0%, transparent 70%)' }}></div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-3">
-                § 01 · ${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} → ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-2">
+                ${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} → ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}
               </div>
-              <div className="flex items-baseline gap-2 mb-3 flex-wrap">
-                <span className="text-txt font-medium leading-[0.95] tracking-tightest break-all"
-                      style=${{ fontSize: 'clamp(34px, 5vw, 60px)' }}>
-                  ${fmt(g.reach)}
-                </span>
-                <span className="font-serif italic text-txt4 font-light"
-                      style=${{ fontSize: 'clamp(18px, 2.2vw, 28px)' }}>
-                  / alcance
-                </span>
-              </div>
-              <p className="max-w-2xl text-txt3 text-[13px] leading-relaxed">
-                <span className="text-txt2 font-medium">${fmtFull(g.posts)} publicaciones</span> en
-                <span className="text-txt2 font-medium"> ${Object.keys(D.by_platform).length} ${Object.keys(D.by_platform).length === 1 ? 'plataforma' : 'plataformas'}</span> generaron
-                <span className="text-txt2 font-medium"> ${fmt(g.inter)} interacciones</span> y
-                <span className="text-txt2 font-medium"> ${fmt(g.views)} reproducciones</span> a lo largo de
-                <span className="text-txt2 font-medium"> ${(D.meta.weeks_in_scope || D.meta.weeks).length} semanas</span> activas.
+              <p className="text-txt2 leading-snug mb-5 max-w-3xl" style=${{ fontSize: 'clamp(16px, 1.6vw, 20px)' }}>
+                <span className="text-txt font-medium">${fmtFull(g.posts)} publicaciones</span> en ${nPlat} ${nPlat === 1 ? 'plataforma' : 'plataformas'} generaron
+                <span className="text-txt font-medium" title=${fmtFull(g.reach)}> ${fmt(g.reach)} de alcance</span>,
+                <span className="text-txt font-medium" title=${fmtFull(g.inter)}> ${fmt(g.inter)} interacciones</span> y
+                <span className="text-txt font-medium" title=${fmtFull(g.views)}> ${fmt(g.views)} reproducciones</span>${' en '}${(D.meta.weeks_in_scope || D.meta.weeks).length} ${(D.meta.weeks_in_scope || D.meta.weeks).length === 1 ? 'semana activa' : 'semanas activas'}.
               </p>
+              ${kpis}
             </div>
-            <div className="col-span-12 lg:col-span-5 rounded-xl bg-surface border border-line p-5 flex flex-col">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-3">
-                Tendencia · alcance semanal
-              </div>
-              <div className="flex-1 min-h-[160px]">
+            <div className="rounded-2xl bg-surface p-5 flex flex-col min-h-[220px]">
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-3">Alcance semanal</div>
+              <div className="flex-1 min-h-[180px]">
                 <${ResponsiveContainer} width="100%" height="100%">
                   <${AreaChart} data=${trend} margin=${{ top:10, right:4, left:4, bottom:0 }}>
                     <defs>
@@ -2558,15 +2530,15 @@
                     </defs>
                     <${XAxis} dataKey="week" tickFormatter=${(w) => 'S' + w}
                               stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                              interval=${Math.max(0, Math.floor(trend.length/8))} />
+                              interval=${Math.max(0, Math.floor(trend.length/6))} />
                     <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                              tickFormatter=${fmt} width=${42} />
+                              tickFormatter=${fmt} width=${40} />
                     <${Tooltip}
                       cursor=${{ stroke:'#AFA9EC', strokeWidth:1, strokeDasharray:'3 3' }}
                       contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'6px 10px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:ct.tooltipText }}
                       labelStyle=${{ color: ct.tooltipLabel }}
                       labelFormatter=${(w) => `Semana ${w}`}
-                      formatter=${(v) => [fmt(v), 'Alcance']} />
+                      formatter=${(v) => [fmtFull(v), 'Alcance']} />
                     <${Area} type="monotone" dataKey="reach" stroke="#AFA9EC" strokeWidth=${1.8} fill="url(#heroGrad)" />
                   <//>
                 <//>
@@ -2707,7 +2679,7 @@
       const toneColor = insight.tone === 'positive' ? 'text-success' : insight.tone === 'negative' ? 'text-amber' : 'text-accent';
       const glyph = insight.tone === 'positive' ? '↑' : insight.tone === 'negative' ? '↓' : '•';
       return html`
-        <div className="flex items-start gap-2.5 py-2 first:pt-0 last:pb-0 border-b border-line/40 last:border-0">
+        <div className="flex items-start gap-2.5 py-1.5 first:pt-0 last:pb-0">
           <span className=${"font-mono text-[13px] leading-[1.4] mt-0.5 shrink-0 " + toneColor}>${glyph}</span>
           <p className="text-[13px] text-txt3 leading-relaxed">
             ${insight.parts.map((part, i) => part.strong
@@ -2721,7 +2693,7 @@
       const insights = useMemo(() => computeInsights(D), [D]);
       if (!insights.length) return null;
       return html`
-        <section className="px-7 pb-5">
+        <section className="px-4 md:px-7 pb-5">
           <div className="rounded-xl bg-surface border border-line p-5">
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Lecturas del periodo</div>
             <div className="text-[10px] font-mono text-faint mb-3">Generadas automáticamente a partir del filtro actual</div>
@@ -2735,7 +2707,7 @@
     // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
-    function KpiCell({ label, value, sub, accent, onClick, delta, deltaLabel }) {
+    function KpiCell({ label, value, sub, accent, onClick, delta, deltaLabel, exact }) {
       return html`
         <div onClick=${onClick} ...${kbd(onClick, `Ver de dónde sale ${label}`)}
              className=${"rounded-xl bg-surface border border-line px-4 py-4 min-w-0 relative group focus:outline-none focus-visible:ring-1 focus-visible:ring-accent2 " +
@@ -2746,7 +2718,8 @@
             ${onClick && html`<span className="opacity-0 group-hover:opacity-100 transition-opacity text-accent2 normal-case tracking-normal">trazar ↗</span>`}
           </div>
           <div className=${"font-medium tabular-nums break-all " + (accent ? "text-accent" : "text-txt")}
-               style=${{ fontSize: 'clamp(14px, 1.6vw, 20px)', lineHeight: 1.25 }}>${value}</div>
+               title=${exact || undefined}
+               style=${{ fontSize: 'clamp(18px, 1.9vw, 24px)', lineHeight: 1.2 }}>${value}</div>
           ${delta !== undefined && html`
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               <${DeltaPill} pct=${delta} />
@@ -2757,18 +2730,18 @@
         </div>`;
     }
 
-    function KpiRow({ D, onTrace, rawPosts, filters }) {
+    function KpiRow({ D, onTrace, rawPosts, filters, embedded }) {
       const g = D.global;
       const heroDeltas = useMemo(() => computeHeroDeltas(D, rawPosts, filters), [D, rawPosts, filters]);
       const dLabel = heroDeltas ? `vs S${heroDeltas.prevWeek}` : null;
       return html`
-        <section className="px-7 pb-5">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <${KpiCell} label="Alcance"        value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
-            <${KpiCell} label="Interacciones"  value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
-            <${KpiCell} label="Reproducciones" value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR pond.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
+        <section className=${embedded ? '' : 'px-7 pb-5'}>
+          <div className=${"grid grid-cols-2 gap-3 " + (embedded ? 'md:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-6')}>
+            <${KpiCell} label="Alcance"        exact=${fmtFull(g.reach)} value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
+            <${KpiCell} label="Interacciones"  exact=${fmtFull(g.inter)} value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
+            <${KpiCell} label="Reproducciones" exact=${fmtFull(g.views)} value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR pond.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
             <${KpiCell} label="ER ponderado"   value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent delta=${heroDeltas?.er_avg} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
-            <${KpiCell} label="Comentarios"    value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} delta=${heroDeltas?.comments} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('comments') : undefined} />
+            <${KpiCell} label="Comentarios"    exact=${fmtFull(g.comments)} value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} delta=${heroDeltas?.comments} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('comments') : undefined} />
             <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} delta=${heroDeltas?.posts} deltaLabel=${dLabel} />
           </div>
           ${g.flagged_posts > 0 && html`
@@ -3079,11 +3052,10 @@
       }, [D, isDailyMode, weeksInScope, platforms.join(',')]);
 
       return html`
-        <section id="sec-plataformas" className="px-7 py-7 relative group">
+        <section id="sec-plataformas" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-plataformas" name="Plataformas" />
           <div className="flex items-baseline justify-between mb-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 02</div>
               <h2 className="text-[18px] font-medium text-txt">Por plataforma</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">
@@ -3228,11 +3200,10 @@
       }, [D, isDailyMode]);
 
       return html`
-        <section id="sec-tendencia" className="px-7 py-7 relative group">
+        <section id="sec-tendencia" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-tendencia" name="Tendencia" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 03</div>
               <h2 className="text-[18px] font-medium text-txt">${isDailyMode ? 'Evolución diaria' : 'Evolución semanal'}</h2>
               ${isDailyMode && weekRangeLabel && html`
                 <div className="text-[10px] font-mono text-txt4 mt-1">Semana ${weeksInScope[0]} · ${weekRangeLabel}</div>
@@ -3252,7 +3223,7 @@
           <div className="rounded-xl bg-surface border border-line p-5">
             <div className="h-72">
               <${ResponsiveContainer}>
-                <${ComposedChart} data=${series} margin=${{ top:22, right:16, left:8, bottom:8 }}>
+                <${ComposedChart} data=${series} margin=${{ top:44, right:16, left:8, bottom:8 }}>
                   <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
                   <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }}
@@ -3276,10 +3247,15 @@
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
                            stroke="#AFA9EC" strokeWidth=${2}
                            dot=${{ fill:'#AFA9EC', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#AFA9EC', strokeWidth:2 }} />
-                  ${campaignLaunches.map(l => html`
+                  ${[...campaignLaunches].sort((a, b) => a.week - b.week).map((l, i) => html`
                     <${ReferenceLine} key=${l.name} yAxisId="left" x=${'S' + l.week}
                       stroke="#F0B358" strokeOpacity=${0.55} strokeDasharray="3 3"
-                      label=${{ value: l.name.length > 16 ? l.name.slice(0, 15) + '…' : l.name, position: 'top', fontSize: 9, fill: '#F0B358' }} />
+                      label=${(props) => {
+                        const vb = props.viewBox || {};
+                        const row = i % 3;
+                        const name = l.name.length > 14 ? l.name.slice(0, 13) + '…' : l.name;
+                        return html`<text x=${vb.x} y=${(vb.y || 0) - 6 - row * 12} textAnchor="middle" fontSize=${9} fill="#F0B358"><title>${l.name} · S${l.week}</title>${name}</text>`;
+                      }} />
                   `)}
                 <//>
               <//>
@@ -3319,11 +3295,10 @@
       const maxStage = stagesArr[0]?.reach || 1;
 
       return html`
-        <section id="sec-mezcla" className="px-7 py-7 relative group">
+        <section id="sec-mezcla" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-mezcla" name="Mezcla" />
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 04</div>
               <h2 className="text-[18px] font-medium text-txt">Mezcla</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">Estrategia · formato · etapa</div>
@@ -3493,11 +3468,10 @@
       const visible = sorted.slice(0, limit);
 
       return html`
-        <section id="sec-top-posts" className="px-7 py-7 relative group">
+        <section id="sec-top-posts" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-top-posts" name="TopPosts" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 05</div>
               <h2 className="text-[18px] font-medium text-txt">Mejores publicaciones</h2>
               <p className="text-txt4 text-[12px] mt-1">Click en cualquier fila para ver el detalle completo.</p>
             </div>
@@ -3678,11 +3652,10 @@
 
       if (vtr.totalVideos === 0) {
         return html`
-          <section id="sec-vtr" className="px-7 py-7 relative group">
+          <section id="sec-vtr" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-vtr" name="VTR" />
             <div className="flex items-baseline justify-between mb-5">
               <div>
-                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 06</div>
                 <h2 className="text-[18px] font-medium text-txt">VTR · Video Through Rate</h2>
               </div>
               <div className="text-[11px] font-mono text-txt4">Sin videos en este filtro</div>
@@ -3694,10 +3667,9 @@
       }
 
       return html`
-        <section id="sec-vtr" className="px-7 py-7">
+        <section id="sec-vtr" className="px-4 md:px-7 py-7">
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 06</div>
               <h2 className="text-[18px] font-medium text-txt">VTR · Video Through Rate</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">${vtr.totalVideos} videos · stories excluidas</div>
@@ -3915,11 +3887,10 @@
         .filter(f => f.posts > 0);
 
       return html`
-        <section id="sec-promedios" className="px-7 py-7 relative group">
+        <section id="sec-promedios" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-promedios" name="Promedios" />
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 07</div>
               <h2 className="text-[18px] font-medium text-txt">Promedios por publicación</h2>
               <p className="text-txt4 text-[12px] mt-1">Total dividido entre número de posts. Ordenable por columna.</p>
             </div>
@@ -4189,7 +4160,6 @@
       const ModeHeader = html`
         <div className="flex flex-wrap items-baseline justify-between gap-4 mb-5">
           <div>
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 08</div>
             <h2 className="text-[18px] font-medium text-txt">Comparativas</h2>
             <p className="text-txt4 text-[12px] mt-1">
               ${mode === 'wow' ? 'Compara una semana contra la anterior.' : `Compara dos ${dimLabel.toLowerCase()}s, semana relativa a semana relativa.`}
@@ -4211,7 +4181,7 @@
       if (mode === 'wow') {
         if (!isSingleWeek) {
           return html`
-            <section id="sec-comparativas" className="px-7 py-7 relative group">
+            <section id="sec-comparativas" className="px-4 md:px-7 py-7 relative group">
               <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
               ${ModeHeader}
               <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
@@ -4223,7 +4193,7 @@
 
         if (!compareData || compareData.noPrev) {
           return html`
-            <section id="sec-comparativas" className="px-7 py-7 relative group">
+            <section id="sec-comparativas" className="px-4 md:px-7 py-7 relative group">
               <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
               ${ModeHeader}
               <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
@@ -4235,7 +4205,7 @@
 
         const c = compareData;
         return html`
-          <section id="sec-comparativas" className="px-7 py-7 relative group">
+          <section id="sec-comparativas" className="px-4 md:px-7 py-7 relative group">
             <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
             ${ModeHeader}
             <div className="text-[11px] font-mono text-txt4 -mt-3 mb-4">
@@ -4273,7 +4243,7 @@
       // ---------------- Render: Modo Entidad vs. entidad ----------------
       const e = entityCompare;
       return html`
-        <section id="sec-comparativas" className="px-7 py-7 relative group">
+        <section id="sec-comparativas" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-comparativas" name="Comparativas" />
           ${ModeHeader}
 
@@ -4479,11 +4449,10 @@
       const campaigns = Object.entries(D.by_campaign).map(([k,v]) => ({ name:k, ...v })).sort((a,b) => b.reach - a.reach);
 
       return html`
-        <section id="sec-catalogo" className="px-7 py-7 relative group">
+        <section id="sec-catalogo" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-catalogo" name="Catalogo" />
           <div className="flex items-baseline justify-between mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 09</div>
               <h2 className="text-[18px] font-medium text-txt">Catálogo</h2>
             </div>
             <div className="text-[11px] font-mono text-txt4">Productos · campañas</div>
@@ -4598,11 +4567,10 @@
     function AnomaliesSection({ D, onPick }) {
       const anomalies = useMemo(() => computeAnomalies(D), [D]);
       return html`
-        <section id="sec-anomalias" className="px-7 py-7 relative group">
+        <section id="sec-anomalias" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-anomalias" name="Anomalias" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-5">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 10</div>
               <h2 className="text-[18px] font-medium text-txt">Detector de anomalías</h2>
               <p className="text-txt4 text-[12px] mt-1">Posts que se salen del patrón normal de su plataforma en alcance o ER. Click para ver el detalle.</p>
             </div>
@@ -4769,10 +4737,9 @@
     function CadenceSection({ D }) {
       const cadence = useMemo(() => computeCadence(D), [D]);
       return html`
-        <section id="sec-cadencia" className="px-7 py-7 relative group">
+        <section id="sec-cadencia" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-cadencia" name="Cadencia" />
           <div className="mb-5">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 11</div>
             <h2 className="text-[18px] font-medium text-txt">Cadencia de publicación</h2>
             <p className="text-txt4 text-[12px] mt-1">Un cuadro por día — mientras más oscuro, más publicaciones. Útil para detectar huecos y comparar rendimiento por día de la semana.</p>
           </div>
@@ -4918,10 +4885,9 @@
       };
 
       return html`
-        <section id="sec-simulador" className="px-7 py-7 relative group">
+        <section id="sec-simulador" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-simulador" name="Simulador" />
           <div className="mb-5">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">§ 12</div>
             <h2 className="text-[18px] font-medium text-txt">Simulador de metas</h2>
             <p className="text-txt4 text-[12px] mt-1">
               Parte de la meta que te piden y calcula cuántos posts de cada plataforma/formato hacen falta, usando el promedio histórico por post.
@@ -5832,11 +5798,10 @@
 
       const lastWeek = state.goals.reduce((m, g) => Math.max(m, g.lastWeek || 0), 0);
       return html`
-        <section id="sec-meta" className="px-7 py-7 relative group" aria-labelledby="h-meta">
+        <section id="sec-meta" className="px-4 md:px-7 py-7 relative group" aria-labelledby="h-meta">
           <${SectionExportBtn} sectionId="sec-meta" name="MetaFollowers" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">Meta 2026</div>
               <h2 id="h-meta" className="text-[18px] font-medium text-txt">Meta de crecimiento de followers</h2>
               <p className="text-txt4 text-[12px] mt-1">
                 Followers ganados desde la base del 29-dic-2025 vs. la meta anual de followers.
@@ -5903,9 +5868,8 @@
       const [limit, setLimit] = useState(15);
       const c = q.counts;
       return html`
-        <section id="sec-calidad" className="px-7 py-7 relative group" aria-labelledby="h-calidad">
+        <section id="sec-calidad" className="px-4 md:px-7 py-7 relative group" aria-labelledby="h-calidad">
           <div className="mb-4">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">Control</div>
             <h2 id="h-calidad" className="text-[18px] font-medium text-txt">Calidad de datos</h2>
             <p className="text-txt4 text-[12px] mt-1">Qué hay que completar o corregir en el Sheet antes de reportar. Respeta los filtros activos (${fmtFull(q.total)} posts).</p>
           </div>
@@ -6473,11 +6437,10 @@
       const ct = chartTheme || {};
 
       return html`
-        <section id="sec-perfil" className="px-7 py-7 relative group" aria-labelledby="h-perfil">
+        <section id="sec-perfil" className="px-4 md:px-7 py-7 relative group" aria-labelledby="h-perfil">
           <${SectionExportBtn} sectionId="sec-perfil" name="PerfilFormato" />
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">Diagnóstico</div>
               <h2 id="h-perfil" className="text-[18px] font-medium text-txt">Perfil por formato</h2>
               <p className="text-txt4 text-[12px] mt-1">Índice 100 = promedio de ${curPlat} ${pautaLock ? '' : pauta === 'org' ? 'orgánico' : pauta === 'paid' ? 'pauta' : '(orgánico + pauta)'} en el filtro actual. Interacciones medidas por persona alcanzada.</p>
             </div>
@@ -6584,11 +6547,45 @@
         </section>`;
     }
 
+    // v25 — encabezado de bloque plegable (Análisis / Control)
+    function GroupBlock({ id, label, hint, count, open, onToggle, children }) {
+      return html`
+        <div className="px-4 md:px-7 pt-8" id=${'grp-' + id}>
+          <button onClick=${onToggle} aria-expanded=${open} aria-controls=${'grp-body-' + id}
+                  className="w-full flex items-center justify-between gap-4 rounded-2xl bg-surface px-5 py-4 text-left hover:bg-onSurface/[0.03] transition-colors">
+            <span className="min-w-0">
+              <span className="block text-[16px] font-medium text-txt">${label}</span>
+              <span className="block text-[12px] text-txt4 mt-0.5">${hint} · ${count} secciones</span>
+            </span>
+            <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-mono text-txt3">
+              ${open ? 'Ocultar' : 'Mostrar'}
+              <${ChevronDownIcon} size=${14} className=${open ? 'rotate-180 transition-transform' : 'transition-transform'}/>
+            </span>
+          </button>
+        </div>
+        ${open && html`<div id=${'grp-body-' + id}>${children}</div>`}`;
+    }
+
+    const MenuIcon = ({ size = 18, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" className=${className} aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>`;
+
     function App() {
       const { data, loading, refreshing, error, errors, fetchedAt, refresh, autoRefreshMin } = useDashboardData();
       const [selected, setSelected] = useState(null);
       const [exportOpen, setExportOpen] = useState(false);
       const [pressOpen, setPressOpen] = useState(false);
+      const [mobileNav, setMobileNav] = useState(false);
+      const [openGroups, setOpenGroups] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('smx-groups') || '{}') || {}; } catch { return {}; }
+      });
+      const setGroup = useCallback((k, v) => setOpenGroups(prev => {
+        const next = { ...prev, [k]: v };
+        try { localStorage.setItem('smx-groups', JSON.stringify(next)); } catch {}
+        return next;
+      }), []);
       const [kpiTrace, setKpiTrace] = useState(null);
       const allPosts = data?.allPosts || [];
       const { filters, setFilters, clear, isActive } = useFilters(allPosts);
@@ -6643,7 +6640,9 @@
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
           <${ScrollProgressBar}/>
+          <div className="hidden lg:block shrink-0">
           <${Sidebar}
+            openGroups=${openGroups} onOpenGroup=${(k) => setGroup(k, true)}
             collapsed=${sidebarCollapsed}
             onToggle=${toggleSidebar}
             liveAlcance=${D.global.reach}
@@ -6655,8 +6654,29 @@
             onOpenExport=${() => setExportOpen(true)}
             anomalyCount=${noResults ? 0 : anomalyCount}
           />
+          </div>
+          ${mobileNav && html`
+            <div className="lg:hidden fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="Menú de secciones">
+              <div className="absolute inset-0 bg-black/55" onClick=${() => setMobileNav(false)}></div>
+              <div className="relative h-full shadow-2xl">
+                <${Sidebar}
+                  openGroups=${openGroups} onOpenGroup=${(k) => setGroup(k, true)} onNavigate=${() => setMobileNav(false)}
+                  collapsed=${false} onToggle=${() => setMobileNav(false)}
+                  liveAlcance=${D.global.reach} livePosts=${D.global.posts}
+                  fetchedAt=${fetchedAt} autoRefreshMin=${autoRefreshMin}
+                  theme=${theme} onToggleTheme=${toggleTheme}
+                  onOpenExport=${() => { setMobileNav(false); setExportOpen(true); }}
+                  anomalyCount=${noResults ? 0 : anomalyCount} />
+              </div>
+            </div>`}
 
           <div className="flex-1 min-w-0 flex flex-col">
+            <div className="lg:hidden flex items-center justify-between gap-3 px-4 pt-3">
+              <button onClick=${() => setMobileNav(true)} aria-label="Abrir menú de secciones"
+                      className="w-9 h-9 rounded-lg bg-surface flex items-center justify-center text-txt2"><${MenuIcon}/></button>
+              <span className="text-[11px] font-mono uppercase tracking-[0.18em] text-txt3">Samsung MX · Performance</span>
+              <span className="w-9"></span>
+            </div>
             <${FilterBar}
               baseMeta=${baseMeta}
               filters=${filters}
@@ -6671,7 +6691,7 @@
             <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin} allPosts=${allPosts} onPick=${setSelected} onOpenPress=${() => setPressOpen(true)}/>
 
             ${errors && errors.length > 0 && html`
-              <div className="px-7 mb-3">
+              <div className="px-4 md:px-7 mb-3">
                 <div className="rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber">
                   <span className="font-mono uppercase tracking-wider">Aviso</span> · No se pudo cargar
                   ${errors.length === 1 ? ' ' + errors[0].platform : ` ${errors.length} pestañas`}.
@@ -6681,7 +6701,7 @@
             `}
 
             ${baseMeta.orphans_no_week > 0 && filters.weeks.length > 0 && html`
-              <div className="px-7 mb-3">
+              <div className="px-4 md:px-7 mb-3">
                 <div className="rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber">
                   <span className="font-mono uppercase tracking-wider">Nota</span> ·
                   Hay ${baseMeta.orphans_no_week} ${baseMeta.orphans_no_week === 1 ? 'post' : 'posts'} sin semana asignada en tu Sheet
@@ -6692,7 +6712,7 @@
             `}
 
             ${baseMeta.orphans_no_stage > 0 && filters.stages.length > 0 && html`
-              <div className="px-7 mb-3">
+              <div className="px-4 md:px-7 mb-3">
                 <div className="rounded-lg bg-amber/10 border border-amber/30 px-4 py-2 text-[12px] text-amber">
                   <span className="font-mono uppercase tracking-wider">Nota</span> ·
                   Hay ${baseMeta.orphans_no_stage} ${baseMeta.orphans_no_stage === 1 ? 'post' : 'posts'} sin etapa asignada en tu Sheet
@@ -6703,7 +6723,7 @@
             `}
 
             ${noResults ? html`
-              <div className="px-7 py-32 text-center">
+              <div className="px-4 md:px-7 py-32 text-center">
                 <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-amber mb-4">Sin resultados</div>
                 <h2 className="text-3xl text-txt mb-3 font-medium">No hay posts que cumplan los filtros.</h2>
                 <p className="text-txt3 text-sm mb-6">Prueba ampliando el rango de semanas o quitando alguna selección.</p>
@@ -6714,23 +6734,31 @@
               </div>
             ` : html`
               <main>
-                <${HeroSection}    D=${D} chartTheme=${chartTheme}/>
+                <${HeroSection} D=${D} chartTheme=${chartTheme}
+                  kpis=${html`<${KpiRow} embedded D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>`} />
                 <${InsightsPanel}  D=${D}/>
-                <${KpiRow}         D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
-                <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
-                <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks}/>
                 <${VtrSection}         D=${D}/>
-                <${AveragesSection}    D=${D}/>
-                <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
-                <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
-                <${AnomaliesSection}   D=${D} onPick=${setSelected}/>
-                <${CadenceSection}     D=${D}/>
-                <${SimuladorSection}   allPosts=${allPosts}/>
-                <${DataQualitySection} D=${D} onPick=${setSelected}/>
                 <${FollowerGoalsSection} fetchedAt=${fetchedAt} chartTheme=${chartTheme}/>
+
+                <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia y simulador"
+                  count=${7} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                  <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
+                  <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
+                  <${AveragesSection}    D=${D}/>
+                  <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
+                  <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
+                  <${CadenceSection}     D=${D}/>
+                  <${SimuladorSection}   allPosts=${allPosts}/>
+                <//>
+
+                <${GroupBlock} id="control" label="Control" hint=${`Anomalías${anomalyCount ? ` (${anomalyCount})` : ''} y calidad de datos`}
+                  count=${2} open=${!!openGroups.control} onToggle=${() => setGroup('control', !openGroups.control)}>
+                  <${AnomaliesSection}   D=${D} onPick=${setSelected}/>
+                  <${DataQualitySection} D=${D} onPick=${setSelected}/>
+                <//>
               </main>
             `}
 
