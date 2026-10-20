@@ -1337,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v36';
+    const BUILD_VERSION = '2026-10-20-v37';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6963,6 +6963,16 @@
       return pptx.writeFile({ fileName: `SNS_W${d.week}_Press.pptx` });
     }
 
+    const PRESS_STORE_KEY = 'smx-press-config-v1';
+    function pressStoreRead() { try { return JSON.parse(localStorage.getItem(PRESS_STORE_KEY) || '{}') || {}; } catch { return {}; } }
+    function pressStoreWrite(o) {
+      try {   // solo las últimas 12 semanas
+        const keep = Object.keys(o).map(Number).sort((a, b) => b - a).slice(0, 12);
+        const out = {}; keep.forEach(k => { out[k] = o[k]; });
+        localStorage.setItem(PRESS_STORE_KEY, JSON.stringify(out));
+      } catch {}
+    }
+
     function PressModal({ open, onClose, allPosts }) {
       const lastClosed = useMemo(() => pressLastClosedWeek(), []);
       const weeks = useMemo(() => {
@@ -6989,15 +6999,66 @@
       const d = useMemo(() => (week ? computePressWeek(allPosts, week, followers) : null), [allPosts, week, followers]);
       const campOpts = useMemo(() => (week ? pressCampaignOptions(allPosts, week) : []), [allPosts, week]);
       const [boxes, setBoxes] = useState([null, null, null]);   // { camp, subs: string[], title, touched }
-      useEffect(() => {   // al cambiar de semana: propone las 3 campañas con más interacciones
-        setBoxes([0, 1, 2].map(i => campOpts[i]
-          ? { camp: campOpts[i].name, subs: [...campOpts[i].subs.keys()], title: campOpts[i].name, touched: false }
-          : null));
-      }, [campOpts]);
+      const [topics, setTopics] = useState([]);
+      // v37 — la press recuerda lo que armaste por semana (en este navegador)
+      // y, para una semana nueva, parte de lo que usaste la semana anterior.
+      const [origin, setOrigin] = useState(null);     // { kind: 'saved'|'prev'|'auto', from }
+      const loadedFor = useRef(null);
+      const skipSave = useRef(false);   // no guardar lo que solo se cargó o propuso
+      const autoBoxes = () => [0, 1, 2].map(i => campOpts[i]
+        ? { camp: campOpts[i].name, subs: [...campOpts[i].subs.keys()], title: campOpts[i].name, touched: false } : null);
+      const adapt = (cfg) => {
+        // Ajusta una configuración a lo que sí existe en esta semana
+        const bx = (cfg.boxes || [null, null, null]).map(b => {
+          if (!b) return null;
+          const o = campOpts.find(c => c.name === b.camp);
+          if (!o) return null;
+          // Si nunca acotaste subcampañas, se toman todas las de esta semana
+          const subs = b.subsTouched ? (b.subs || []).filter(x => o.subs.has(x)) : [];
+          return { ...b, subs: subs.length ? subs : [...o.subs.keys()] };
+        });
+        const tp = (cfg.topics || []).map(t => {
+          if (t.dim === 'manual') return t;
+          const avail = new Set(topicOptions(allPosts, week, t.dim).map(o => o.v));
+          const values = (t.values || []).filter(v => avail.has(v));
+          return { ...t, values, splitKeys: values.length ? (t.splitKeys || []) : [] };
+        });
+        return { boxes: bx, topics: tp };
+      };
+      useEffect(() => {
+        if (!week || !campOpts) return;
+        const store = pressStoreRead();
+        let cfg = null, from = null, kind = 'auto';
+        if (store[week]) { cfg = store[week]; kind = 'saved'; from = week; }
+        else {
+          const prev = Object.keys(store).map(Number).filter(w => w < week).sort((a, b) => b - a)[0];
+          if (prev) { cfg = store[prev]; kind = 'prev'; from = prev; }
+        }
+        if (cfg) {
+          const a = adapt(cfg);
+          if (kind === 'prev') {   // huecos sin campaña vigente: se llenan con la propuesta automática
+            const auto = autoBoxes().filter(b => b && !a.boxes.some(x => x && x.camp === b.camp));
+            a.boxes = a.boxes.map(b => b || auto.shift() || null);
+            a.topics = a.topics.filter(t => t.dim === 'manual' || t.values.length);
+          }
+          setBoxes(a.boxes); setTopics(a.topics);
+        } else { setBoxes(autoBoxes()); setTopics([]); }
+        setOrigin({ kind, from });
+        loadedFor.current = week; skipSave.current = true;
+      }, [week, campOpts]);
+      useEffect(() => {   // guarda cada cambio de la semana en curso
+        if (!week || loadedFor.current !== week) return;
+        if (skipSave.current) { skipSave.current = false; return; }
+        const store = pressStoreRead();
+        store[week] = { boxes, topics, savedAt: Date.now() };
+        pressStoreWrite(store);
+      }, [boxes, topics]);
+      const resetAuto = () => {
+        const store = pressStoreRead(); delete store[week]; pressStoreWrite(store);
+        skipSave.current = true; setBoxes(autoBoxes()); setTopics([]); setOrigin({ kind: 'auto', from: null });
+      };
       const setBox = (i, patch) => setBoxes(bs => bs.map((b, k) => k === i ? (patch === null ? null : { ...(b || {}), ...patch }) : b));
       const boxData = useMemo(() => boxes.map(b => b && b.camp ? computeCampaignBox(allPosts, week, b.camp, b.subs) : null), [boxes, allPosts, week]);
-      const [topics, setTopics] = useState([]);
-      useEffect(() => { setTopics(ts => ts.map(t => ({ ...t, values: [], splitKeys: [] }))); }, [week]);
       const addTopic = () => {
         const top = topicOptions(allPosts, week, 'campaign')[0];
         setTopics(ts => [...ts, { title: top ? top.v : '', touched: false, dim: 'campaign', values: top ? [top.v] : [], scope: 'all', split: 'product', splitKeys: [] }]);
@@ -7054,6 +7115,11 @@
                     S${d.week} tiene ${d.pending} post${d.pending === 1 ? '' : 's'} sin métricas: los números pueden cambiar cuando se completen.
                   </div>`}
               `}
+              ${origin && origin.kind !== 'auto' && html`
+                <div className="flex items-center justify-between gap-2 rounded-lg bg-accent2/10 px-3 py-2 mb-3 text-[11px] text-txt2">
+                  <span>${origin.kind === 'saved' ? `Recuperé lo que armaste para la S${origin.from}.` : `Partí de lo que usaste en la S${origin.from}.`}</span>
+                  <button onClick=${resetAuto} className="text-accent hover:underline whitespace-nowrap">Volver a la propuesta automática</button>
+                </div>`}
               <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-2 mt-1">Recuadros de campaña</div>
               <div className="space-y-2.5 mb-4">
                 ${[0, 1, 2].map(i => {
@@ -7090,7 +7156,7 @@
                                           onClick=${() => {
                                             const subs = on ? b.subs.filter(x => x !== sname) : [...b.subs, sname];
                                             if (!subs.length) return;
-                                            setBox(i, { subs });
+                                            setBox(i, { subs, subsTouched: true });
                                           }}
                                           className=${"text-[10px] rounded-full px-2 py-0.5 border transition-colors " + (on ? "border-accent2/50 bg-accent2/10 text-txt" : "border-line text-txt4 hover:text-txt2")}>
                                     ${sname} · ${n}
