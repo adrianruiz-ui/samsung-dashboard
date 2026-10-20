@@ -1337,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v35';
+    const BUILD_VERSION = '2026-10-20-v36';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6661,8 +6661,8 @@
     }
     function topicList(allPosts, week, t) {
       const D = topicDim(t.dim);
-      return pressWeekPosts(allPosts, week).filter(p => t.values.includes(D.f(p)) &&
-        (t.scope === 'all' || (t.scope === 'paid') === isPaidP(p)));
+      // Siempre totales (orgánico + pauta), como se reporta al cliente
+      return pressWeekPosts(allPosts, week).filter(p => t.values.includes(D.f(p)));
     }
     function topicSplitOptions(list, splitK) {
       if (!splitK || splitK === 'none') return [];
@@ -6778,10 +6778,6 @@
               ${TOPIC_DIMS.filter(d => d.k !== 'format').map(d => html`<option key=${d.k} value=${d.k}>${d.l}</option>`)}
               <option value="manual">Sin datos (lo lleno a mano)</option>
             </select>
-            ${t.dim !== 'manual' && html`
-              <select aria-label="Pauta" value=${t.scope} onChange=${(e) => set({ scope: e.target.value, splitKeys: [] })} className=${sel}>
-                <option value="all">Orgánico + pauta</option><option value="org">Solo orgánico</option><option value="paid">Solo pauta</option>
-              </select>`}
           </div>
           ${t.dim !== 'manual' && html`
             <${Fragment}>
