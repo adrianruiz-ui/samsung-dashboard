@@ -177,7 +177,7 @@
     import {
       ResponsiveContainer, AreaChart, Area, BarChart, Bar,
       RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
-      LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
+      LineChart, Line, ComposedChart, Cell, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
     } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
@@ -903,18 +903,9 @@
     // ============================================================
     // FORMATTERS
     // ============================================================
-    // v25: cifras compactas (657.5M, 1.93B, 12.4K) para lectura rápida.
-    // El dato exacto sigue disponible con fmtFull (tooltips, tablas de
-    // detalle, trazabilidad y exportaciones).
-    const fmt = (n) => {
-      if (n == null || isNaN(n)) return '—';
-      const a = Math.abs(n), s = n < 0 ? '-' : '';
-      const trim = (x) => x.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-      if (a >= 1e9)  return s + trim((a / 1e9).toFixed(2)) + 'B';
-      if (a >= 1e6)  return s + trim((a / 1e6).toFixed(a >= 1e8 ? 1 : 2)) + 'M';
-      if (a >= 1e4)  return s + trim((a / 1e3).toFixed(1)) + 'K';
-      return Math.round(n).toLocaleString('es-MX');
-    };
+    // Siempre número entero completo con separadores de miles (petición
+    // del cliente: ver el dato exacto, nunca abreviado a K/M/B).
+    const fmt = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('es-MX');
     const fmtFull = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('es-MX');
     const erFmt = (n) => n == null ? '—' : Number(n).toFixed(2) + '%';
 
@@ -1282,7 +1273,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v25';
+    const BUILD_VERSION = '2026-10-19-v26';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2498,51 +2489,90 @@
       const ct = chartTheme || CHART_THEME.dark;
       const g = D.global;
       const weekKeys = Object.keys(D.by_week).sort((a,b) => +a - +b);
-      const trend = weekKeys.map(w => ({ week:+w, reach: D.by_week[w].reach }));
+      const trend = weekKeys.map(w => ({ week: +w, label: 'S' + w, reach: D.by_week[w].reach || 0,
+                                         inter: D.by_week[w].inter || 0, posts: D.by_week[w].posts || 0 }));
+      // Promedio móvil de 4 semanas para leer la tendencia sin el ruido de los picos
+      trend.forEach((d, i) => {
+        const win = trend.slice(Math.max(0, i - 3), i + 1);
+        d.ma4 = win.reduce((a, x) => a + x.reach, 0) / win.length;
+      });
+      const avg = trend.length ? trend.reduce((a, d) => a + d.reach, 0) / trend.length : 0;
+      const maxW = trend.reduce((m, d) => d.reach > (m?.reach ?? -1) ? d : m, null);
+      const lastW = trend[trend.length - 1];
       const nPlat = Object.keys(D.by_platform).length;
+      const nWeeks = (D.meta.weeks_in_scope || D.meta.weeks).length;
+
+      const TipBox = ({ active, payload }) => {
+        if (!active || !payload || !payload.length) return null;
+        const d = payload[0].payload;
+        return html`
+          <div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText, minWidth: 210 }}>
+            <div style=${{ color: ct.tooltipLabel, marginBottom: 4 }}>Semana ${d.week}${d.week === maxW?.week ? ' · pico del periodo' : ''}</div>
+            <div>Alcance: <b>${fmtFull(d.reach)}</b></div>
+            <div>Promedio 4 sem.: ${fmtFull(d.ma4)}</div>
+            <div>Interacciones: ${fmtFull(d.inter)}</div>
+            <div>Posts: ${fmtFull(d.posts)}</div>
+            <div style=${{ color: ct.tooltipLabel, marginTop: 4 }}>${avg ? ((d.reach / avg - 1) * 100 >= 0 ? '+' : '') + ((d.reach / avg - 1) * 100).toFixed(0) + '% vs. promedio semanal' : ''}</div>
+          </div>`;
+      };
 
       return html`
         <section id="sec-resumen" className="px-4 md:px-7 pb-6 relative group">
           <${SectionExportBtn} sectionId="sec-resumen" name="Resumen" />
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-2">
-                ${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} → ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-2">
+            ${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} → ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}
+          </div>
+          <p className="text-txt2 leading-snug mb-5 max-w-4xl" style=${{ fontSize: 'clamp(16px, 1.5vw, 20px)' }}>
+            <span className="text-txt font-medium">${fmtFull(g.posts)} publicaciones</span> en ${nPlat} ${nPlat === 1 ? 'plataforma' : 'plataformas'} generaron
+            <span className="text-txt font-medium"> ${fmt(g.reach)} de alcance</span>,
+            <span className="text-txt font-medium"> ${fmt(g.inter)} interacciones</span> y
+            <span className="text-txt font-medium"> ${fmt(g.views)} reproducciones</span>${' en '}${nWeeks} ${nWeeks === 1 ? 'semana activa' : 'semanas activas'}.
+          </p>
+          ${kpis}
+
+          <div className="rounded-2xl bg-surface p-5 md:p-6 mt-4">
+            <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="text-[15px] font-medium text-txt">Alcance semanal</div>
+                <div className="text-[12px] text-txt4 mt-0.5">Barras: alcance de cada semana · línea: promedio móvil de 4 semanas · punteada: promedio del periodo</div>
               </div>
-              <p className="text-txt2 leading-snug mb-5 max-w-3xl" style=${{ fontSize: 'clamp(16px, 1.6vw, 20px)' }}>
-                <span className="text-txt font-medium">${fmtFull(g.posts)} publicaciones</span> en ${nPlat} ${nPlat === 1 ? 'plataforma' : 'plataformas'} generaron
-                <span className="text-txt font-medium" title=${fmtFull(g.reach)}> ${fmt(g.reach)} de alcance</span>,
-                <span className="text-txt font-medium" title=${fmtFull(g.inter)}> ${fmt(g.inter)} interacciones</span> y
-                <span className="text-txt font-medium" title=${fmtFull(g.views)}> ${fmt(g.views)} reproducciones</span>${' en '}${(D.meta.weeks_in_scope || D.meta.weeks).length} ${(D.meta.weeks_in_scope || D.meta.weeks).length === 1 ? 'semana activa' : 'semanas activas'}.
-              </p>
-              ${kpis}
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-right">
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Promedio semanal</div>
+                  <div className="text-[14px] text-txt tabular-nums">${fmtFull(avg)}</div>
+                </div>
+                ${maxW && html`<div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Semana pico · S${maxW.week}</div>
+                  <div className="text-[14px] text-accent tabular-nums">${fmtFull(maxW.reach)}</div>
+                </div>`}
+                ${lastW && html`<div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Última semana · S${lastW.week}</div>
+                  <div className="text-[14px] text-txt tabular-nums">${fmtFull(lastW.reach)}</div>
+                </div>`}
+              </div>
             </div>
-            <div className="rounded-2xl bg-surface p-5 flex flex-col min-h-[220px]">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-3">Alcance semanal</div>
-              <div className="flex-1 min-h-[180px]">
-                <${ResponsiveContainer} width="100%" height="100%">
-                  <${AreaChart} data=${trend} margin=${{ top:10, right:4, left:4, bottom:0 }}>
-                    <defs>
-                      <linearGradient id="heroGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#AFA9EC" stopOpacity=${0.35} />
-                        <stop offset="100%" stopColor="#AFA9EC" stopOpacity=${0} />
-                      </linearGradient>
-                    </defs>
-                    <${XAxis} dataKey="week" tickFormatter=${(w) => 'S' + w}
-                              stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                              interval=${Math.max(0, Math.floor(trend.length/6))} />
-                    <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                              tickFormatter=${fmt} width=${40} />
-                    <${Tooltip}
-                      cursor=${{ stroke:'#AFA9EC', strokeWidth:1, strokeDasharray:'3 3' }}
-                      contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'6px 10px', fontSize:11, fontFamily:'JetBrains Mono, monospace', color:ct.tooltipText }}
-                      labelStyle=${{ color: ct.tooltipLabel }}
-                      labelFormatter=${(w) => `Semana ${w}`}
-                      formatter=${(v) => [fmtFull(v), 'Alcance']} />
-                    <${Area} type="monotone" dataKey="reach" stroke="#AFA9EC" strokeWidth=${1.8} fill="url(#heroGrad)" />
+            <div style=${{ height: 300 }}>
+              ${trend.length <= 1 ? html`
+                <div className="h-full flex items-center justify-center text-[13px] text-txt4">
+                  Selecciona más de una semana para ver la evolución del alcance.
+                </div>` : html`
+              <${ResponsiveContainer} width="100%" height="100%">
+                <${ComposedChart} data=${trend} margin=${{ top: 18, right: 8, left: 4, bottom: 0 }}>
+                  <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
+                            interval=${trend.length > 26 ? 1 : 0} />
+                  <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
+                            tickFormatter=${fmt} width=${88} />
+                  <${Tooltip} content=${TipBox} cursor=${{ fill: 'rgba(175,169,236,0.10)' }} />
+                  <${ReferenceLine} y=${avg} stroke="#F0B358" strokeDasharray="4 4" strokeOpacity=${0.8}
+                    label=${{ value: 'Promedio', position: 'insideTopRight', fontSize: 10, fill: '#F0B358' }} />
+                  <${Bar} dataKey="reach" radius=${[3, 3, 0, 0]} maxBarSize=${26}>
+                    ${trend.map(d => html`<${Cell} key=${d.week}
+                      fill=${d.week === maxW?.week ? '#7F77DD' : '#AFA9EC'}
+                      fillOpacity=${d.week === maxW?.week ? 1 : 0.55} />`)}
                   <//>
+                  <${Line} type="monotone" dataKey="ma4" stroke=${ct.tooltipText} strokeOpacity=${0.75} strokeWidth=${1.6} dot=${false} />
                 <//>
-              </div>
+              <//>`}
             </div>
           </div>
         </section>`;
@@ -2719,7 +2749,7 @@
           </div>
           <div className=${"font-medium tabular-nums break-all " + (accent ? "text-accent" : "text-txt")}
                title=${exact || undefined}
-               style=${{ fontSize: 'clamp(18px, 1.9vw, 24px)', lineHeight: 1.2 }}>${value}</div>
+               style=${{ fontSize: 'clamp(18px, 1.7vw, 24px)', lineHeight: 1.2 }}>${value}</div>
           ${delta !== undefined && html`
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               <${DeltaPill} pct=${delta} />
@@ -2736,13 +2766,13 @@
       const dLabel = heroDeltas ? `vs S${heroDeltas.prevWeek}` : null;
       return html`
         <section className=${embedded ? '' : 'px-7 pb-5'}>
-          <div className=${"grid grid-cols-2 gap-3 " + (embedded ? 'md:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-6')}>
+          <div className=${"grid grid-cols-1 sm:grid-cols-2 gap-3 " + (embedded ? 'lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-6')}>
             <${KpiCell} label="Alcance"        exact=${fmtFull(g.reach)} value=${fmt(g.reach)}       sub=${`${fmt(g.impressions)} impresiones`} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
             <${KpiCell} label="Interacciones"  exact=${fmtFull(g.inter)} value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
             <${KpiCell} label="Reproducciones" exact=${fmtFull(g.views)} value=${fmt(g.views)}       sub=${`${erFmt(g.vtr_avg)} VTR pond.`} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
             <${KpiCell} label="ER ponderado"   value=${erFmt(g.er_avg)}    sub=${`Básico ${erFmt(g.basic_er_avg)} · CTR ${erFmt(g.ctr_avg)}`} accent delta=${heroDeltas?.er_avg} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('er_avg') : undefined} />
             <${KpiCell} label="Comentarios"    exact=${fmtFull(g.comments)} value=${fmt(g.comments)}    sub=${`${fmt(g.shares)} compartidos`} delta=${heroDeltas?.comments} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('comments') : undefined} />
-            <${KpiCell} label="Posts"          value=${String(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} delta=${heroDeltas?.posts} deltaLabel=${dLabel} />
+            <${KpiCell} label="Posts"          value=${fmtFull(g.posts)}    sub=${`${(D.meta.weeks_in_scope || D.meta.weeks).length} sem. activas`} delta=${heroDeltas?.posts} deltaLabel=${dLabel} />
           </div>
           ${g.flagged_posts > 0 && html`
             <button onClick=${onTrace ? () => onTrace('er_avg') : undefined}
