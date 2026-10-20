@@ -1263,7 +1263,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v22.1';
+    const BUILD_VERSION = '2026-10-19-v23';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6063,6 +6063,39 @@
 
     function pressDelta(a, b) { return (a != null && b) ? (a - b) / b : null; }
 
+    // v23 — Recuadros de campaña: campaña + subcampañas elegidas, misma
+    // lógica que el reporte (todos los posts; VTR = promedio simple de los
+    // videos con VTR > 0 sin Stories; post destacado = más Inter. Totales).
+    function pressWeekPosts(allPosts, week) {
+      return (allPosts || []).filter(p => p.week === week && postYear(p) === PRESS_YEAR);
+    }
+    function pressCampaignOptions(allPosts, week) {
+      const map = new Map();
+      for (const p of pressWeekPosts(allPosts, week)) {
+        if (!p.campaign) continue;
+        if (!map.has(p.campaign)) map.set(p.campaign, { name: p.campaign, posts: 0, inter: 0, subs: new Map() });
+        const c = map.get(p.campaign);
+        c.posts++; c.inter += p.interactions || 0;
+        const sk = p.subcampaign || '(sin subcampaña)';
+        c.subs.set(sk, (c.subs.get(sk) || 0) + 1);
+      }
+      return [...map.values()].sort((a, b) => b.inter - a.inter);
+    }
+    function computeCampaignBox(allPosts, week, camp, subs) {
+      const list = pressWeekPosts(allPosts, week).filter(p =>
+        p.campaign === camp && (!subs || subs.includes(p.subcampaign || '(sin subcampaña)')));
+      if (!list.length) return null;
+      const vt = list.filter(p => p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
+      const top = [...list].sort((a, b) => (b.interactions || 0) - (a.interactions || 0))[0];
+      return {
+        posts: list.length,
+        reach: list.reduce((s, p) => s + (p.reach || 0), 0),
+        inter: list.reduce((s, p) => s + (p.interactions || 0), 0),
+        vtr: vt.length ? vt.reduce((a, b) => a + b, 0) / vt.length : null,
+        top: { label: `${top.platform} ${top.format || ''}`.trim(), reach: top.reach || 0, inter: top.interactions || 0, link: top.link || null },
+      };
+    }
+
     function buildPressPptx(d) {
       const P = window.PptxGenJS;
       if (!P) throw new Error('No se cargó la librería de PowerPoint. Revisa tu conexión y recarga.');
@@ -6159,6 +6192,40 @@
         });
       }
 
+      // ---------- Recuadros de campaña (fila inferior del slide)
+      const BX = [298075, 4201125, 8124550], BY = 3550000, BW = 3781800, BH = 3061200;
+      (d.boxes || []).forEach((bx, i) => {
+        if (!bx || !bx.data || i > 2) return;
+        const fx = BX[i], m = bx.data;
+        frame(fx, BY, BW, BH);
+        header(fx, BY - 323700, BW, 323700, bx.title || '');
+        const L = [['► Posts: ', String(m.posts)], ['► Reach: ', fmtKpress(m.reach)], ['► Interactions: ', fmtKpress(m.inter)]];
+        if (m.vtr != null) L.push(['► VTR: ', `${m.vtr.toFixed(2)}%`]);
+        const rr = [];
+        L.forEach(([l, v], k) => {
+          if (k) rr.push({ text: ' ', options: { breakLine: true } });
+          rr.push({ text: l, options: {} });
+          rr.push({ text: v, options: { breakLine: k < L.length - 1 } });
+        });
+        s.addText(rr, { x: E(fx + 58175), y: E(BY + 142000), w: E(1900000), h: E(1231800), fontFace: BOLD, bold: true, fontSize: 10.5, color: '000000', valign: 'top', margin: [3.6, 7.2, 3.6, 7.2] });
+        // Espacio para la imagen del post (el link abre la publicación)
+        s.addText(m.top.link ? [{ text: 'Imagen del post', options: { hyperlink: { url: m.top.link, tooltip: 'Abrir publicación' } } }] : 'Imagen del post', {
+          x: E(fx + 2261830), y: E(BY + 171575), w: E(1008053), h: E(1806888),
+          fill: { color: 'F2F2F2' }, line: { color: 'BFBFBF', width: 0.75, dashType: 'dash' },
+          fontFace: REG, fontSize: 7, color: '7F7F7F', align: 'center', valign: 'middle', margin: 2 });
+        // Tablita del post destacado
+        const cell = (t, o = {}) => ({ text: t, options: o });
+        s.addTable([
+          [cell(m.top.label, { colspan: 2, fill: { color: '002060' }, color: 'FFFFFF', bold: true, align: 'center' })],
+          [cell('Reach'), cell(Math.round(m.top.reach).toLocaleString('en-US'), { align: 'center' })],
+          [cell('Interactions'), cell(Math.round(m.top.inter).toLocaleString('en-US'), { align: 'center' })],
+        ], {
+          x: E(fx + 1968632), y: E(BY + 2051573), w: E(1578475), colW: [E(929025), E(649450)], rowH: E(289530),
+          fontFace: REG, fontSize: 7, color: '000000', valign: 'middle', align: 'center',
+          border: { type: 'solid', pt: 0.75, color: '000000' }, margin: 2,
+        });
+      });
+
       // ---------- Período
       const [a, b] = d.range;
       const per = a.getMonth() === b.getMonth() ? `PERIOD: ${ordEn(a)} - ${String(b.getDate()).padStart(2, '0')}th` : `PERIOD: ${ordEn(a)} - ${ordEn(b)}`;
@@ -6189,11 +6256,22 @@
         return () => document.removeEventListener('keydown', onKey);
       }, [open, onClose]);
       const d = useMemo(() => (week ? computePressWeek(allPosts, week, followers) : null), [allPosts, week, followers]);
+      const campOpts = useMemo(() => (week ? pressCampaignOptions(allPosts, week) : []), [allPosts, week]);
+      const [boxes, setBoxes] = useState([null, null, null]);   // { camp, subs: string[], title, touched }
+      useEffect(() => {   // al cambiar de semana: propone las 3 campañas con más interacciones
+        setBoxes([0, 1, 2].map(i => campOpts[i]
+          ? { camp: campOpts[i].name, subs: [...campOpts[i].subs.keys()], title: campOpts[i].name, touched: false }
+          : null));
+      }, [campOpts]);
+      const setBox = (i, patch) => setBoxes(bs => bs.map((b, k) => k === i ? (patch === null ? null : { ...(b || {}), ...patch }) : b));
+      const boxData = useMemo(() => boxes.map(b => b && b.camp ? computeCampaignBox(allPosts, week, b.camp, b.subs) : null), [boxes, allPosts, week]);
       if (!open) return null;
 
       const dl = async () => {
         setBusy(true); setErr(null);
-        try { await buildPressPptx(d); } catch (e) { setErr(e?.message || 'No se pudo generar el archivo.'); }
+        try {
+          await buildPressPptx({ ...d, boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
+        } catch (e) { setErr(e?.message || 'No se pudo generar el archivo.'); }
         finally { setBusy(false); }
       };
       const deltaTxtP = (v, dec = 0) => v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(dec)}%`;
@@ -6207,13 +6285,13 @@
           <div className="fixed inset-0 z-40 fade-in" style=${{ background: 'rgba(0,0,0,0.6)' }} onClick=${onClose}/>
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick=${onClose}>
             <div role="dialog" aria-modal="true" aria-labelledby="h-press"
-                 className="w-full max-w-md rounded-2xl bg-surface border border-line2 fade-in p-6"
+                 className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-surface border border-line2 fade-in p-6"
                  style=${{ boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick=${(e) => e.stopPropagation()}>
               <div className="flex items-start justify-between mb-1">
                 <h2 id="h-press" className="text-[16px] font-medium text-txt">Press semanal</h2>
                 <button onClick=${onClose} aria-label="Cerrar" className="text-txt4 hover:text-txt"><${XIcon} size=${16}/></button>
               </div>
-              <p className="text-[12px] text-txt4 mb-4">Descarga "Performance Across SNS" y "VTR" en el formato del reporte (PPTX editable). Usa toda la cuenta, sin los filtros del dashboard.</p>
+              <p className="text-[12px] text-txt4 mb-4">Descarga el slide de resumen en el formato del reporte (PPTX editable): Performance Across SNS, Reach & Interactions, VTR y hasta 3 recuadros de campaña. Usa toda la cuenta, sin los filtros del dashboard.</p>
 
               <label className="block text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-1.5" htmlFor="press-week">Semana</label>
               <select id="press-week" value=${week || ''} onChange=${(e) => setWeek(+e.target.value)}
@@ -6239,6 +6317,57 @@
                     S${d.week} tiene ${d.pending} post${d.pending === 1 ? '' : 's'} sin métricas: los números pueden cambiar cuando se completen.
                   </div>`}
               `}
+              <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-2 mt-1">Recuadros de campaña</div>
+              <div className="space-y-2.5 mb-4">
+                ${[0, 1, 2].map(i => {
+                  const b = boxes[i];
+                  const opt = b ? campOpts.find(c => c.name === b.camp) : null;
+                  const m = boxData[i];
+                  return html`
+                    <div key=${i} className="rounded-xl border border-line px-3 py-2.5">
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[10px] font-mono text-txt4 w-4">${i + 1}</span>
+                        <select aria-label=${`Campaña del recuadro ${i + 1}`} value=${b?.camp || ''}
+                                onChange=${(e) => {
+                                  const v = e.target.value;
+                                  if (!v) return setBox(i, null);
+                                  const o = campOpts.find(c => c.name === v);
+                                  setBox(i, { camp: v, subs: [...o.subs.keys()], title: (b && b.touched) ? b.title : v, touched: !!(b && b.touched) });
+                                }}
+                                className="flex-1 min-w-0 text-[12px] bg-onSurface/[0.03] border border-line rounded-lg px-2 py-1.5 text-txt2">
+                          <option value="">— Sin recuadro —</option>
+                          ${campOpts.map(c => html`<option key=${c.name} value=${c.name}>${c.name} · ${c.posts} post${c.posts === 1 ? '' : 's'}</option>`)}
+                        </select>
+                      </div>
+                      ${b && opt && html`
+                        <${Fragment}>
+                          <input aria-label=${`Título del recuadro ${i + 1}`} value=${b.title}
+                                 onChange=${(e) => setBox(i, { title: e.target.value, touched: true })}
+                                 className="mt-2 w-full text-[12px] bg-onSurface/[0.03] border border-line rounded-lg px-2 py-1.5 text-txt" />
+                          ${opt.subs.size > 1 && html`
+                            <div className="flex flex-wrap gap-1.5 mt-2" role="group" aria-label="Subcampañas incluidas">
+                              ${[...opt.subs.entries()].map(([sname, n]) => {
+                                const on = b.subs.includes(sname);
+                                return html`
+                                  <button key=${sname} aria-pressed=${on}
+                                          onClick=${() => {
+                                            const subs = on ? b.subs.filter(x => x !== sname) : [...b.subs, sname];
+                                            if (!subs.length) return;
+                                            setBox(i, { subs });
+                                          }}
+                                          className=${"text-[10px] rounded-full px-2 py-0.5 border transition-colors " + (on ? "border-accent2/50 bg-accent2/10 text-txt" : "border-line text-txt4 hover:text-txt2")}>
+                                    ${sname} · ${n}
+                                  </button>`;
+                              })}
+                            </div>`}
+                          ${m && html`
+                            <div className="text-[10px] font-mono text-txt4 mt-2 tabular-nums">
+                              ${m.posts} posts · ${fmtKpress(m.reach)} · ${fmtKpress(m.inter)}${m.vtr != null ? ` · VTR ${m.vtr.toFixed(2)}%` : ''} · top: ${m.top.label}
+                            </div>`}
+                        <//>`}
+                    </div>`;
+                })}
+              </div>
               ${err && html`<div className="text-[11px] text-amber mb-3" role="alert">${err}</div>`}
               <button onClick=${dl} disabled=${busy || !d || !followers}
                       className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-ink text-[13px] font-medium hover:bg-accent2 hover:text-white disabled:opacity-50 transition-colors">
