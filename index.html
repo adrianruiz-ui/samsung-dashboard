@@ -1337,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v32';
+    const BUILD_VERSION = '2026-10-20-v33';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6485,8 +6485,18 @@
     // (AR) y % de avance (KPI's) para IG/TikTok/YouTube, suscriptores del
     // newsletter y evolución de followers por cuenta desde la semana 1.
     async function fetchPressFollowers() {
+      // v33 — la pestaña Followers se lee del export CSV: gviz "adivina" el
+      // tipo de cada columna y borra los encabezados "Week N" del newsletter.
+      const readFollowers = async () => {
+        try {
+          const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${FOLLOWERS_GID}`);
+          const txt = res.ok ? await res.text() : '';
+          if (txt && !txt.trim().startsWith('<')) return Papa.parse(txt, { header: false, skipEmptyLines: false }).data;
+        } catch {}
+        return fetchRawSheet('Followers', 'A1:DZ60');
+      };
       const [rows, statusRows] = await Promise.all([
-        fetchRawSheet('Followers', 'A1:DZ60'),
+        readFollowers(),
         fetchRawSheet('Status vs Meta 2026', 'A1:H40').catch(() => []),
       ]);
       const series = [], totals = {};
@@ -6497,11 +6507,17 @@
           // Debajo: fila de encabezados "Week N" y fila de valores
           const hdr = rows[k + 1] || [], val = rows[k + 2] || [];
           const weeks = [], vals = [];
+          // Semana de cada columna: se ancla al primer "Week N" encontrado y
+          // avanza de uno en uno (por si algún encabezado llega vacío)
+          let i0 = -1, w0 = null;
           for (let i = 1; i < hdr.length; i++) {
             const m = String(hdr[i] || '').match(/week\s*(\d+)/i);
+            if (m) { i0 = i; w0 = +m[1]; break; }
+          }
+          if (w0 != null) for (let i = 1; i < Math.max(hdr.length, val.length); i++) {
             const raw = String(val[i] || '').replace(/[.,\s]/g, '');   // "33.536" y "33,536" → 33536
-            if (!m || !raw) continue;
-            weeks.push(+m[1]); vals.push(+raw);
+            if (!raw || isNaN(+raw)) continue;
+            weeks.push(w0 + (i - i0)); vals.push(+raw);
           }
           if (weeks.length) newsletter = { weeks, vals };
           break;
@@ -6526,6 +6542,7 @@
       return { totals, series, newsletter, goals };
     }
 
+    const FOLLOWERS_GID = '818526065';
     const FOL_LABEL = (n) => /samsungmexico/i.test(n) ? 'Samsung Mexico' : /samsungmobile/i.test(n) ? 'Samsung Mobile' : /linkedin/i.test(n) ? 'LinkedIn*' : n;
     const FOL_COLORS = { Facebook: '4285F4', Instagram: 'EA4335', TikTok: 'FBBC04', YouTube: '34A853', LinkedIn: 'FF6D01',
                          'X | SamsungMexico': '46BDC6', 'X | SamsungMobile': '7BAAF7', Threads: 'F07B72' };
