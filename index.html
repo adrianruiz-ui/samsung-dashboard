@@ -1337,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v33';
+    const BUILD_VERSION = '2026-10-20-v34';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6630,6 +6630,17 @@
       const pptx = new P();
       pptx.layout = 'LAYOUT_WIDE';                       // 13.333 × 7.5 in = mismo tamaño del reporte
       const E = (emu) => emu / 914400;                    // coordenadas EMU del reporte → pulgadas
+      // ---------- v34 — Portada: "SNS Summary | Week N" + fecha de entrega
+      // (el martes siguiente al cierre de la semana, como en el reporte)
+      {
+        const cv = pptx.addSlide();
+        cv.background = { color: '1F3864' };
+        cv.addText([{ text: 'SNS Summary | Week ', options: {} }, { text: String(d.week), options: {} }],
+          { x: E(665225), y: E(2896800), w: E(10682700), h: E(1064400), fontFace: 'Samsung SS Head Bold', bold: true, fontSize: 44, color: 'FFFFFF', valign: 'middle', margin: [3.6, 7.2, 3.6, 7.2] });
+        const tue = new Date(d.range[1]); tue.setDate(tue.getDate() + 3);
+        cv.addText(`${ordEn(tue)}, ${tue.getFullYear()}`,
+          { x: E(8587127), y: E(5513325), w: E(3460200), h: E(897300), fontFace: 'Samsung SS Head Bold', bold: true, fontSize: 24, color: 'FFFFFF', valign: 'middle', margin: [3.6, 7.2, 3.6, 7.2] });
+      }
       const s = pptx.addSlide();
       const BOLD = 'Samsung SS Body Bold', REG = 'Samsung SS Body Regular';
       const frame = (x, y, w, h) => s.addShape(pptx.ShapeType.rect, { x: E(x), y: E(y), w: E(w), h: E(h), fill: { color: 'FFFFFF', transparency: 100 }, line: { color: '000000', width: 0.75 } });
@@ -6823,7 +6834,7 @@
                 <h2 id="h-press" className="text-[16px] font-medium text-txt">Press semanal</h2>
                 <button onClick=${onClose} aria-label="Cerrar" className="text-txt4 hover:text-txt"><${XIcon} size=${16}/></button>
               </div>
-              <p className="text-[12px] text-txt4 mb-4">Descarga 2 slides en el formato del reporte (PPTX editable): el resumen de la semana (Performance Across SNS, Reach & Interactions, VTR y hasta 3 recuadros de campaña) y Followers (tabla de 14 semanas, meta 2026, newsletter y evolución). Usa toda la cuenta, sin los filtros del dashboard.</p>
+              <p className="text-[12px] text-txt4 mb-4">Descarga 3 slides en el formato del reporte (PPTX editable): la portada, el resumen de la semana (Performance Across SNS, Reach & Interactions, VTR y hasta 3 recuadros de campaña) y Followers (tabla de 14 semanas, meta 2026, newsletter y evolución). Usa toda la cuenta, sin los filtros del dashboard.</p>
 
               <label className="block text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-1.5" htmlFor="press-week">Semana</label>
               <select id="press-week" value=${week || ''} onChange=${(e) => setWeek(+e.target.value)}
