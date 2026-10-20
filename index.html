@@ -170,6 +170,7 @@
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
     import {
       ResponsiveContainer, AreaChart, Area, BarChart, Bar,
+      RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
       LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
     } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
@@ -1263,7 +1264,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v23';
+    const BUILD_VERSION = '2026-10-19-v24';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1632,6 +1633,13 @@
         <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
         <polyline points="16 7 22 7 22 13"/>
       </svg>`;
+    const RadarIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className} aria-hidden="true">
+        <path d="M12 3l8.5 6.2-3.2 10H6.7l-3.2-10z"/><path d="M12 8l4 3-1.5 5h-5L8 11z"/>
+      </svg>`;
     const DonutIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1824,6 +1832,7 @@
       { id: 'plataformas',  label: 'Plataformas',  Icon: LayersIcon   },
       { id: 'tendencia',    label: 'Tendencia',    Icon: TrendIcon    },
       { id: 'mezcla',       label: 'Mezcla',       Icon: DonutIcon    },
+      { id: 'perfil',       label: 'Perfil por formato', Icon: RadarIcon },
       { id: 'top-posts',    label: 'Top posts',    Icon: RowsIcon     },
       { id: 'vtr',          label: 'VTR',          Icon: PlayIcon     },
       { id: 'promedios',    label: 'Promedios',    Icon: AvgIcon      },
@@ -6379,6 +6388,202 @@
     }
     function MESES_ABBR(d) { return ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()]; }
 
+    // ============================================================
+    // v24 — PERFIL POR FORMATO (gráfica de araña)
+    // Índice 100 = promedio de la plataforma + pauta elegidas dentro del
+    // filtro actual. Ejes = tasas por alcance (ponderadas Σ/Σ) + alcance
+    // por post. Máx. 3 formatos, mín. 20 posts por formato.
+    // ============================================================
+    const PROFILE_MIN_N = 20;
+    const PROFILE_AXES = [
+      { key: 'reach_pp', label: 'Alcance por post', fmt: (v) => fmt(Math.round(v)) },
+      { key: 'reactions', label: 'Reacciones', fmt: (v) => (v * 100).toFixed(2) + '%' },
+      { key: 'comments', label: 'Comentarios', fmt: (v) => (v * 100).toFixed(3) + '%' },
+      { key: 'shares', label: 'Compartidos', fmt: (v) => (v * 100).toFixed(3) + '%' },
+      { key: 'saves', label: 'Guardados', fmt: (v) => (v * 100).toFixed(3) + '%' },
+    ];
+    const PROFILE_COLORS = [
+      { stroke: '#2a78d6', dash: undefined, shape: 'circle' },
+      { stroke: '#eb6834', dash: '6 4', shape: 'diamond' },
+      { stroke: '#1baf7a', dash: '2 3', shape: 'square' },
+    ];
+    function profileRaw(list) {
+      const reach = list.reduce((s, p) => s + (p.reach > 0 ? p.reach : 0), 0);
+      const sum = (k) => list.reduce((s, p) => s + (p.reach > 0 ? (p[k] || 0) : 0), 0);
+      const withReach = list.filter(p => p.reach > 0).length;
+      return {
+        n: list.length,
+        reach_pp: withReach ? reach / withReach : 0,
+        reactions: reach ? sum('reactions') / reach : 0,
+        comments: reach ? sum('comments') / reach : 0,
+        shares: reach ? sum('shares') / reach : 0,
+        saves: reach ? sum('saves') / reach : 0,
+      };
+    }
+    const isOrgP = (p) => /org/i.test(p.strategy || '');
+    const isPaidP = (p) => /paid|pauta|pagad/i.test(p.strategy || '');
+
+    function FormatProfileSection({ D, filters, chartTheme }) {
+      const all = D.allPosts || [];
+      const platLock = filters?.platforms?.length === 1 ? filters.platforms[0] : null;
+      const platforms = useMemo(() => {
+        const c = {}; for (const p of all) c[p.platform] = (c[p.platform] || 0) + 1;
+        return Object.keys(c).sort((a, b) => c[b] - c[a]);
+      }, [all]);
+      const [plat, setPlat] = useState(null);
+      const [pauta, setPauta] = useState('org');
+      const curPlat = platLock || (plat && platforms.includes(plat) ? plat : (platforms.includes('Instagram') ? 'Instagram' : platforms[0]));
+      const pautaLock = filters?.strategies?.length > 0;
+
+      const scope = useMemo(() => all.filter(p => p.platform === curPlat &&
+        (pautaLock || pauta === 'all' || (pauta === 'org' ? isOrgP(p) : isPaidP(p)))), [all, curPlat, pauta, pautaLock]);
+      const base = useMemo(() => profileRaw(scope), [scope]);
+      const formats = useMemo(() => {
+        const by = {};
+        for (const p of scope) { const f = p.format || 'Sin formato'; (by[f] = by[f] || []).push(p); }
+        return Object.entries(by).map(([f, list]) => ({ f, n: list.length, raw: profileRaw(list) })).sort((a, b) => b.n - a.n);
+      }, [scope]);
+      const eligible = formats.filter(x => x.n >= PROFILE_MIN_N);
+      const [sel, setSel] = useState(null);
+      const selected = (sel || []).filter(f => eligible.some(e => e.f === f));
+      const axes = PROFILE_AXES.filter(a => base[a.key] > 0);   // ejes sin dato en la plataforma se ocultan
+      // Por defecto: formatos que miden todos los ejes (Stories no tiene guardados) y luego el resto
+      const complete = eligible.filter(e => axes.every(a => e.raw[a.key] > 0));
+      const defaults = [...complete, ...eligible.filter(e => !complete.includes(e))].slice(0, 3).map(e => e.f);
+      const active = selected.length ? selected : defaults;
+      const series = active.map(f => eligible.find(e => e.f === f)).filter(Boolean);
+      const idx = (raw, k) => base[k] > 0 ? (raw[k] / base[k]) * 100 : 0;
+      const data = axes.map(a => {
+        const row = { axis: a.label, base: 100 };
+        series.forEach(s => { row[s.f] = Math.round(idx(s.raw, a.key)); });
+        return row;
+      });
+      const maxIdx = Math.max(200, ...data.flatMap(r => series.map(s => r[s.f] || 0)));
+      const domainMax = Math.ceil(maxIdx / 100) * 100;
+      const toggle = (f) => {
+        const cur = active;
+        if (cur.includes(f)) { if (cur.length > 1) setSel(cur.filter(x => x !== f)); }
+        else if (cur.length < 3) setSel([...cur, f]);
+      };
+      const reading = series.map(s => {
+        const vals = axes.filter(a => s.raw[a.key] > 0).map(a => ({ a: a.label, v: idx(s.raw, a.key) }));   // 0 = no aplica al formato
+        const hi = [...vals].sort((x, y) => y.v - x.v)[0], lo = [...vals].sort((x, y) => x.v - y.v)[0];
+        return { f: s.f, hi, lo };
+      });
+      const ct = chartTheme || {};
+
+      return html`
+        <section id="sec-perfil" className="px-7 py-7 relative group" aria-labelledby="h-perfil">
+          <${SectionExportBtn} sectionId="sec-perfil" name="PerfilFormato" />
+          <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-1.5">Diagnóstico</div>
+              <h2 id="h-perfil" className="text-[18px] font-medium text-txt">Perfil por formato</h2>
+              <p className="text-txt4 text-[12px] mt-1">Índice 100 = promedio de ${curPlat} ${pautaLock ? '' : pauta === 'org' ? 'orgánico' : pauta === 'paid' ? 'pauta' : '(orgánico + pauta)'} en el filtro actual. Interacciones medidas por persona alcanzada.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              ${platLock ? html`
+                <span className="inline-flex items-center text-[11px] bg-accent2/10 border border-accent2/30 rounded-lg px-3 py-1.5 text-accent2">${platLock}</span>
+              ` : html`
+                <select aria-label="Plataforma del perfil" value=${curPlat} onChange=${(e) => { setPlat(e.target.value); setSel(null); }}
+                        className="text-[11px] bg-onSurface/[0.03] border border-line rounded-lg px-3 py-1.5 text-txt2">
+                  ${platforms.map(p => html`<option key=${p} value=${p}>${p}</option>`)}
+                </select>`}
+              ${!pautaLock && html`
+                <div role="radiogroup" aria-label="Tipo de pauta del perfil" className="inline-flex rounded-lg border border-line overflow-hidden text-[11px]">
+                  ${[['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todos']].map(([k, l]) => html`
+                    <button key=${k} role="radio" aria-checked=${pauta === k} onClick=${() => { setPauta(k); setSel(null); }}
+                            className=${"px-3 py-1.5 transition-colors " + (pauta === k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>${l}</button>`)}
+                </div>`}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 mb-4" role="group" aria-label="Formatos a comparar (máximo 3)">
+            ${formats.map(x => {
+              const ok = x.n >= PROFILE_MIN_N, on = active.includes(x.f);
+              const ci = active.indexOf(x.f);
+              return html`
+                <button key=${x.f} disabled=${!ok} aria-pressed=${on} onClick=${() => toggle(x.f)}
+                        title=${ok ? '' : `Se necesitan al menos ${PROFILE_MIN_N} posts`}
+                        className=${"text-[11px] rounded-full px-2.5 py-1 border transition-colors inline-flex items-center gap-1.5 " +
+                          (!ok ? "border-line text-faint cursor-not-allowed" : on ? "border-line2 bg-onSurface/[0.04] text-txt" : "border-line text-txt3 hover:text-txt")}>
+                  ${on && html`<span aria-hidden="true" style=${{ width: 10, height: 0, borderTop: `2px ${PROFILE_COLORS[ci].dash ? 'dashed' : 'solid'} ${PROFILE_COLORS[ci].stroke}` }}></span>`}
+                  ${x.f} · ${x.n}${ok ? '' : ' (n<' + PROFILE_MIN_N + ')'}
+                </button>`;
+            })}
+          </div>
+
+          ${series.length === 0 ? html`
+            <div className="rounded-xl bg-surface border border-line p-8 text-center text-[12px] text-txt4">
+              No hay formatos con al menos ${PROFILE_MIN_N} posts en este filtro. Amplía el periodo o cambia de plataforma.
+            </div>
+          ` : html`
+            <div className="grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-4">
+              <div className="rounded-xl bg-surface border border-line p-4" role="img"
+                   aria-label=${`Gráfica de araña de ${curPlat}: ` + series.map(s => s.f + ' ' + axes.map(a => a.label + ' ' + Math.round(idx(s.raw, a.key))).join(', ')).join('; ')}>
+                <div style=${{ height: 360 }}>
+                  <${ResponsiveContainer}>
+                    <${RadarChart} data=${data} outerRadius="72%">
+                      <${PolarGrid} stroke=${ct.grid || 'rgba(128,128,128,0.25)'} />
+                      <${PolarAngleAxis} dataKey="axis" tick=${{ fill: ct.axisStrong || '#888', fontSize: 11 }} />
+                      <${PolarRadiusAxis} domain=${[0, domainMax]} tickCount=${Math.min(6, domainMax / 100 + 1)} tick=${{ fill: ct.axis || '#888', fontSize: 10 }} axisLine=${false} angle=${54} />
+                      <${Radar} name="Promedio (100)" dataKey="base" stroke=${ct.axis || '#888'} strokeDasharray="2 3" fill="none" strokeWidth=${1} isAnimationActive=${false} />
+                      ${series.map((s, i) => html`
+                        <${Radar} key=${s.f} name=${s.f} dataKey=${s.f} stroke=${PROFILE_COLORS[i].stroke} strokeDasharray=${PROFILE_COLORS[i].dash}
+                                  fill=${PROFILE_COLORS[i].stroke} fillOpacity=${0.08} strokeWidth=${2} isAnimationActive=${false}
+                                  dot=${{ r: 3, fill: PROFILE_COLORS[i].stroke, strokeWidth: 0 }} />`)}
+                      <${Tooltip} formatter=${(v, name) => [Math.round(v), name]}
+                                  contentStyle=${{ background: ct.tooltipBg, border: '1px solid ' + (ct.tooltipBorder || '#333'), borderRadius: 6, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: ct.tooltipText }} />
+                    <//>
+                  <//>
+                </div>
+                <div className="flex flex-wrap gap-4 text-[11px] text-txt3 mt-1 justify-center">
+                  ${series.map((s, i) => html`<span key=${s.f} className="inline-flex items-center gap-1.5"><span aria-hidden="true" style=${{ width: 14, height: 0, borderTop: `2px ${PROFILE_COLORS[i].dash ? 'dashed' : 'solid'} ${PROFILE_COLORS[i].stroke}` }}></span>${s.f}</span>`)}
+                  <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" style=${{ width: 14, height: 0, borderTop: '1px dotted currentColor' }}></span>Promedio = 100</span>
+                </div>
+              </div>
+
+              <div className="space-y-3 min-w-0">
+                <div className="rounded-xl bg-surface border border-line overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <caption className="sr-only">Índices por formato (100 = promedio)</caption>
+                    <thead>
+                      <tr className="border-b border-line text-[9px] font-mono uppercase tracking-[0.15em] text-txt4">
+                        <th scope="col" className="text-left py-2 px-3 font-medium">Eje</th>
+                        ${series.map(s => html`<th key=${s.f} scope="col" className="text-right py-2 px-3 font-medium">${s.f}</th>`)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${axes.map(a => html`
+                        <tr key=${a.key} className="border-b border-line/50 last:border-0">
+                          <th scope="row" className="text-left py-2 px-3 text-[12px] text-txt3 font-normal">${a.label}</th>
+                          ${series.map(s => {
+                            const v = Math.round(idx(s.raw, a.key));
+                            if (!(s.raw[a.key] > 0)) return html`<td key=${s.f} className="py-2 px-3 text-right font-mono text-[11px] text-faint" title="El formato no registra esta métrica">n/a</td>`;
+                            return html`<td key=${s.f} className="py-2 px-3 text-right font-mono tabular-nums text-[12px]" title=${a.fmt(s.raw[a.key]) + ' vs promedio ' + a.fmt(base[a.key])}>
+                              <span className=${v >= 120 ? 'text-success' : v <= 80 ? 'text-amber' : 'text-txt'}>${v}</span>
+                              <span className="text-[10px] text-txt4 ml-1.5">${a.fmt(s.raw[a.key])}</span>
+                            </td>`;
+                          })}
+                        </tr>`)}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="rounded-xl bg-surface border border-line p-4">
+                  <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Lectura</div>
+                  ${reading.map(r => html`
+                    <p key=${r.f} className="text-[12px] text-txt3 leading-relaxed mb-1.5 last:mb-0">
+                      <span className="text-txt2 font-medium">${r.f}:</span> su fuerte es ${r.hi.a.toLowerCase()} (${Math.round(r.hi.v)})
+                      y su punto débil ${r.lo.a.toLowerCase()} (${Math.round(r.lo.v)}).
+                    </p>`)}
+                  <p className="text-[10px] text-txt4 mt-2">Verde ≥ 120 · ámbar ≤ 80 · n/a = el formato no registra esa métrica. Solo formatos con ${PROFILE_MIN_N}+ posts.</p>
+                </div>
+              </div>
+            </div>
+          `}
+        </section>`;
+    }
+
     function App() {
       const { data, loading, refreshing, error, errors, fetchedAt, refresh, autoRefreshMin } = useDashboardData();
       const [selected, setSelected] = useState(null);
@@ -6515,6 +6720,7 @@
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
                 <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
+                <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks}/>
                 <${VtrSection}         D=${D}/>
                 <${AveragesSection}    D=${D}/>
