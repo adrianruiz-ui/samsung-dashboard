@@ -1337,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v37';
+    const BUILD_VERSION = '2026-10-20-v38';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6675,11 +6675,13 @@
         p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
       return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
     }
-    function computeTopic(allPosts, week, t) {
+    // v38 — la referencia es el VTR general de la semana (el mismo "Average VTR"
+    // del slide de resumen), sin separar orgánico y pauta, como en el reporte.
+    function computeTopic(allPosts, week, t, vtrRef) {
       if (t.dim === 'manual') return { manual: true, title: t.title || 'Tema', groups: [], bullets: [] };
       const list = topicList(allPosts, week, t);
       const perf = pressStats(list);
-      const ref = organicVtrRef(allPosts, week);
+      const ref = vtrRef ?? null;
       const D = t.split && t.split !== 'none' ? topicDim(t.split) : null;
       const groups = D ? (t.splitKeys || []).slice(0, 2).map(k => ({ title: k, data: pressStats(list.filter(p => (D.f(p) || '(sin dato)') === k)) })).filter(g => g.data) : [];
       const bullets = [];
@@ -6687,7 +6689,7 @@
         bullets.push(`${t.title || t.values.join(' · ')} generated ${fmtKpress(perf.reach)} reach and ${fmtKpress(perf.inter)} interactions across ${perf.posts} post${perf.posts === 1 ? '' : 's'} this week.`);
         if (perf.vtr != null && ref != null) {
           const dpp = perf.vtr - ref;
-          bullets.push(`Its VTR (${perf.vtr.toFixed(2)}%) was ${Math.abs(dpp).toFixed(2)} pp ${dpp >= 0 ? 'above' : 'below'} the organic average, ${dpp >= 0 ? 'outperforming' : 'below'} the typical performance of organic content.`);
+          bullets.push(`Its VTR (${perf.vtr.toFixed(2)}%) was ${Math.abs(dpp).toFixed(2)} pp ${dpp >= 0 ? 'above' : 'below'} the average VTR of the week (${ref.toFixed(1)}%).`);
         } else bullets.push(`The best-performing piece was ${perf.top.label}, with ${fmtKpress(perf.top.reach)} reach and ${fmtKpress(perf.top.inter)} interactions.`);
       }
       return { manual: false, title: t.title || t.values.join(' · '), perf, ref, groups, bullets };
@@ -6719,7 +6721,7 @@
       metrics(398275, 1651884, 2187000, 1266900, T.perf, 11);
       if (T.perf && T.perf.vtr != null && T.ref != null) {
         const dpp = T.perf.vtr - T.ref;
-        s.addText([{ text: `► ${Math.abs(dpp).toFixed(2)} ${dpp >= 0 ? '+' : '-'}pp`, options: { breakLine: true } }, { text: 'vs VTR AVG Organic', options: { fontSize: 5, bold: false } }],
+        s.addText([{ text: `► ${Math.abs(dpp).toFixed(2)} ${dpp >= 0 ? '+' : '-'}pp`, options: { breakLine: true } }, { text: 'vs VTR AVG', options: { fontSize: 5, bold: false } }],
           { x: E(548956), y: E(3010000), w: E(970311), h: E(300000), fontFace: BOLD, bold: true, fontSize: 9, color: '000000', valign: 'top', margin: 0 });
         s.addShape(dpp >= 0 ? pptx.ShapeType.upArrow : pptx.ShapeType.downArrow, { x: E(1455596), y: E(3030000), w: E(130734), h: E(150000), fill: { color: dpp >= 0 ? '00B050' : 'FF0000' }, line: { color: dpp >= 0 ? '00B050' : 'FF0000', width: 0 } });
       }
@@ -7068,7 +7070,7 @@
       const dl = async () => {
         setBusy(true); setErr(null);
         try {
-          await buildPressPptx({ ...d, folDetail, topics: topics.map(t => computeTopic(allPosts, week, t)), boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
+          await buildPressPptx({ ...d, folDetail, topics: topics.map(t => computeTopic(allPosts, week, t, d.vtr.avg)), boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
         } catch (e) { setErr(e?.message || 'No se pudo generar el archivo.'); }
         finally { setBusy(false); }
       };
