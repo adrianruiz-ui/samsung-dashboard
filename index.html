@@ -1273,7 +1273,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v26';
+    const BUILD_VERSION = '2026-10-19-v27';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2697,6 +2697,7 @@
                 { t: fmt(top.reach), strong: true },
                 { t: ' de alcance.' },
               ],
+              post: top,
             });
           }
         }
@@ -2715,6 +2716,7 @@
             ${insight.parts.map((part, i) => part.strong
               ? html`<span key=${i} className="text-txt2 font-medium">${part.t}</span>`
               : html`<span key=${i}>${part.t}</span>`)}
+            ${insight.post && safeLink(insight.post.link) && html` <${PostLink} p=${insight.post} />`}
           </p>
         </div>`;
     }
@@ -2885,6 +2887,22 @@
       };
     }
 
+    // v27 — link a la publicación original (columna "Link" del Sheet).
+    // Abre en pestaña nueva y no dispara el click de la fila.
+    const safeLink = (l) => { const u = (l || '').trim(); return /^https?:\/\//i.test(u) ? u : null; };
+    function PostLink({ p, compact = false }) {
+      const url = safeLink(p && p.link);
+      if (!url) return html`<span className="text-faint text-[11px]" title="Este post no tiene link en el Sheet">—</span>`;
+      return html`
+        <a href=${url} target="_blank" rel="noopener noreferrer"
+           onClick=${(e) => e.stopPropagation()} onKeyDown=${(e) => e.stopPropagation()}
+           aria-label=${`Abrir publicación de ${p.platform}${p.date ? ', ' + dateShort(p.date) : ''} en una pestaña nueva`}
+           title="Abrir publicación"
+           className="inline-flex items-center gap-1 rounded-full bg-accent2/10 hover:bg-accent2/20 text-txt2 hover:text-txt px-2 py-0.5 text-[11px] font-sans whitespace-nowrap transition-colors">
+          ${compact ? '' : 'Ver'} <${ExtIcon} size=${11}/>
+        </a>`;
+    }
+
     function TraceRow({ trace, p, onPick }) {
       const color = PLAT_COLORS[p.platform];
       const val = trace.field === 'er' ? erFmt(p[trace.field]) : fmt(p[trace.field]);
@@ -2897,6 +2915,7 @@
           <td className="py-2 px-3 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
           <td className="py-2 px-3 text-[12px] text-txt2 truncate max-w-[160px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
           <td className="py-2 px-3 text-right font-mono tabular-nums text-[12px] text-txt">${val}</td>
+          <td className="py-2 pl-1 pr-3 text-right"><${PostLink} p=${p} compact /></td>
         </tr>`;
     }
 
@@ -2969,6 +2988,7 @@
                         <th className="text-left py-2 px-3 font-medium">Fecha</th>
                         <th className="text-left py-2 px-3 font-medium">Campaña</th>
                         <th className="text-right py-2 px-3 font-medium">${isRatio ? 'ER del post' : trace.label}</th>
+                        <th className="text-right py-2 pl-1 pr-3 font-medium">Link</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3556,12 +3576,13 @@
                   <th className="text-right py-2.5 px-4 font-medium">ER total</th>
                   <th className="text-right py-2.5 px-4 font-medium">ER básico</th>
                   <th scope="col" className="text-right py-2.5 px-4 font-medium">VTR</th>
-                  <th scope="col" className="text-right py-2.5 px-4 font-medium pr-6" title="ER básico del post vs. el ER básico ponderado de su segmento (plataforma · formato · pauta · tipo de contenido)">vs. segmento</th>
+                  <th scope="col" className="text-right py-2.5 px-4 font-medium" title="ER básico del post vs. el ER básico ponderado de su segmento (plataforma · formato · pauta · tipo de contenido)">vs. segmento</th>
+                  <th scope="col" className="text-right py-2.5 px-4 pr-6 font-medium">Link</th>
                 </tr>
               </thead>
               <tbody>
                 ${visible.length === 0 && html`
-                  <tr><td colSpan=${14} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
+                  <tr><td colSpan=${15} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
                 `}
                 ${visible.map((p, i) => {
                   const color = PLAT_COLORS[p.platform];
@@ -3598,9 +3619,10 @@
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt3">
                         ${p.vtr != null ? erFmt(p.vtr) : html`<span className="text-faint italic" title="No aplica — no es contenido de video">n/a</span>`}
                       </td>
-                      <td className="py-2.5 px-4 pr-6 text-right">
+                      <td className="py-2.5 px-4 text-right">
                         <${BenchPill} b=${b} />
                       </td>
+                      <td className="py-2.5 px-4 pr-6 text-right"><${PostLink} p=${p} /></td>
                     </tr>`;
                 })}
               </tbody>
@@ -3676,7 +3698,7 @@
       return { general, byPlatform, byDuration, topVideos, totalVideos: videos.length };
     }
 
-    function VtrSection({ D }) {
+    function VtrSection({ D, onPick }) {
       const vtr = useMemo(() => computeVtrStats(D.allPosts || []), [D.allPosts]);
       const platOrder = Object.keys(vtr.byPlatform);
 
@@ -3809,14 +3831,17 @@
                       <th className="text-left py-2.5 pr-3 font-medium">Campaña</th>
                       <th className="text-right py-2.5 px-3 font-medium">Duración</th>
                       <th className="text-right py-2.5 px-3 font-medium">Views</th>
-                      <th className="text-right py-2.5 pl-3 font-medium">VTR</th>
+                      <th className="text-right py-2.5 px-3 font-medium">VTR</th>
+                      <th className="text-right py-2.5 pl-3 font-medium font-sans">Link</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${vtr.topVideos.map((p, i) => {
                       const color = PLAT_COLORS[p.platform];
                       return html`
-                        <tr key=${i} className="border-b border-line/40 hover:bg-onSurface/[0.02] transition-colors">
+                        <tr key=${i} onClick=${onPick ? () => onPick(p) : undefined}
+                            ...${onPick ? kbd(() => onPick(p), `Ver detalle: ${p.format || 'video'} de ${p.platform}`) : {}}
+                            className="border-b border-line/40 hover:bg-onSurface/[0.02] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors">
                           <td className="py-2.5 pr-3 text-txt4 tabular-nums">${i + 1}</td>
                           <td className="py-2.5 pr-3">
                             <div className="flex items-center gap-2">
@@ -3828,7 +3853,8 @@
                           <td className="py-2.5 pr-3 text-txt3 font-sans truncate max-w-[220px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
                           <td className="text-right py-2.5 px-3 tabular-nums text-txt3">${p.duration != null ? p.duration + 's' : '—'}</td>
                           <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(p.views)}</td>
-                          <td className="text-right py-2.5 pl-3 tabular-nums text-accent font-medium">${erFmt(p.vtr)}</td>
+                          <td className="text-right py-2.5 px-3 tabular-nums text-accent font-medium">${erFmt(p.vtr)}</td>
+                          <td className="text-right py-2.5 pl-3"><${PostLink} p=${p} /></td>
                         </tr>`;
                     })}
                   </tbody>
@@ -4591,6 +4617,7 @@
           <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${valueFmt}</td>
           <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[11px] text-faint">típico ${baselineFmt}</td>
           <td className="py-2.5 pl-2 pr-4 text-right font-mono tabular-nums text-[11px] text-txt4">z ${a.z.toFixed(1)}</td>
+          <td className="py-2.5 pr-4 text-right"><${PostLink} p=${p} /></td>
         </tr>`;
     }
 
@@ -4627,6 +4654,7 @@
                     <th className="text-right py-2.5 px-4 font-medium">Valor</th>
                     <th className="text-right py-2.5 px-4 font-medium">Referencia</th>
                     <th className="text-right py-2.5 pl-2 pr-4 font-medium">Severidad</th>
+                    <th className="text-right py-2.5 pr-4 font-medium">Link</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5950,6 +5978,7 @@
                       <th scope="col" className="text-left py-2.5 px-4 font-medium">Formato</th>
                       <th scope="col" className="text-left py-2.5 px-4 font-medium">Campaña</th>
                       <th scope="col" className="text-left py-2.5 px-4 font-medium">Pendiente</th>
+                      <th scope="col" className="text-right py-2.5 px-4 font-medium">Link</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5965,6 +5994,7 @@
                             ${tags.map(t => html`<span key=${t} className="text-[10px] text-amber border border-amber/40 rounded-full px-2 py-0.5 whitespace-nowrap">${t}</span>`)}
                           </div>
                         </td>
+                        <td className="py-2 px-4 text-right"><${PostLink} p=${p} /></td>
                       </tr>`)}
                   </tbody>
                 </table>
@@ -6770,7 +6800,7 @@
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks}/>
-                <${VtrSection}         D=${D}/>
+                <${VtrSection}         D=${D} onPick=${setSelected}/>
                 <${FollowerGoalsSection} fetchedAt=${fetchedAt} chartTheme=${chartTheme}/>
 
                 <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia y simulador"
