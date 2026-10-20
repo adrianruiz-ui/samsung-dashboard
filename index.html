@@ -1289,19 +1289,41 @@
           const { id, name } = present[i];
           if (onProgress) onProgress(i + 1, present.length, name);
           const canvas = await captureSection(id);
-          if (!firstPage) pdf.addPage();
-          firstPage = false;
-          // Encajar la imagen en la página manteniendo aspecto
+          // v31 — fondo según el tema activo y secciones largas en varias
+          // páginas a lo ancho (antes se encogían a una sola hoja ilegible)
+          const ink = (getComputedStyle(document.documentElement).getPropertyValue('--c-ink') || '10 10 15').trim().split(/[\s,]+/).map(Number);
           const maxW = pageW - padding * 2;
           const maxH = pageH - padding * 2;
-          const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-          const w = canvas.width * ratio;
-          const h = canvas.height * ratio;
-          // Fondo oscuro para que matchee con el dashboard
-          pdf.setFillColor(10, 10, 15);
-          pdf.rect(0, 0, pageW, pageH, 'F');
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG',
-            (pageW - w) / 2, (pageH - h) / 2, w, h);
+          const fitRatio = Math.min(maxW / canvas.width, maxH / canvas.height);
+          const wideRatio = maxW / canvas.width;
+          const useSlices = canvas.height * wideRatio > maxH * 1.15;   // muy alta: partir en hojas
+          const ratio = useSlices ? wideRatio : fitRatio;
+          const sliceH = useSlices ? Math.floor(maxH / ratio) : canvas.height;
+          // Cortes limpios: entre tarjetas o filas, nunca a media gráfica
+          const secEl = document.getElementById(id);
+          const sc = secEl ? canvas.height / Math.max(1, secEl.offsetHeight) : 1;
+          const secTop = secEl ? secEl.getBoundingClientRect().top : 0;
+          const breaks = secEl ? [...new Set([...secEl.querySelectorAll('.rounded-xl, .rounded-2xl, tbody tr, h2')]
+            .map(e => Math.round((e.getBoundingClientRect().top - secTop) * sc)))].filter(v => v > 0).sort((p, q) => p - q) : [];
+          for (let y = 0, hPx; y < canvas.height; y += hPx) {
+            hPx = Math.min(sliceH, canvas.height - y);
+            if (useSlices && y + hPx < canvas.height) {
+              const cut = breaks.filter(b => b > y + sliceH * 0.35 && b <= y + sliceH).pop();
+              if (cut) hPx = cut - y - 2;
+            }
+            let img = canvas;
+            if (useSlices) {
+              img = document.createElement('canvas');
+              img.width = canvas.width; img.height = hPx;
+              img.getContext('2d').drawImage(canvas, 0, y, canvas.width, hPx, 0, 0, canvas.width, hPx);
+            }
+            if (!firstPage) pdf.addPage();
+            firstPage = false;
+            const w = img.width * ratio, h = img.height * ratio;
+            pdf.setFillColor(ink[0] || 0, ink[1] || 0, ink[2] || 0);
+            pdf.rect(0, 0, pageW, pageH, 'F');
+            pdf.addImage(img.toDataURL('image/jpeg', 0.86), 'JPEG', (pageW - w) / 2, useSlices ? padding : (pageH - h) / 2, w, h, undefined, 'FAST');
+          }
         }
         pdf.save(buildFileName('dashboard') + '.pdf');
       } catch (e) {
@@ -1315,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-19-v30';
+    const BUILD_VERSION = '2026-10-19-v31';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2448,7 +2470,7 @@
     // ============================================================
     // COMPONENTES — TopBar
     // ============================================================
-    function TopBar({ fetchedAt, onRefresh, refreshing, autoRefreshMin, allPosts, onPick, onOpenPress }) {
+    function TopBar({ fetchedAt, onRefresh, refreshing, autoRefreshMin, allPosts, onPick, onOpenPress, onExpandAll }) {
       const today = new Date().toLocaleDateString('es-MX', {
         weekday:'long', day:'2-digit', month:'long', year:'numeric',
       });
@@ -2458,11 +2480,15 @@
       const handlePdf = async () => {
         if (pdfBusy) return;
         setPdfBusy(true);
+        let restore = null;
         try {
+          // v31 — PDF completo: abre Análisis y Control solo para exportar
+          if (onExpandAll) { setPdfProgress('Preparando…'); restore = await onExpandAll(); }
           await exportFullDashboardPdf((i, total, name) => {
             setPdfProgress(`${i}/${total} · ${name}`);
           });
         } finally {
+          if (restore) restore();
           setPdfBusy(false);
           setPdfProgress('');
         }
@@ -2490,7 +2516,7 @@
             </button>
             <button onClick=${handlePdf} disabled=${pdfBusy}
                     className="h-8 px-3 rounded-lg border border-line bg-onSurface/[0.03] hover:bg-onSurface/[0.06] hover:border-line2 disabled:opacity-50 transition-all flex items-center gap-1.5 text-txt3 hover:text-txt text-[11px] font-mono"
-                    title="Exportar dashboard completo como PDF" aria-label="Exportar dashboard completo como PDF">
+                    title="Exportar el dashboard completo como PDF (incluye Análisis y Control aunque estén plegados)" aria-label="Exportar dashboard completo como PDF">
               <${DownloadIcon} size=${13} className=${pdfBusy ? 'animate-pulse' : ''} />
               ${pdfBusy ? (pdfProgress || 'Generando…') : 'PDF'}
             </button>
@@ -6966,6 +6992,12 @@
       const [openGroups, setOpenGroups] = useState(() => {
         try { return JSON.parse(localStorage.getItem('smx-groups') || '{}') || {}; } catch { return {}; }
       });
+      // Abre todos los bloques sin guardarlo como preferencia; devuelve cómo regresar
+      const expandAllForPdf = useCallback(() => new Promise(resolve => {
+        let before = null;
+        setOpenGroups(prev => { before = prev; return { ...prev, analisis: true, control: true }; });
+        setTimeout(() => resolve(() => setOpenGroups(before || {})), 1800);
+      }), []);
       const setGroup = useCallback((k, v) => setOpenGroups(prev => {
         const next = { ...prev, [k]: v };
         try { localStorage.setItem('smx-groups', JSON.stringify(next)); } catch {}
@@ -7073,7 +7105,7 @@
               allPosts=${allPosts}
             />
 
-            <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin} allPosts=${allPosts} onPick=${setSelected} onOpenPress=${() => setPressOpen(true)}/>
+            <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin} allPosts=${allPosts} onPick=${setSelected} onOpenPress=${() => setPressOpen(true)} onExpandAll=${expandAllForPdf}/>
 
             ${errors && errors.length > 0 && html`
               <div className="px-4 md:px-7 mb-3">
