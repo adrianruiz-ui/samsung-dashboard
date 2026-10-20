@@ -1337,7 +1337,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v34';
+    const BUILD_VERSION = '2026-10-20-v35';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6624,6 +6624,197 @@
       if (per) s.addText(per, { x: E(10103052), y: E(6702067), w: E(1803300), h: E(187500), fontFace: REG, fontSize: 5, color: '000000', align: 'right', margin: 0 });
     }
 
+    // ============================================================
+    // v35 — SLIDES DE TEMA LIBRE para la press (como el slide de Galaxy Tab
+    // S12 del reporte, pero para cualquier dispositivo, campaña o tema).
+    // El tema se define con filtros de la semana; los recuadros de abajo se
+    // parten por la dimensión que se elija. Sentimiento y conversación son
+    // espacios para pegar (vienen de Brandwatch y de las plataformas).
+    // ============================================================
+    const TOPIC_DIMS = [
+      { k: 'campaign',    l: 'Campaña',     f: (p) => p.campaign },
+      { k: 'product',     l: 'Producto',    f: (p) => p.product },
+      { k: 'subcampaign', l: 'Subcampaña',  f: (p) => p.subcampaign },
+      { k: 'platform',    l: 'Plataforma',  f: (p) => p.platform },
+      { k: 'format',      l: 'Formato',     f: (p) => p.format },
+    ];
+    const topicDim = (k) => TOPIC_DIMS.find(d => d.k === k);
+    function pressStats(list) {
+      if (!list.length) return null;
+      const vt = list.filter(p => p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
+      const top = [...list].sort((a, b) => (b.interactions || 0) - (a.interactions || 0))[0];
+      return {
+        posts: list.length,
+        reach: list.reduce((s, p) => s + (p.reach || 0), 0),
+        inter: list.reduce((s, p) => s + (p.interactions || 0), 0),
+        vtr: vt.length ? vt.reduce((a, b) => a + b, 0) / vt.length : null,
+        top: { label: `${top.platform} ${top.format || ''}`.trim(), reach: top.reach || 0, inter: top.interactions || 0, link: top.link || null },
+      };
+    }
+    function topicOptions(allPosts, week, dimK) {
+      const D = topicDim(dimK); const m = new Map();
+      for (const p of pressWeekPosts(allPosts, week)) {
+        const v = D.f(p); if (!v) continue;
+        const r = m.get(v) || { v, n: 0, inter: 0 }; r.n++; r.inter += p.interactions || 0; m.set(v, r);
+      }
+      return [...m.values()].sort((a, b) => b.inter - a.inter);
+    }
+    function topicList(allPosts, week, t) {
+      const D = topicDim(t.dim);
+      return pressWeekPosts(allPosts, week).filter(p => t.values.includes(D.f(p)) &&
+        (t.scope === 'all' || (t.scope === 'paid') === isPaidP(p)));
+    }
+    function topicSplitOptions(list, splitK) {
+      if (!splitK || splitK === 'none') return [];
+      const D = topicDim(splitK); const m = new Map();
+      for (const p of list) { const v = D.f(p) || '(sin dato)'; const r = m.get(v) || { v, n: 0, inter: 0 }; r.n++; r.inter += p.interactions || 0; m.set(v, r); }
+      return [...m.values()].sort((a, b) => b.inter - a.inter);
+    }
+    function organicVtrRef(allPosts, week) {
+      const v = (allPosts || []).filter(p => postYear(p) === PRESS_YEAR && p.week && p.week <= week && !isPaidP(p) &&
+        p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    }
+    function computeTopic(allPosts, week, t) {
+      if (t.dim === 'manual') return { manual: true, title: t.title || 'Tema', groups: [], bullets: [] };
+      const list = topicList(allPosts, week, t);
+      const perf = pressStats(list);
+      const ref = organicVtrRef(allPosts, week);
+      const D = t.split && t.split !== 'none' ? topicDim(t.split) : null;
+      const groups = D ? (t.splitKeys || []).slice(0, 2).map(k => ({ title: k, data: pressStats(list.filter(p => (D.f(p) || '(sin dato)') === k)) })).filter(g => g.data) : [];
+      const bullets = [];
+      if (perf) {
+        bullets.push(`${t.title || t.values.join(' · ')} generated ${fmtKpress(perf.reach)} reach and ${fmtKpress(perf.inter)} interactions across ${perf.posts} post${perf.posts === 1 ? '' : 's'} this week.`);
+        if (perf.vtr != null && ref != null) {
+          const dpp = perf.vtr - ref;
+          bullets.push(`Its VTR (${perf.vtr.toFixed(2)}%) was ${Math.abs(dpp).toFixed(2)} pp ${dpp >= 0 ? 'above' : 'below'} the organic average, ${dpp >= 0 ? 'outperforming' : 'below'} the typical performance of organic content.`);
+        } else bullets.push(`The best-performing piece was ${perf.top.label}, with ${fmtKpress(perf.top.reach)} reach and ${fmtKpress(perf.top.inter)} interactions.`);
+      }
+      return { manual: false, title: t.title || t.values.join(' · '), perf, ref, groups, bullets };
+    }
+
+    function addTopicSlide(pptx, T, per) {
+      const E = (emu) => emu / 914400;
+      const REG = 'Samsung SS Body Regular', BOLD = 'Samsung SS Body Bold';
+      const s = pptx.addSlide();
+      const frame = (x, y, w, h) => s.addShape(pptx.ShapeType.rect, { x: E(x), y: E(y), w: E(w), h: E(h), fill: { color: 'FFFFFF', transparency: 100 }, line: { color: '000000', width: 0.75 } });
+      const header = (x, y, w, h, t) => s.addText(t, { x: E(x), y: E(y), w: E(w), h: E(h), fill: { color: '002060' }, line: { color: '000000', width: 0.75 }, color: 'FFFFFF', bold: true, fontFace: BOLD, fontSize: 12, align: 'center', valign: 'middle', margin: 0 });
+      const paste = (x, y, w, h, t) => s.addText(t, { x: E(x), y: E(y), w: E(w), h: E(h), fill: { color: 'F2F2F2' }, line: { color: 'BFBFBF', width: 0.75, dashType: 'dash' }, fontFace: REG, fontSize: 8, color: '7F7F7F', align: 'center', valign: 'middle', margin: 4 });
+      const metrics = (x, y, w, h, m, size) => {
+        const L = m ? [['► Posts: ', String(m.posts)], ['► Reach: ', fmtKpress(m.reach)], ['► Interactions: ', fmtKpress(m.inter)]] : [['► Posts: ', ''], ['► Reach: ', ''], ['► Interactions: ', '']];
+        if (!m || m.vtr != null) L.push(['► VTR: ', m && m.vtr != null ? `${m.vtr.toFixed(2)}%` : '']);
+        const rr = [];
+        L.forEach(([l, v], k) => { if (k) rr.push({ text: ' ', options: { breakLine: true } }); rr.push({ text: l, options: {} }); rr.push({ text: v, options: { breakLine: k < L.length - 1 } }); });
+        s.addText(rr, { x: E(x), y: E(y), w: E(w), h: E(h), fontFace: BOLD, bold: true, fontSize: size, color: '000000', valign: 'top', margin: [3.6, 7.2, 3.6, 7.2] });
+      };
+      const title = T.title || 'Tema';
+      s.addText(title, { x: E(308592), y: E(34914), w: E(8453700), h: E(483900), fontFace: 'Samsung SS Head Bold', bold: true, fontSize: 24, color: '2F5496', margin: 0, valign: 'middle' });
+      // Lecturas (borrador editable)
+      const bl = T.bullets && T.bullets.length ? T.bullets : ['Insight 1', 'Insight 2'];
+      s.addText(bl.map((b, i) => ({ text: b, options: { bullet: true, breakLine: i < bl.length - 1 } })),
+        { x: E(291300), y: E(561994), w: E(11609400), h: E(768642), fontFace: REG, fontSize: 11, color: '000000', valign: 'top', margin: [3.6, 7.2, 3.6, 7.2] });
+      // Performance
+      header(308475, 1255450, 3107100, 252000, `Performance Across ${title}`);
+      frame(308675, 1499257, 3107100, 1846500);
+      metrics(398275, 1651884, 2187000, 1266900, T.perf, 11);
+      if (T.perf && T.perf.vtr != null && T.ref != null) {
+        const dpp = T.perf.vtr - T.ref;
+        s.addText([{ text: `► ${Math.abs(dpp).toFixed(2)} ${dpp >= 0 ? '+' : '-'}pp`, options: { breakLine: true } }, { text: 'vs VTR AVG Organic', options: { fontSize: 5, bold: false } }],
+          { x: E(548956), y: E(3010000), w: E(970311), h: E(300000), fontFace: BOLD, bold: true, fontSize: 9, color: '000000', valign: 'top', margin: 0 });
+        s.addShape(dpp >= 0 ? pptx.ShapeType.upArrow : pptx.ShapeType.downArrow, { x: E(1455596), y: E(3030000), w: E(130734), h: E(150000), fill: { color: dpp >= 0 ? '00B050' : 'FF0000' }, line: { color: dpp >= 0 ? '00B050' : 'FF0000', width: 0 } });
+      }
+      // Sentimiento y conversación: para pegar
+      header(3495973, 1265250, 5607000, 252000, `Sentiment ${title}`);
+      frame(3496134, 1508980, 5607000, 1846500);
+      paste(3650000, 1620000, 5300000, 1620000, 'Pega aquí la gráfica de sentimiento (Brandwatch)');
+      header(9183075, 1260575, 2655300, 252000, 'Sample Conversation');
+      frame(9183250, 1512574, 2655300, 5081700);
+      paste(9330000, 1660000, 2360000, 4780000, 'Pega aquí capturas de comentarios');
+      // Recuadros
+      const BX = [298075, 4740663];
+      const groups = T.manual ? [{ title: 'Subtema 1', data: null }, { title: 'Subtema 2', data: null }] : (T.groups || []);
+      groups.slice(0, 2).forEach((g, i) => {
+        const fx = BX[i];
+        header(fx, 3507775, 4349400, 295200, g.title);
+        frame(fx, 3802950, 4349400, 2791200);
+        metrics(fx + 47800, 3932525, 2000000, 1266900, g.data, 10.5);
+        const link = g.data && g.data.top.link;
+        s.addText(link ? [{ text: 'Imagen del post', options: { hyperlink: { url: link, tooltip: 'Abrir publicación' } } }] : 'Imagen del post', {
+          x: E(fx + 2700000), y: E(3932525), w: E(1450000), h: E(1600000),
+          fill: { color: 'F2F2F2' }, line: { color: 'BFBFBF', width: 0.75, dashType: 'dash' }, fontFace: REG, fontSize: 7, color: '7F7F7F', align: 'center', valign: 'middle', margin: 2 });
+        const cell = (t, o = {}) => ({ text: t, options: o });
+        const top = g.data ? g.data.top : { label: 'Post destacado', reach: null, inter: null };
+        s.addTable([
+          [cell(top.label, { colspan: 2, fill: { color: '002060' }, color: 'FFFFFF', bold: true, align: 'center' })],
+          [cell('Reach'), cell(top.reach != null ? Math.round(top.reach).toLocaleString('en-US') : '', { align: 'center' })],
+          [cell('Interactions'), cell(top.inter != null ? Math.round(top.inter).toLocaleString('en-US') : '', { align: 'center' })],
+        ], { x: E(fx + 2659411), y: E(5648188), w: E(1500000), colW: [E(880000), E(620000)], rowH: E(289530),
+             fontFace: REG, fontSize: 7, color: '000000', valign: 'middle', align: 'center', border: { type: 'solid', pt: 0.75, color: '000000' }, margin: 2 });
+      });
+      if (per) s.addText(per, { x: E(10103052), y: E(6702067), w: E(1803300), h: E(187500), fontFace: REG, fontSize: 5, color: '000000', align: 'right', margin: 0 });
+    }
+
+    function TopicEditor({ t, i, allPosts, week, onChange, onRemove }) {
+      const opts = useMemo(() => t.dim === 'manual' ? [] : topicOptions(allPosts, week, t.dim), [allPosts, week, t.dim]);
+      const list = useMemo(() => t.dim === 'manual' ? [] : topicList(allPosts, week, t), [allPosts, week, t]);
+      const splitOpts = useMemo(() => topicSplitOptions(list, t.split), [list, t.split]);
+      const stats = useMemo(() => pressStats(list), [list]);
+      const set = (patch) => onChange({ ...t, ...patch });
+      const chip = (on) => "text-[10px] rounded-full px-2 py-0.5 border transition-colors " + (on ? "border-accent2/50 bg-accent2/10 text-txt" : "border-line text-txt4 hover:text-txt2");
+      const sel = "text-[12px] bg-onSurface/[0.03] border border-line rounded-lg px-2 py-1.5 text-txt2";
+      return html`
+        <div className="rounded-xl border border-line px-3 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-txt4">Slide ${i + 4}</span>
+            <input aria-label=${`Título del slide de tema ${i + 1}`} value=${t.title} placeholder="Título del slide"
+                   onInput=${(e) => set({ title: e.target.value, touched: true })}
+                   className="flex-1 min-w-0 text-[12px] bg-onSurface/[0.03] border border-line rounded-lg px-2 py-1.5 text-txt" />
+            <button onClick=${onRemove} aria-label=${`Quitar slide de tema ${i + 1}`} className="text-txt4 hover:text-amber"><${XIcon} size=${14}/></button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-txt4">Tema por</span>
+            <select aria-label="Dimensión del tema" value=${t.dim} className=${sel}
+                    onChange=${(e) => set({ dim: e.target.value, values: [], splitKeys: [], title: t.touched ? t.title : '' })}>
+              ${TOPIC_DIMS.filter(d => d.k !== 'format').map(d => html`<option key=${d.k} value=${d.k}>${d.l}</option>`)}
+              <option value="manual">Sin datos (lo lleno a mano)</option>
+            </select>
+            ${t.dim !== 'manual' && html`
+              <select aria-label="Pauta" value=${t.scope} onChange=${(e) => set({ scope: e.target.value, splitKeys: [] })} className=${sel}>
+                <option value="all">Orgánico + pauta</option><option value="org">Solo orgánico</option><option value="paid">Solo pauta</option>
+              </select>`}
+          </div>
+          ${t.dim !== 'manual' && html`
+            <${Fragment}>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Valores del tema">
+                ${opts.length === 0 ? html`<span className="text-[11px] text-txt4">Sin publicaciones esta semana.</span>` : opts.slice(0, 18).map(o => {
+                  const on = t.values.includes(o.v);
+                  return html`<button key=${o.v} aria-pressed=${on} className=${chip(on)}
+                    onClick=${() => { const values = on ? t.values.filter(x => x !== o.v) : [...t.values, o.v];
+                                      set({ values, splitKeys: [], title: t.touched ? t.title : values.join(' · ') }); }}>${o.v} · ${o.n}</button>`;
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-txt4">Recuadros por</span>
+                <select aria-label="Dividir recuadros por" value=${t.split} onChange=${(e) => set({ split: e.target.value, splitKeys: [] })} className=${sel}>
+                  <option value="none">Sin recuadros</option>
+                  ${TOPIC_DIMS.filter(d => d.k !== t.dim).map(d => html`<option key=${d.k} value=${d.k}>${d.l}</option>`)}
+                </select>
+                ${t.split !== 'none' && html`<span className="text-[10px] text-txt4">elige hasta 2</span>`}
+              </div>
+              ${t.split !== 'none' && splitOpts.length > 0 && html`
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Recuadros">
+                  ${splitOpts.map(o => {
+                    const on = (t.splitKeys || []).includes(o.v);
+                    return html`<button key=${o.v} aria-pressed=${on} className=${chip(on)}
+                      onClick=${() => { const k = t.splitKeys || []; set({ splitKeys: on ? k.filter(x => x !== o.v) : [...k, o.v].slice(-2) }); }}>${o.v} · ${o.n}</button>`;
+                  })}
+                </div>`}
+              ${stats && html`<div className="text-[10px] font-mono text-txt4 tabular-nums">${stats.posts} posts · ${fmtKpress(stats.reach)} · ${fmtKpress(stats.inter)}${stats.vtr != null ? ` · VTR ${stats.vtr.toFixed(2)}%` : ''}</div>`}
+            <//>`}
+          ${t.dim === 'manual' && html`<div className="text-[11px] text-txt4">Sale el slide con el formato del reporte y los espacios vacíos para llenarlo a mano.</div>`}
+        </div>`;
+    }
+
     function buildPressPptx(d) {
       const P = window.PptxGenJS;
       if (!P) throw new Error('No se cargó la librería de PowerPoint. Revisa tu conexión y recarga.');
@@ -6772,6 +6963,7 @@
       const per = a.getMonth() === b.getMonth() ? `PERIOD: ${ordEn(a)} - ${String(b.getDate()).padStart(2, '0')}th` : `PERIOD: ${ordEn(a)} - ${ordEn(b)}`;
       s.addText(per, { x: E(9900000), y: E(6560000), w: E(2100000), h: E(200000), fontFace: REG, fontSize: 6, color: '000000', align: 'right', margin: 0 });
       addFollowersSlide(pptx, d, per);
+      (d.topics || []).forEach(T => addTopicSlide(pptx, T, per));
       return pptx.writeFile({ fileName: `SNS_W${d.week}_Press.pptx` });
     }
 
@@ -6808,12 +7000,18 @@
       }, [campOpts]);
       const setBox = (i, patch) => setBoxes(bs => bs.map((b, k) => k === i ? (patch === null ? null : { ...(b || {}), ...patch }) : b));
       const boxData = useMemo(() => boxes.map(b => b && b.camp ? computeCampaignBox(allPosts, week, b.camp, b.subs) : null), [boxes, allPosts, week]);
+      const [topics, setTopics] = useState([]);
+      useEffect(() => { setTopics(ts => ts.map(t => ({ ...t, values: [], splitKeys: [] }))); }, [week]);
+      const addTopic = () => {
+        const top = topicOptions(allPosts, week, 'campaign')[0];
+        setTopics(ts => [...ts, { title: top ? top.v : '', touched: false, dim: 'campaign', values: top ? [top.v] : [], scope: 'all', split: 'product', splitKeys: [] }]);
+      };
       if (!open) return null;
 
       const dl = async () => {
         setBusy(true); setErr(null);
         try {
-          await buildPressPptx({ ...d, folDetail, boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
+          await buildPressPptx({ ...d, folDetail, topics: topics.map(t => computeTopic(allPosts, week, t)), boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
         } catch (e) { setErr(e?.message || 'No se pudo generar el archivo.'); }
         finally { setBusy(false); }
       };
@@ -6834,7 +7032,7 @@
                 <h2 id="h-press" className="text-[16px] font-medium text-txt">Press semanal</h2>
                 <button onClick=${onClose} aria-label="Cerrar" className="text-txt4 hover:text-txt"><${XIcon} size=${16}/></button>
               </div>
-              <p className="text-[12px] text-txt4 mb-4">Descarga 3 slides en el formato del reporte (PPTX editable): la portada, el resumen de la semana (Performance Across SNS, Reach & Interactions, VTR y hasta 3 recuadros de campaña) y Followers (tabla de 14 semanas, meta 2026, newsletter y evolución). Usa toda la cuenta, sin los filtros del dashboard.</p>
+              <p className="text-[12px] text-txt4 mb-4">Descarga 3 slides en el formato del reporte (PPTX editable): la portada, el resumen de la semana (Performance Across SNS, Reach & Interactions, VTR y hasta 3 recuadros de campaña) y Followers (tabla de 14 semanas, meta 2026, newsletter y evolución). Puedes sumar slides de tema al final. Usa toda la cuenta, sin los filtros del dashboard.</p>
 
               <label className="block text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-1.5" htmlFor="press-week">Semana</label>
               <select id="press-week" value=${week || ''} onChange=${(e) => setWeek(+e.target.value)}
@@ -6910,6 +7108,19 @@
                         <//>`}
                     </div>`;
                 })}
+              </div>
+              <div className="flex items-baseline justify-between mb-2 mt-1">
+                <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4">Slides de tema</div>
+                <span className="text-[10px] text-txt4">opcional</span>
+              </div>
+              <div className="space-y-2.5 mb-3">
+                ${topics.map((t, i) => html`<${TopicEditor} key=${i} t=${t} i=${i} allPosts=${allPosts} week=${week}
+                    onChange=${(nt) => setTopics(ts => ts.map((x, k) => k === i ? nt : x))}
+                    onRemove=${() => setTopics(ts => ts.filter((_, k) => k !== i))} />`)}
+                <button onClick=${addTopic}
+                        className="w-full text-[12px] rounded-lg border border-dashed border-line2 py-2 text-txt3 hover:text-txt hover:border-accent2/50 transition-colors">
+                  + Agregar slide de tema (dispositivo, campaña o lo que pida el cliente)
+                </button>
               </div>
               ${err && html`<div className="text-[11px] text-amber mb-3" role="alert">${err}</div>`}
               <button onClick=${dl} disabled=${busy || !d || !followers}
