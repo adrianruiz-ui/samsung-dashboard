@@ -253,7 +253,7 @@
       const gid = SHEET_GIDS[platformName];
       if (!gid) return null;
       try {
-        const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`);
+        const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`, { cache: 'no-store' });
         if (!res.ok) return null;
         const txt = await res.text();
         if (txt.trim().startsWith('<')) return null;
@@ -286,7 +286,7 @@
     async function fetchTab(platformName) {
       const tabName = SHEET_TABS[platformName];
       const rowIndexP = fetchRowIndex(platformName);   // en paralelo; si falla, solo no hay número de fila
-      const res = await fetch(buildSheetUrl(tabName), { redirect: 'follow' });
+      const res = await fetch(buildSheetUrl(tabName), { redirect: 'follow', cache: 'no-store' });
       if (!res.ok) throw new Error(`Error al cargar "${tabName}": HTTP ${res.status}`);
       const csvText = await res.text();
       if (csvText.trim().startsWith('<')) {
@@ -1414,7 +1414,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-21-v46';
+    const BUILD_VERSION = '2026-10-21-v47';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6764,7 +6764,7 @@
         </div>`;
     }
 
-    function DataQualitySection({ D, onPick, rawPosts }) {
+    function DataQualitySection({ D, onPick, rawPosts, onRefresh, refreshing, fetchedAt }) {
       const q = useMemo(() => computeDataQuality(D.allPosts || [], rawPosts), [D, rawPosts]);
       const [limit, setLimit] = useState(15);
       const [kind, setKind] = useState('all');
@@ -6781,9 +6781,20 @@
       const shown = kind === 'all' ? q.issues : q.issues.filter(i => i.tags.some(kf));
       return html`
         <section id="sec-calidad" className="px-4 md:px-7 py-7 relative group" aria-labelledby="h-calidad">
-          <div className="mb-4">
-            <h2 id="h-calidad" className="text-[18px] font-medium text-txt">Calidad de datos</h2>
-            <p className="text-txt4 text-[12px] mt-1">Qué hay que completar o corregir en el Sheet antes de reportar. Respeta los filtros activos (${fmtFull(q.total)} posts).</p>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="h-calidad" className="text-[18px] font-medium text-txt">Calidad de datos</h2>
+              <p className="text-txt4 text-[12px] mt-1">Qué hay que completar o corregir en el Sheet antes de reportar. Respeta los filtros activos (${fmtFull(q.total)} posts).</p>
+            </div>
+            ${onRefresh && html`
+              <div className="flex items-center gap-3">
+                <span className="text-[12px] text-txt4">${refreshing ? 'Leyendo el Sheet…' : fetchedAt ? `Actualizado ${timeAgo(fetchedAt)}` : ''}</span>
+                <button onClick=${() => onRefresh()} disabled=${refreshing}
+                        title="Vuelve a leer el Sheet para ver si ya se corrigieron los pendientes"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-accent2/10 hover:bg-accent2/20 text-txt text-[12px] font-medium disabled:opacity-60 transition-colors">
+                  <${RefreshIcon} size=${14} className=${refreshing ? 'animate-spin' : ''} /> ${refreshing ? 'Actualizando…' : 'Actualizar datos'}
+                </button>
+              </div>`}
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
@@ -8148,7 +8159,7 @@
                 <${GroupBlock} id="control" label="Control" hint=${`Anomalías${anomalyCount ? ` (${anomalyCount})` : ''} y calidad de datos`}
                   count=${2} open=${!!openGroups.control} onToggle=${() => setGroup('control', !openGroups.control)}>
                   <${AnomaliesSection}   D=${D} onPick=${setSelected} rawPosts=${allPosts}/>
-                  <${DataQualitySection} D=${D} onPick=${setSelected} rawPosts=${allPosts}/>
+                  <${DataQualitySection} D=${D} onPick=${setSelected} rawPosts=${allPosts} onRefresh=${refresh} refreshing=${refreshing} fetchedAt=${fetchedAt}/>
                 <//>
               </main>
             `}
