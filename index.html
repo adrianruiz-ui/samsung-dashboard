@@ -1342,6 +1342,8 @@
           { id: 'sec-tendencia',    name: 'Tendencia' },
           { id: 'sec-top-posts',    name: 'Top posts' },
           { id: 'sec-vtr',          name: 'VTR' },
+          { id: 'sec-influencers',  name: 'Influencers' },
+          { id: 'sec-followers',    name: 'Followers' },
           { id: 'sec-meta',         name: 'Meta followers' },
           { id: 'sec-mezcla',       name: 'Mezcla' },
           { id: 'sec-perfil',       name: 'Perfil por formato' },
@@ -1413,7 +1415,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-21-v43';
+    const BUILD_VERSION = '2026-10-21-v44';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1891,6 +1893,16 @@
         <line x1="3" y1="10" x2="21" y2="10"/>
       </svg>`;
 
+    const StarIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round" className=${className} aria-hidden="true">
+        <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>
+      </svg>`;
+    const UsersIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round" className=${className} aria-hidden="true">
+        <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/>
+      </svg>`;
     const FlagIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1994,6 +2006,8 @@
       { id: 'tendencia',    label: 'Tendencia',          Icon: TrendIcon,    group: 'resultados' },
       { id: 'top-posts',    label: 'Top posts',          Icon: RowsIcon,     group: 'resultados' },
       { id: 'vtr',          label: 'VTR',                Icon: PlayIcon,     group: 'resultados' },
+      { id: 'influencers',  label: 'Influencers',        Icon: StarIcon,     group: 'resultados' },
+      { id: 'followers',    label: 'Followers',          Icon: UsersIcon,    group: 'resultados' },
       { id: 'meta',         label: 'Meta followers',     Icon: FlagIcon,     group: 'resultados' },
       { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
       { id: 'perfil',       label: 'Perfil por formato', Icon: RadarIcon,    group: 'analisis' },
@@ -2742,7 +2756,7 @@
               <${ResponsiveContainer} width="100%" height="100%">
                 <${ComposedChart} data=${trend} margin=${{ top: 18, right: 8, left: 4, bottom: 0 }}>
                   <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                            interval=${trend.length > 26 ? 1 : 0} />
+                            interval="preserveStartEnd" minTickGap=${22} />
                   <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
                             tickFormatter=${fmt} width=${92} />
                   <${Tooltip} content=${TipBox} cursor=${{ fill: 'rgba(76,110,245,0.10)' }} />
@@ -3479,7 +3493,7 @@
                   <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
                   <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }}
-                            interval=${xTickInterval} />
+                            interval=${isDailyMode ? 0 : 'preserveStartEnd'} minTickGap=${22} />
                   <${YAxis} yAxisId="left" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${false}
                             tickFormatter=${isPercent ? (v) => v.toFixed(1) + '%' : fmt}
@@ -5252,6 +5266,259 @@
     }
 
     // ============================================================
+    // v44 — FOLLOWERS POR PLATAFORMA: todas las cuentas, tengan o no meta.
+    // Fuente: pestaña Followers (total semanal por cuenta). Como las cuentas
+    // tienen tamaños muy distintos (Facebook 5 M vs Threads 200 K), la
+    // gráfica compara el crecimiento en % desde la S1 de 2026.
+    // ============================================================
+    const FOL_ACCOUNT_COLOR = (n) => /facebook/i.test(n) ? PLAT_COLORS.Facebook : /instagram/i.test(n) ? PLAT_COLORS.Instagram
+      : /tiktok/i.test(n) ? PLAT_COLORS.TikTok : /youtube/i.test(n) ? PLAT_COLORS.YouTube : /linkedin/i.test(n) ? PLAT_COLORS.LinkedIn
+      : /threads/i.test(n) ? '#8B8B95' : /mobile/i.test(n) ? '#9CA3AF' : /x \|/i.test(n) ? '#4B5563' : '#999999';
+    const FOL_ACCOUNT_LABEL = (n) => /samsungmexico/i.test(n) ? 'X · Samsung México' : /samsungmobile/i.test(n) ? 'X · Samsung Mobile' : n;
+    const FOL_LETTERS = (n) => /samsungmexico/i.test(n) ? 'X' : /samsungmobile/i.test(n) ? 'X' : (PLAT_LETTERS[n] || n.slice(0, 2).toUpperCase());
+
+    function FollowersSection({ filters, chartTheme, fetchedAt }) {
+      const ct = chartTheme || CHART_THEME.dark;
+      const [state, setState] = useState({ loading: true });
+      const [mode, setMode] = useState('pct');
+      useEffect(() => {
+        let alive = true;
+        fetchPressFollowers().then(r => alive && setState({ data: r })).catch(e => alive && setState({ error: e?.message || 'error' }));
+        return () => { alive = false; };
+      }, [fetchedAt]);
+      const F = state.data;
+      const lastW = F ? Math.max(0, ...F.series.map(s => s.vals.length)) : 0;
+      // Semana de referencia: la elegida en el filtro (si es una sola de 2026) o la última con datos
+      const selW = filters && filters.weeks && filters.weeks.length === 1 && wkYear(filters.weeks[0]) === PRESS_YEAR ? wkWeek(filters.weeks[0]) : null;
+      const W = selW && selW <= lastW ? selW : lastW;
+      const rows = useMemo(() => !F ? [] : F.series.map(({ name, vals }) => {
+        const cur = vals[W - 1] ?? vals[vals.length - 1];
+        const prev = vals[W - 2];
+        const base = vals[0];
+        const g = F.goals[name];
+        return {
+          name, label: FOL_ACCOUNT_LABEL(name), color: FOL_ACCOUNT_COLOR(name), cur,
+          wow: prev ? cur - prev : null, wowPct: prev ? (cur / prev - 1) * 100 : null,
+          ytd: base != null ? cur - base : null, ytdPct: base ? (cur / base - 1) * 100 : null,
+          goalPct: g ? ((cur - (g.base ?? base)) / g.goal) * 100 : null,
+          spark: vals.slice(0, W).map((v, i) => ({ i, v })),
+        };
+      }).sort((a, b) => b.cur - a.cur), [F, W]);
+      const chart = useMemo(() => {
+        if (!F) return [];
+        return Array.from({ length: W }, (_, i) => {
+          const o = { label: `S${i + 1}` };
+          for (const { name, vals } of F.series) {
+            const v = vals[i], b = vals[0];
+            o[name] = v == null ? null : mode === 'pct' ? (b ? (v / b - 1) * 100 : null) : v - b;
+          }
+          return o;
+        });
+      }, [F, W, mode]);
+      const total = rows.reduce((a, r) => a + (r.cur || 0), 0);
+      const totalYtd = rows.reduce((a, r) => a + (r.ytd || 0), 0);
+      const sgn = (v, f = fmtFull) => v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : '±'}${f(Math.abs(v))}`;
+
+      return html`
+        <section id="sec-followers" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-followers" name="Followers" />
+          <div className="flex flex-wrap items-baseline justify-between gap-3 mb-5">
+            <div>
+              <h2 className="text-[18px] font-medium text-txt">Followers por plataforma</h2>
+              <p className="text-txt4 text-[12px] mt-1">Todas las cuentas, con o sin meta 2026. Semana de referencia: S${W} de ${PRESS_YEAR}${selW ? ' (la del filtro)' : ' (última registrada)'}.</p>
+            </div>
+            ${F && html`<div className="text-right">
+              <div className="text-[12px] text-txt3">Comunidad total</div>
+              <div className="text-[20px] font-medium text-txt tabular-nums">${fmtFull(total)}</div>
+              <div className="text-[12px] tabular-nums ${''}"><span className=${totalYtd >= 0 ? 'text-success' : 'text-amber'}>${sgn(totalYtd)}</span> <span className="text-txt4">en ${PRESS_YEAR}</span></div>
+            </div>`}
+          </div>
+          ${state.loading ? html`<div className="rounded-xl bg-surface p-6 text-[12px] text-txt4">Cargando followers…</div>`
+          : state.error ? html`<div className="rounded-xl bg-surface p-6 text-[12px] text-amber">No se pudo leer la pestaña Followers: ${state.error}</div>`
+          : html`
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+              ${rows.map(r => html`
+                <div key=${r.name} className="rounded-xl bg-surface px-4 py-4 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="inline-flex items-center gap-2 text-[13px] text-txt2 min-w-0">
+                      <span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded shrink-0" style=${{ background: r.color }}>${FOL_LETTERS(r.name)}</span>
+                      <span className="truncate">${r.label}</span>
+                    </span>
+                    ${r.goalPct != null && html`<span className="text-[10px] rounded-full bg-accent2/10 text-accent px-2 py-0.5 whitespace-nowrap" title="Avance de la meta 2026 de followers">Meta ${r.goalPct.toFixed(1)}%</span>`}
+                  </div>
+                  <div className="text-[22px] font-medium text-txt tabular-nums leading-tight">${fmtFull(r.cur)}</div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[12px] tabular-nums">
+                    <span className=${r.wow == null ? 'text-txt4' : r.wow >= 0 ? 'text-success' : 'text-amber'}>${sgn(r.wow)} <span className="text-txt4">vs S${W - 1}</span></span>
+                    <span className=${r.ytd == null ? 'text-txt4' : r.ytd >= 0 ? 'text-success' : 'text-amber'}>${r.ytdPct == null ? '—' : `${r.ytdPct >= 0 ? '+' : ''}${r.ytdPct.toFixed(2)}%`} <span className="text-txt4">en el año</span></span>
+                  </div>
+                  <div className="h-10 mt-2">
+                    <${ResponsiveContainer} width="100%" height="100%">
+                      <${LineChart} data=${r.spark} margin=${{ top: 4, right: 2, left: 2, bottom: 2 }}>
+                        <${YAxis} hide domain=${['dataMin', 'dataMax']} />
+                        <${Line} type="monotone" dataKey="v" stroke=${r.color} strokeWidth=${1.6} dot=${false} isAnimationActive=${false} />
+                      <//>
+                    <//>
+                  </div>
+                </div>`)}
+            </div>
+            <div className="rounded-2xl bg-surface p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="text-[15px] font-medium text-txt">${mode === 'pct' ? 'Crecimiento desde la S1 (%)' : 'Followers ganados desde la S1'}</div>
+                <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Escala">
+                  ${[['pct', 'Crecimiento %'], ['abs', 'Followers ganados']].map(([k, l]) => html`
+                    <button key=${k} role="radio" aria-checked=${mode === k} onClick=${() => setMode(k)}
+                            className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (mode === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+                </div>
+              </div>
+              <div style=${{ height: 280 }}>
+                <${ResponsiveContainer} width="100%" height="100%">
+                  <${LineChart} data=${chart} margin=${{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                    <${CartesianGrid} vertical=${false} />
+                    <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} interval="preserveStartEnd" minTickGap=${18} />
+                    <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${mode === 'pct' ? 48 : 80}
+                              tickFormatter=${mode === 'pct' ? (v) => `${v.toFixed(0)}%` : (v) => fmt(v)} />
+                    <${Tooltip} contentStyle=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, fontSize: 11, color: ct.tooltipText }}
+                      labelStyle=${{ color: ct.tooltipLabel }}
+                      formatter=${(v, n) => [v == null ? '—' : mode === 'pct' ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : `${v >= 0 ? '+' : ''}${fmtFull(v)}`, FOL_ACCOUNT_LABEL(n)]}
+                      itemSorter=${(it) => -(it.value || 0)} />
+                    <${ReferenceLine} y=${0} stroke=${ct.axis} strokeOpacity=${0.5} />
+                    ${(F ? F.series : []).map(({ name }) => html`
+                      <${Line} key=${name} type="monotone" dataKey=${name} name=${name} stroke=${FOL_ACCOUNT_COLOR(name)} strokeWidth=${1.8} dot=${false} connectNulls />`)}
+                  <//>
+                <//>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+                ${rows.map(r => html`<span key=${r.name} className="inline-flex items-center gap-1.5 text-[11px] text-txt3"><span className="w-3 h-0.5 rounded" style=${{ background: r.color }}></span>${r.label}</span>`)}
+              </div>
+            </div>`}
+        </section>`;
+    }
+
+    // ============================================================
+    // v44 — INFLUENCERS: desempeño del contenido marcado "¿Influencer? = Sí",
+    // solo en las plataformas donde se marca. Se compara contra el contenido
+    // de marca de la MISMA plataforma y formato (peras con peras).
+    // ============================================================
+    const isInfluencer = (p) => /^s[ií]/i.test(String(p.is_influencer || '').trim());
+    function InfluencersSection({ D, onPick }) {
+      const posts = D.allPosts || [];
+      const infl = posts.filter(isInfluencer);
+      const plats = [...new Set(infl.map(p => p.platform))];
+      const agg = (list) => list.length ? aggFinalize(list.reduce((a, p) => { aggAdd(a, p); return a; }, emptyAgg())) : null;
+      const segKey = (p) => p.platform + '|' + (p.format || '');
+      const segs = new Set(infl.map(segKey));
+      const brandSame = posts.filter(p => !isInfluencer(p) && segs.has(segKey(p)));
+      const I = agg(infl), B = agg(brandSame);
+      const byPlat = plats.map(pl => {
+        const i = agg(infl.filter(p => p.platform === pl));
+        const iSegs = new Set(infl.filter(p => p.platform === pl).map(segKey));
+        const b = agg(posts.filter(p => !isInfluencer(p) && iSegs.has(segKey(p))));
+        return { pl, i, b };
+      }).sort((x, y) => y.i.inter - x.i.inter);
+      // Ranking por influencer (nombre normalizado: sin acentos, mayúsculas ni espacios de más)
+      const byName = new Map();
+      for (const p of infl) {
+        const raw = String(p.influencer_name || 'Sin nombre').trim();
+        const k = foldTxt(raw);
+        if (!byName.has(k)) byName.set(k, { names: new Map(), list: [] });
+        const r = byName.get(k); r.list.push(p); r.names.set(raw, (r.names.get(raw) || 0) + 1);
+      }
+      const ranking = [...byName.values()].map(r => {
+        const a = agg(r.list);
+        const top = [...r.list].sort((x, y) => (y.interactions || 0) - (x.interactions || 0))[0];
+        return { name: [...r.names.entries()].sort((x, y) => y[1] - x[1])[0][0], a, plats: [...new Set(r.list.map(p => p.platform))], top,
+                 paid: r.list.filter(isPaidP).length };
+      }).sort((x, y) => y.a.inter - x.a.inter);
+      const [limit, setLimit] = useState(10);
+      const ratio = (a, b) => (a != null && b) ? (a / b - 1) * 100 : null;
+      const vsTxt = (d) => d == null ? '—' : `${d >= 0 ? '+' : ''}${d.toFixed(0)}%`;
+      const vsCls = (d) => d == null ? 'text-txt4' : d >= 0 ? 'text-success' : 'text-amber';
+      const Stat = ({ l, i, b, f, per }) => {
+        const d = ratio(i, b);
+        return html`<div className="rounded-xl bg-surface px-4 py-4 min-w-0">
+          <div className="text-[12px] text-txt3 mb-1.5">${l}</div>
+          <div className="text-[22px] font-medium text-txt tabular-nums leading-tight">${f(i)}</div>
+          <div className="text-[12px] mt-1.5 tabular-nums"><span className=${vsCls(d)}>${vsTxt(d)}</span> <span className="text-txt4">vs marca${per ? ' por post' : ''} (${f(b)})</span></div>
+        </div>`;
+      };
+      return html`
+        <section id="sec-influencers" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-influencers" name="Influencers" />
+          <div className="mb-5">
+            <h2 className="text-[18px] font-medium text-txt">Influencers</h2>
+            <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Contenido marcado como influencer en ${plats.length ? plats.join(', ') : 'ninguna plataforma de este filtro'}. Se compara contra el contenido de marca de la misma plataforma y formato, para comparar peras con peras.</p>
+          </div>
+          ${!infl.length ? html`<div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">No hay contenido de influencers en el filtro actual.</div>` : html`
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+              <div className="rounded-xl bg-surface px-4 py-4">
+                <div className="text-[12px] text-txt3 mb-1.5">Posts de influencers</div>
+                <div className="text-[22px] font-medium text-txt tabular-nums leading-tight">${fmtFull(I.posts)}</div>
+                <div className="text-[12px] text-txt4 mt-1.5">${ranking.length} influencers · ${infl.filter(isPaidP).length} con pauta · ${(I.posts / Math.max(1, I.posts + B.posts) * 100).toFixed(0)}% de su segmento</div>
+              </div>
+              <${Stat} l="Alcance por post" i=${I.reach_per_post} b=${B && B.reach_per_post} f=${fmtFull} per />
+              <${Stat} l="Interacciones por post" i=${I.inter_per_post} b=${B && B.inter_per_post} f=${fmtFull} per />
+              <${Stat} l="ER básico ponderado" i=${I.basic_er_avg} b=${B && B.basic_er_avg} f=${erFmt} />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              <div className="lg:col-span-5 rounded-xl bg-surface p-5 overflow-x-auto">
+                <div className="text-[13px] font-medium text-txt mb-3">Por plataforma</div>
+                <table className="w-full text-[12px]">
+                  <thead><tr>
+                    <th className="text-left py-2 px-2 font-medium text-txt3">Plataforma</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">Posts</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">Alcance/post</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">ER básico</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">VTR</th>
+                  </tr></thead>
+                  <tbody>
+                    ${byPlat.map(({ pl, i, b }) => html`<tr key=${pl}>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[pl] }}>${PLAT_LETTERS[pl]}</span>${pl}</span></td>
+                      <td className="py-2 px-2 text-right tabular-nums">${i.posts}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(i.reach_per_post)}<div className=${"text-[10px] " + vsCls(ratio(i.reach_per_post, b && b.reach_per_post))}>${vsTxt(ratio(i.reach_per_post, b && b.reach_per_post))} vs marca</div></td>
+                      <td className="py-2 px-2 text-right tabular-nums">${erFmt(i.basic_er_avg)}<div className=${"text-[10px] " + vsCls(ratio(i.basic_er_avg, b && b.basic_er_avg))}>${vsTxt(ratio(i.basic_er_avg, b && b.basic_er_avg))} vs marca</div></td>
+                      <td className="py-2 px-2 text-right tabular-nums">${i.vtr_avg ? erFmt(i.vtr_avg) : '—'}<div className=${"text-[10px] " + vsCls(ratio(i.vtr_avg || null, b && b.vtr_avg))}>${i.vtr_avg ? vsTxt(ratio(i.vtr_avg, b && b.vtr_avg)) + ' vs marca' : ''}</div></td>
+                    </tr>`)}
+                  </tbody>
+                </table>
+              </div>
+              <div className="lg:col-span-7 rounded-xl bg-surface p-5 overflow-x-auto">
+                <div className="text-[13px] font-medium text-txt mb-3">Ranking de influencers · por interacciones</div>
+                <table className="w-full text-[12px]">
+                  <thead><tr>
+                    <th className="text-left py-2 px-2 font-medium text-txt3">#</th>
+                    <th className="text-left py-2 px-2 font-medium text-txt3">Influencer</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">Posts</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">Alcance</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">Interacciones</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">ER básico</th>
+                    <th className="text-right py-2 px-2 font-medium text-txt3">Mejor post</th>
+                  </tr></thead>
+                  <tbody>
+                    ${ranking.slice(0, limit).map((r, k) => html`<tr key=${r.name}>
+                      <td className="py-2 px-2 text-txt4 tabular-nums">${k + 1}</td>
+                      <td className="py-2 px-2">
+                        <div className="text-txt">${r.name}</div>
+                        <div className="flex gap-1 mt-0.5">${r.plats.map(pl => html`<span key=${pl} className="font-mono text-[8px] font-semibold text-white px-1 rounded" style=${{ background: PLAT_COLORS[pl] }}>${PLAT_LETTERS[pl]}</span>`)}${r.paid ? html`<span className="text-[10px] text-txt4 ml-1">${r.paid} con pauta</span>` : ''}</div>
+                      </td>
+                      <td className="py-2 px-2 text-right tabular-nums">${r.a.posts}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(r.a.reach)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(r.a.inter)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${erFmt(r.a.basic_er_avg)}</td>
+                      <td className="py-2 px-2 text-right whitespace-nowrap">
+                        <button onClick=${() => onPick && onPick(r.top)} className="text-[11px] text-accent hover:underline mr-1.5">${r.top.platform} ${r.top.format || ''}</button>
+                        <${PostLink} p=${r.top} compact />
+                      </td>
+                    </tr>`)}
+                  </tbody>
+                </table>
+                ${ranking.length > limit && html`<button onClick=${() => setLimit(l => l + 10)} className="mt-3 text-[12px] text-accent hover:underline">Ver 10 más (${ranking.length - limit} restantes)</button>`}
+              </div>
+            </div>`}
+        </section>`;
+    }
+
+    // ============================================================
     // SimuladorSection — calculadora de metas al revés: en vez de
     // "hice X posts, obtuve Y", parte de la meta que pide el cliente y
     // calcula cuántos posts de cada plataforma/formato hacen falta,
@@ -6386,6 +6653,29 @@
             ? `${label} con espacios de más: "${String(v).trim()}"`
             : `${label} escrito distinto: "${v}" (la mayoría usa "${w}")`);
         }
+      }
+      // 2b) Nombres de influencer casi iguales ("Paty Meza" / "Patty Meza")
+      {
+        const lev = (a, b) => {
+          if (Math.abs(a.length - b.length) > 1) return 2;
+          const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+          for (let j = 1; j <= b.length; j++) d[0][j] = j;
+          for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+            d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+          return d[a.length][b.length];
+        };
+        const cnt = new Map();
+        for (const p of all) { const n = String(p.influencer_name || '').trim(); if (n) cnt.set(n, (cnt.get(n) || 0) + 1); }
+        const names = [...cnt.keys()];
+        const alias = new Map();
+        for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
+          const a = names[i], b = names[j], fa = foldTxt(a).replace(/\s/g, ''), fb = foldTxt(b).replace(/\s/g, '');
+          if (fa.length >= 4 && fa !== fb && lev(fa, fb) === 1) {
+            const [minor, major] = cnt.get(a) <= cnt.get(b) ? [a, b] : [b, a];
+            alias.set(minor, major);
+          }
+        }
+        for (const p of all) { const n = String(p.influencer_name || '').trim(); if (alias.has(n)) add(p, `Nombre de influencer parecido a otro: "${n}" (¿es "${alias.get(n)}"?)`); }
       }
       for (const p of all) {
         // 3) Link mal capturado
@@ -7824,6 +8114,8 @@
                 <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks}/>
                 <${VtrSection}         D=${D} onPick=${setSelected}/>
+                <${InfluencersSection} D=${D} onPick=${setSelected}/>
+                <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
                 <${FollowerGoalsSection} fetchedAt=${fetchedAt} chartTheme=${chartTheme}/>
 
                 <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia, horarios y simulador"
