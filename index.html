@@ -1386,7 +1386,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-21-v41';
+    const BUILD_VERSION = '2026-10-21-v42';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -7178,6 +7178,8 @@
       const campOpts = useMemo(() => (week ? pressCampaignOptions(allPosts, week) : []), [allPosts, week]);
       const [boxes, setBoxes] = useState([null, null, null]);   // { camp, subs: string[], title, touched }
       const [topics, setTopics] = useState([]);
+      // v42 — pendientes de calidad de la semana a exportar
+      const weekQ = useMemo(() => (week ? computeDataQuality(pressWeekPosts(allPosts, week), allPosts) : null), [allPosts, week]);
       // v37 — la press recuerda lo que armaste por semana (en este navegador)
       // y, para una semana nueva, parte de lo que usaste la semana anterior.
       const [origin, setOrigin] = useState(null);     // { kind: 'saved'|'prev'|'auto', from }
@@ -7362,6 +7364,32 @@
                   + Agregar slide de tema (dispositivo, campaña o lo que pida el cliente)
                 </button>
               </div>
+              ${weekQ && weekQ.issues.length > 0 && (() => {
+                const c = weekQ.counts;
+                const parts = [
+                  c.duplicados ? `${c.duplicados} con link duplicado (pueden contar doble alcance e interacciones)` : null,
+                  c.sinMetricas ? `${c.sinMetricas} sin métricas` : null,
+                  c.campos ? `${c.campos} con campos mal llenados` : null,
+                  c.sinPauta ? `${c.sinPauta} sin Tipo Pauta` : null,
+                  c.sinClasif ? `${c.sinClasif} sin clasificar` : null,
+                  c.imposibles ? `${c.imposibles} con valores imposibles` : null,
+                ].filter(Boolean);
+                return html`
+                  <div className="rounded-xl bg-amber/[0.08] px-3 py-2.5 mb-3" role="status">
+                    <div className="text-[12px] text-txt"><span className="text-amber font-medium">S${week} tiene pendientes antes de reportar:</span> ${parts.join(' · ')}.</div>
+                    <details className="mt-1.5">
+                      <summary className="text-[11px] text-accent cursor-pointer">Ver filas (${weekQ.issues.length})</summary>
+                      <ul className="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        ${weekQ.issues.slice(0, 30).map(({ post: p, tags }, i) => html`
+                          <li key=${i} className="flex items-start gap-2 text-[11px]">
+                            <${SheetRow} p=${p} />
+                            <span className="text-txt3 leading-snug">${tags.join(' · ')}</span>
+                          </li>`)}
+                      </ul>
+                    </details>
+                    <div className="text-[10px] text-txt4 mt-1.5">Puedes descargar igual; los números salen tal cual están en el Sheet.</div>
+                  </div>`;
+              })()}
               ${err && html`<div className="text-[11px] text-amber mb-3" role="alert">${err}</div>`}
               <button onClick=${dl} disabled=${busy || !d || !followers}
                       className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-ink text-[13px] font-medium hover:bg-accent2 hover:text-white disabled:opacity-50 transition-colors">
