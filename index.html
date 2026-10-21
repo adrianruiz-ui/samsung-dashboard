@@ -1386,7 +1386,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-20-v40';
+    const BUILD_VERSION = '2026-10-21-v41';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -4796,8 +4796,11 @@
         </tr>`;
     }
 
-    function AnomaliesSection({ D, onPick }) {
+    function AnomaliesSection({ D, onPick, rawPosts }) {
       const anomalies = useMemo(() => computeAnomalies(D), [D]);
+      const capQ = useMemo(() => computeDataQuality(D.allPosts || [], rawPosts), [D, rawPosts]);
+      const capDup = capQ.counts.duplicados;
+      const capCampos = capQ.counts.campos;
       return html`
         <section id="sec-anomalias" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-anomalias" name="Anomalias" />
@@ -4810,6 +4813,15 @@
               <div className="text-[11px] font-mono text-txt4">${anomalies.length} detectada${anomalies.length === 1 ? '' : 's'}</div>
             `}
           </div>
+          ${(capDup > 0 || capCampos > 0) && html`
+            <button onClick=${() => { const el = document.getElementById('sec-calidad'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                    className="w-full mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber/[0.08] px-4 py-3 text-left hover:bg-amber/[0.14] transition-colors">
+              <span className="text-[13px] text-txt">
+                <span className="text-amber font-medium">Errores de captura:</span>
+                ${capDup > 0 ? ` ${capDup} post${capDup === 1 ? '' : 's'} con link duplicado` : ''}${capDup > 0 && capCampos > 0 ? ' ·' : ''}${capCampos > 0 ? ` ${capCampos} con campos mal llenados` : ''}
+              </span>
+              <span className="text-[12px] text-accent">Ver con su fila del Sheet →</span>
+            </button>`}
 
           ${anomalies.length === 0 ? html`
             <div className="rounded-xl bg-surface border border-line border-dashed p-8 text-center">
@@ -6283,16 +6295,119 @@
     function hasMetrics(p) {
       return (p.reach > 0) || (p.impressions > 0) || (p.interactions > 0) || (p.views > 0);
     }
-    function computeDataQuality(posts) {
+    // ============================================================
+    // v41 — ERRORES DE CAPTURA: links duplicados y campos mal llenados.
+    // Se revisa contra TODA la base (no solo el filtro) para encontrar el
+    // duplicado aunque esté en otra semana o pestaña.
+    // ============================================================
+    const LINK_ID_PARAMS = ['v', 'fbid', 'story_fbid', 'id', 'p'];
+    function normLinkKey(l) {
+      const s = (l || '').trim();
+      const m = s.match(/^https?:\/\/(?:www\.|m\.|mobile\.)?([^?#\s]+)(\?[^#\s]*)?/i);
+      if (!m) return null;
+      if (/imgur\.com|\.(png|jpe?g|webp|gif)$/i.test(m[1])) return null;     // referencias de imagen (Stories)
+      let key = m[1].replace(/\/+$/, '').toLowerCase();
+      if (m[2]) {
+        const q = new URLSearchParams(m[2]);
+        const keep = LINK_ID_PARAMS.filter(k => q.get(k)).map(k => `${k}=${q.get(k)}`);
+        if (keep.length) key += '?' + keep.join('&');
+      }
+      return key;
+    }
+    const PLAT_DOMAIN = { Facebook: /facebook\.com|fb\.watch|fb\.com/i, Instagram: /instagram\.com/i, YouTube: /youtube\.com|youtu\.be/i,
+                          TikTok: /tiktok\.com/i, X: /(?:^|\/\/|\.)(x|twitter)\.com/i, LinkedIn: /linkedin\.com|lnkd\.in/i, Threads: /threads\.(net|com)/i };
+    const PLAT_FORMATS = {
+      Facebook: ['Video', 'Foto', 'Stories', 'Reels', 'Carrusel', 'Live', 'Texto'],
+      Instagram: ['Reels', 'Foto', 'Stories', 'Carrusel', 'Live'],
+      YouTube: ['Video', 'Short', 'Live'],
+      TikTok: ['Video', 'Foto', 'Carrusel', 'Live'],
+      X: ['Foto', 'Video', 'Carrusel', 'Texto', 'Live'],
+      LinkedIn: ['Video', 'Texto', 'Live', 'Foto', 'Carrusel'],
+      Threads: ['Foto', 'Carrusel', 'Texto', 'Video'],
+    };
+    const CATALOG = { strategy: ['Orgánico', 'Paid'], content_type: ['Global', 'Local', 'Regional'] };
+    const MES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const foldTxt = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const where = (p) => `${p.platform}${p._row ? ' fila ' + p._row : ''}`;
+
+    function computeCaptureChecks(all) {
+      const out = new Map();   // post → [tags]
+      const add = (p, t) => { if (!out.has(p)) out.set(p, []); const a = out.get(p); if (!a.includes(t)) a.push(t); };
+      // 1) Links duplicados
+      const byLink = new Map();
+      for (const p of all) { const k = normLinkKey(p.link); if (!k) continue; if (!byLink.has(k)) byLink.set(k, []); byLink.get(k).push(p); }
+      for (const list of byLink.values()) {
+        if (list.length < 2) continue;
+        for (const p of list) {
+          const others = list.filter(o => o !== p);
+          const mixed = others.some(o => isPaidP(o) !== isPaidP(p));
+          add(p, `${mixed ? 'Mismo link en orgánico y pauta' : 'Link duplicado'} (también en ${others.slice(0, 2).map(where).join(', ')}${others.length > 2 ? '…' : ''})`);
+        }
+      }
+      // 2) Escritura inconsistente (mayúsculas, acentos, espacios)
+      const FIELDS = [['campaign', 'Campaña'], ['subcampaign', 'Subcampaña'], ['product', 'Producto'], ['stage', 'Etapa'], ['format', 'Formato'], ['content_type', 'Tipo Contenido'], ['strategy', 'Tipo Pauta']];
+      for (const [f, label] of FIELDS) {
+        const g = new Map();
+        for (const p of all) { const v = p[f]; if (v == null || String(v).trim() === '') continue; const k = foldTxt(v); if (!g.has(k)) g.set(k, new Map()); const m = g.get(k); m.set(v, (m.get(v) || 0) + 1); }
+        const winner = new Map();
+        for (const [k, m] of g) if (m.size > 1) winner.set(k, [...m.entries()].sort((a, b) => b[1] - a[1])[0][0]);
+        for (const p of all) {
+          const v = p[f]; if (v == null) continue;
+          const w = winner.get(foldTxt(v));
+          if (w && v !== w) add(p, String(v).trim() === String(w).trim()
+            ? `${label} con espacios de más: "${String(v).trim()}"`
+            : `${label} escrito distinto: "${v}" (la mayoría usa "${w}")`);
+        }
+      }
+      for (const p of all) {
+        // 3) Link mal capturado
+        const l = (p.link || '').trim();
+        if (l) {
+          const img = /imgur\.com|\.(png|jpe?g|webp|gif)(\?|$)/i.test(l);
+          if (!/^https?:\/\//i.test(l) || /\s/.test(l) || (l.match(/https?:\/\//gi) || []).length > 1) add(p, 'Link mal capturado (espacios, texto extra o dos links pegados)');
+          else if (!img && PLAT_DOMAIN[p.platform] && !PLAT_DOMAIN[p.platform].test(l)) add(p, `Link de otra plataforma en la pestaña ${p.platform}`);
+        }
+        // 4) Fecha, semana, mes y año
+        if (p.date) {
+          const d = parseDate(p.date);
+          if (!d || isNaN(d)) add(p, `Fecha inválida ("${p.date}")`);
+          else {
+            if (p.year != null && +p.year !== d.getFullYear()) add(p, `Año no coincide con la fecha (${p.year} vs ${d.getFullYear()})`);
+            if (p.month && foldTxt(p.month) !== MES_ES[d.getMonth()]) add(p, `Mes no coincide con la fecha (${p.month} vs ${MES_ES[d.getMonth()][0].toUpperCase() + MES_ES[d.getMonth()].slice(1)})`);
+            if (d >= PRESS_WEEK1 && p.week != null) {
+              const wk = Math.floor((d - PRESS_WEEK1) / 864e5 / 7) + 1;
+              if (+p.week !== wk) add(p, `Semana no coincide con la fecha (S${p.week} vs S${wk})`);
+            }
+          }
+        }
+        // 5) Valores fuera de catálogo
+        if (p.format && PLAT_FORMATS[p.platform] && !PLAT_FORMATS[p.platform].some(x => foldTxt(x) === foldTxt(p.format))) add(p, `Formato "${p.format}" no corresponde a ${p.platform}`);
+        for (const [f, allowed] of Object.entries(CATALOG)) {
+          if (p[f] && !allowed.some(x => foldTxt(x) === foldTxt(p[f]))) add(p, `${f === 'strategy' ? 'Tipo Pauta' : 'Tipo Contenido'} fuera de catálogo: "${p[f]}"`);
+        }
+        // 6) Números incoherentes
+        if (p.basic_interactions != null && p.interactions != null && p.interactions < p.basic_interactions) add(p, 'Inter. Totales menor que Inter. Básicas');
+      }
+      return out;
+    }
+
+    function computeDataQuality(posts, allForChecks) {
+      const capture = computeCaptureChecks(allForChecks && allForChecks.length ? allForChecks : posts);
       const issues = [];
       const byWeek = new Map();
-      const counts = { sinMetricas: 0, sinPauta: 0, sinClasif: 0, imposibles: 0, conMiniatura: 0 };
+      const counts = { sinMetricas: 0, sinPauta: 0, sinClasif: 0, imposibles: 0, conMiniatura: 0, captura: 0, duplicados: 0, campos: 0 };
       for (const p of posts) {
         const tags = [];
         if (!hasMetrics(p)) { tags.push('Sin métricas'); counts.sinMetricas++; }
         if (!p.strategy) { tags.push('Sin Tipo Pauta'); counts.sinPauta++; }
         if (!p.format || !p.content_type) { tags.push(!p.format && !p.content_type ? 'Sin Formato ni Tipo Contenido' : !p.format ? 'Sin Formato' : 'Sin Tipo Contenido'); counts.sinClasif++; }
         if ((p._flags || []).length) { tags.push('Valor imposible (' + (p._flags.includes('er') ? 'ER Básico > 100%' : 'CTR > 100%') + ')'); counts.imposibles++; }
+        const cap = capture.get(p);
+        if (cap && cap.length) {
+          tags.push(...cap); counts.captura++;
+          if (cap.some(t => /^(Link duplicado|Mismo link)/.test(t))) counts.duplicados++;
+          if (cap.some(t => !/^(Link duplicado|Mismo link)/.test(t))) counts.campos++;
+        }
         if (tags.length) issues.push({ post: p, tags });
         if (p.week != null) {
           const k = (postYear(p) || '') + '-' + p.week;
@@ -6315,10 +6430,21 @@
         </div>`;
     }
 
-    function DataQualitySection({ D, onPick }) {
-      const q = useMemo(() => computeDataQuality(D.allPosts || []), [D]);
+    function DataQualitySection({ D, onPick, rawPosts }) {
+      const q = useMemo(() => computeDataQuality(D.allPosts || [], rawPosts), [D, rawPosts]);
       const [limit, setLimit] = useState(15);
+      const [kind, setKind] = useState('all');
       const c = q.counts;
+      const KINDS = [
+        ['all', 'Todo', () => true],
+        ['dup', 'Links duplicados', (t) => /^(Link duplicado|Mismo link)/.test(t)],
+        ['campos', 'Campos mal llenados', (t) => !/^(Link duplicado|Mismo link|Sin |Valor imposible)/.test(t)],
+        ['metricas', 'Sin métricas', (t) => t === 'Sin métricas'],
+        ['clasif', 'Sin clasificar', (t) => /^Sin (Tipo|Formato)/.test(t)],
+        ['imposibles', 'Valores imposibles', (t) => /^Valor imposible/.test(t)],
+      ];
+      const kf = (KINDS.find(k => k[0] === kind) || KINDS[0])[2];
+      const shown = kind === 'all' ? q.issues : q.issues.filter(i => i.tags.some(kf));
       return html`
         <section id="sec-calidad" className="px-4 md:px-7 py-7 relative group" aria-labelledby="h-calidad">
           <div className="mb-4">
@@ -6326,7 +6452,9 @@
             <p className="text-txt4 text-[12px] mt-1">Qué hay que completar o corregir en el Sheet antes de reportar. Respeta los filtros activos (${fmtFull(q.total)} posts).</p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
+            <${QualityStat} label="Links duplicados" value=${c.duplicados} warn=${c.duplicados > 0} hint="El mismo post capturado más de una vez" />
+            <${QualityStat} label="Campos mal llenados" value=${c.campos} warn=${c.campos > 0} hint="Fecha, semana, mes, formato, link o escritura" />
             <${QualityStat} label="Sin métricas" value=${c.sinMetricas} warn=${c.sinMetricas > 0} hint="Sin alcance, impresiones, interacciones ni views" />
             <${QualityStat} label="Sin Tipo Pauta" value=${c.sinPauta} warn=${c.sinPauta > 0} hint="Quedan fuera del split orgánico / pauta" />
             <${QualityStat} label="Sin clasificar" value=${c.sinClasif} warn=${c.sinClasif > 0} hint="Sin Formato o Tipo Contenido: no tienen benchmark" />
@@ -6360,7 +6488,12 @@
             </div>
 
             <div className="rounded-xl bg-surface border border-line overflow-x-auto">
-              ${q.issues.length === 0 ? html`
+              ${html`<div className="flex flex-wrap gap-1.5 px-4 pt-4" role="radiogroup" aria-label="Tipo de pendiente">
+                ${KINDS.map(([k, l, f]) => { const n = k === 'all' ? q.issues.length : q.issues.filter(i => i.tags.some(f)).length; return html`
+                  <button key=${k} role="radio" aria-checked=${kind === k} onClick=${() => { setKind(k); setLimit(15); }}
+                          className=${"text-[11px] rounded-full px-2.5 py-1 transition-colors " + (kind === k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt bg-onSurface/[0.04]")}>${l} <span className="tabular-nums text-txt4">${n}</span></button>`; })}
+              </div>`}
+              ${shown.length === 0 ? html`
                 <div className="p-8 text-center text-[12px] text-success">Sin pendientes en el filtro actual.</div>
               ` : html`
                 <table className="w-full text-sm">
@@ -6377,7 +6510,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    ${q.issues.slice(0, limit).map(({ post: p, tags }, i) => html`
+                    ${shown.slice(0, limit).map(({ post: p, tags }, i) => html`
                       <tr key=${i} onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver post de ${p.platform}, ${dateShort(p.date)}`)}
                           className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors">
                         <td className="py-2 px-4"><span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[p.platform] }}>${PLAT_LETTERS[p.platform]}</span></td>
@@ -6386,7 +6519,7 @@
                         <td className="py-2 px-4 text-[12px] text-txt3 truncate max-w-[180px]" title=${p.campaign || ''}>${p.campaign || html`<span className="text-faint">—</span>`}</td>
                         <td className="py-2 px-4">
                           <div className="flex flex-wrap gap-1">
-                            ${tags.map(t => html`<span key=${t} className="text-[10px] text-amber border border-amber/40 rounded-full px-2 py-0.5 whitespace-nowrap">${t}</span>`)}
+                            ${tags.map(t => html`<span key=${t} className="text-[10px] text-amber border border-amber/40 rounded-full px-2 py-0.5 whitespace-normal leading-snug max-w-[360px]">${t}</span>`)}
                           </div>
                         </td>
                         <td className="py-2 px-4 text-right"><${SheetRow} p=${p} /></td>
@@ -6394,11 +6527,11 @@
                       </tr>`)}
                   </tbody>
                 </table>
-                ${q.issues.length > limit && html`
+                ${shown.length > limit && html`
                   <div className="text-center py-3">
                     <button onClick=${() => setLimit(l => l + 25)}
                             className="text-[11px] font-mono uppercase tracking-wider text-txt3 hover:text-txt rounded-lg border border-line hover:border-line2 px-4 py-2 transition-colors">
-                      Ver 25 más (${q.issues.length - limit} restantes)
+                      Ver 25 más (${shown.length - limit} restantes)
                     </button>
                   </div>`}
               `}
@@ -7651,8 +7784,8 @@
 
                 <${GroupBlock} id="control" label="Control" hint=${`Anomalías${anomalyCount ? ` (${anomalyCount})` : ''} y calidad de datos`}
                   count=${2} open=${!!openGroups.control} onToggle=${() => setGroup('control', !openGroups.control)}>
-                  <${AnomaliesSection}   D=${D} onPick=${setSelected}/>
-                  <${DataQualitySection} D=${D} onPick=${setSelected}/>
+                  <${AnomaliesSection}   D=${D} onPick=${setSelected} rawPosts=${allPosts}/>
+                  <${DataQualitySection} D=${D} onPick=${setSelected} rawPosts=${allPosts}/>
                 <//>
               </main>
             `}
