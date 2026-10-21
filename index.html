@@ -1414,7 +1414,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-21-v45';
+    const BUILD_VERSION = '2026-10-21-v46';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1609,6 +1609,17 @@
      * único valor; clic de nuevo = quitar el filtro". Usado por las tarjetas
      * de plataforma y por las filas de etapa/estrategia/formato/campaña/producto.
      */
+    // v46 — entrar a una semana desde una gráfica (clic otra vez = salir)
+    function toggleWeekFilter(setFilters, wk) {
+      if (!wk) return;
+      setFilters(prev => {
+        const only = prev.weeks.length === 1 && prev.weeks[0] === wk;
+        return { ...prev, weeks: only ? [] : [wk], months: [], year: only || prev.year === 'all' ? prev.year : wkYear(wk) };
+      });
+    }
+    // Filtro por un valor desde una celda de tabla (no abre el detalle de la fila)
+    const cellFilter = (setFilters, key, value) => (e) => { e.stopPropagation(); if (value) toggleSingleFilter(setFilters, key, value); };
+
     function toggleSingleFilter(setFilters, key, value) {
       setFilters(prev => {
         const isOnlyThis = prev[key].length === 1 && prev[key][0] === value;
@@ -2647,7 +2658,7 @@
     ];
     const ORG_COLOR = '#5DCAA5', PAID_COLOR = '#4C6EF5';
 
-    function HeroSection({ D, chartTheme, kpis }) {
+    function HeroSection({ D, chartTheme, kpis, setFilters }) {
       const ct = chartTheme || CHART_THEME.dark;
       const g = D.global;
       const [metric, setMetric] = useState(() => { try { return localStorage.getItem('smx-hero-metric') || 'reach'; } catch { return 'reach'; } });
@@ -2729,6 +2740,7 @@
                   <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style=${{ background: ORG_COLOR }}></span>Orgánico · ${pct(sumOrg, sumOrg + sumPaid)}</span>
                   <span className="inline-flex items-center gap-1.5"><span className="w-4 h-0.5 rounded" style=${{ background: ct.tooltipText, opacity: 0.7 }}></span>Promedio móvil 4 sem.</span>
                   <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t border-dashed" style=${{ borderColor: '#F0B358' }}></span>Promedio del periodo</span>
+                  ${setFilters && trend.length > 1 && html`<span className="text-txt4">· Clic en una barra para entrar a esa semana</span>`}
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-right">
@@ -2752,7 +2764,9 @@
                   Selecciona más de una semana para ver la evolución.
                 </div>` : html`
               <${ResponsiveContainer} width="100%" height="100%">
-                <${ComposedChart} data=${trend} margin=${{ top: 18, right: 8, left: 4, bottom: 0 }}>
+                <${ComposedChart} data=${trend} margin=${{ top: 18, right: 8, left: 4, bottom: 0 }}
+                  style=${{ cursor: setFilters ? 'pointer' : 'default' }}
+                  onClick=${(e) => setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.wk)}>
                   <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
                             interval="preserveStartEnd" minTickGap=${22} />
                   <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
@@ -3354,7 +3368,7 @@
       { k:'basic_er_avg',  l:'ER básico',   isPercent:true },
     ];
 
-    function TrendSection({ D, chartTheme }) {
+    function TrendSection({ D, chartTheme, setFilters }) {
       const ct = chartTheme || CHART_THEME.dark;
       const [metric, setMetric] = useState('reach');
       const isPercent = TREND_METRICS.find(m => m.k === metric)?.isPercent;
@@ -3469,9 +3483,10 @@
           <div className="flex flex-wrap items-baseline justify-between gap-4 mb-4">
             <div>
               <h2 className="text-[18px] font-medium text-txt">${isDailyMode ? 'Evolución diaria' : 'Evolución semanal'}</h2>
-              ${isDailyMode && weekRangeLabel && html`
-                <div className="text-[10px] font-mono text-txt4 mt-1">Semana ${weeksInScope[0]} · ${weekRangeLabel}</div>
-              `}
+              ${isDailyMode && weekRangeLabel ? html`
+                <div className="text-[12px] text-txt4 mt-1">${wkLong(weeksInScope[0])} · ${weekRangeLabel}
+                  ${setFilters && html` · <button onClick=${() => setFilters(prev => ({ ...prev, weeks: [] }))} className="text-accent hover:underline">← volver a todas las semanas</button>`}</div>
+              ` : html`<div className="text-[12px] text-txt4 mt-1">Clic en una semana para entrar a ella</div>`}
             </div>
             <div className="flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
               ${TREND_METRICS.map((m, i) => html`
@@ -3487,7 +3502,9 @@
           <div className="rounded-xl bg-surface border border-line p-5">
             <div className="h-72">
               <${ResponsiveContainer}>
-                <${ComposedChart} data=${series} margin=${{ top:44, right:16, left:8, bottom:8 }}>
+                <${ComposedChart} data=${series} margin=${{ top:44, right:16, left:8, bottom:8 }}
+                  style=${{ cursor: !isDailyMode && setFilters ? 'pointer' : 'default' }}
+                  onClick=${(e) => !isDailyMode && setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.week)}>
                   <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
                   <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }}
@@ -3683,7 +3700,7 @@
       { k:'date',         l:'Más recientes' },
     ];
 
-    function TopPostsTable({ D, onPick, filters, benchmarks }) {
+    function TopPostsTable({ D, onPick, filters, benchmarks, setFilters }) {
       const [sortBy, setSortBy] = useState('reach');
       const [filterPlat, setFilterPlat] = useState('all');
       const [pautaSel, setPautaSel] = useState('org');   // v21.4: por defecto solo orgánico
@@ -3811,18 +3828,18 @@
                               style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
                       </td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3 whitespace-nowrap">${dateShort(p.date)}</td>
-                      <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">S${p.week || '—'}</td>
+                      <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">${p.wk ? html`<button onClick=${(e) => { e.stopPropagation(); toggleWeekFilter(setFilters, p.wk); }} title="Ver esa semana" className="hover:text-accent hover:underline">S${p.week}</button>` : 'S—'}</td>
                       <td className="py-2.5 px-4 text-[11px] whitespace-nowrap">
                         ${p.strategy
                           ? html`<span className=${"rounded-full px-2 py-0.5 border " + (isPaid(p) ? "border-accent2/40 text-accent2" : "border-line2 text-txt3")}>${isPaid(p) ? 'Pauta' : p.strategy}</span>`
                           : html`<span className="text-amber">Sin pauta</span>`}
                       </td>
                       <td className="py-2.5 px-4 text-[12px] text-txt2">${p.format || '—'}</td>
-                      <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.product}>
-                        ${p.product || html`<span className="text-faint">—</span>`}
+                      <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.product ? `Filtrar por ${p.product}` : ''}>
+                        ${p.product ? html`<button onClick=${cellFilter(setFilters, 'products', p.product)} className="hover:text-accent hover:underline text-left truncate max-w-full">${p.product}</button>` : html`<span className="text-faint">—</span>`}
                       </td>
-                      <td className="py-2.5 px-4 text-[12px] text-txt3 truncate max-w-[180px]" title=${p.campaign}>
-                        ${p.campaign || html`<span className="text-faint">—</span>`}
+                      <td className="py-2.5 px-4 text-[12px] text-txt3 truncate max-w-[180px]" title=${p.campaign ? `Filtrar por ${p.campaign}` : ''}>
+                        ${p.campaign ? html`<button onClick=${cellFilter(setFilters, 'campaigns', p.campaign)} className="hover:text-accent hover:underline text-left truncate max-w-full">${p.campaign}</button>` : html`<span className="text-faint">—</span>`}
                       </td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${fmt(p.reach)}</td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt2">${fmt(p.interactions)}</td>
@@ -8106,12 +8123,12 @@
               </div>
             ` : html`
               <main>
-                <${HeroSection} D=${D} chartTheme=${chartTheme}
+                <${HeroSection} D=${D} chartTheme=${chartTheme} setFilters=${setFilters}
                   kpis=${html`<${KpiRow} embedded D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>`} />
                 <${InsightsPanel}  D=${D}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
-                <${TrendSection}   D=${D} chartTheme=${chartTheme}/>
-                <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks}/>
+                <${TrendSection}   D=${D} chartTheme=${chartTheme} setFilters=${setFilters}/>
+                <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks} setFilters=${setFilters}/>
                 <${VtrSection}         D=${D} onPick=${setSelected}/>
                 <${InfluencersSection} D=${D} onPick=${setSelected}/>
                 <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
