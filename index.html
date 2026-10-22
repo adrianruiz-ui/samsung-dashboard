@@ -1350,6 +1350,7 @@
         // Secciones en el orden que aparecen en el dashboard
         const sections = [
           { id: 'sec-resumen',      name: 'Resumen' },
+          { id: 'sec-kpis',         name: 'KPIs de cuenta' },
           { id: 'sec-plataformas',  name: 'Plataformas' },
           { id: 'sec-tendencia',    name: 'Tendencia' },
           { id: 'sec-top-posts',    name: 'Top posts' },
@@ -1427,7 +1428,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v52';
+    const BUILD_VERSION = '2026-10-22-v53';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2025,6 +2026,7 @@
     ];
     const NAV_ITEMS = [
       { id: 'resumen',      label: 'Resumen',            Icon: SquaresIcon,  group: 'resultados' },
+      { id: 'kpis',         label: 'KPIs de cuenta',     Icon: TargetIcon,   group: 'resultados' },
       { id: 'plataformas',  label: 'Plataformas',        Icon: LayersIcon,   group: 'resultados' },
       { id: 'tendencia',    label: 'Tendencia',          Icon: TrendIcon,    group: 'resultados' },
       { id: 'top-posts',    label: 'Top posts',          Icon: RowsIcon,     group: 'resultados' },
@@ -5291,6 +5293,147 @@
               </div>
             </div>
           </div>`}
+        </section>`;
+    }
+
+
+    // ============================================================
+    // v53 — KPIs DE CUENTA (metas fijas del cliente)
+    //  · VTR ≥ 25% en videos de 0 a 30 s, todas las plataformas.
+    //    Promedio simple de VTR (como la press), sin Stories.
+    //  · Instagram: ER básico ≥ 5%, promedio simple por post (sin Stories y
+    //    sin posts con ER imposible). Ponderado por alcance no sirve aquí: los
+    //    posts con pauta tienen millones de alcance y aplastan el resultado.
+    // Respeta los filtros del dashboard.
+    // ============================================================
+    const KPI_VTR_MIN = 25, KPI_VTR_MAXDUR = 30, KPI_IG_ER_MIN = 5;
+    const kpiIsVid = (p) => p.format !== 'Stories' && p.vtr > 0 && p.duration > 0 && p.duration <= KPI_VTR_MAXDUR;
+    const kpiIsIg = (p) => p.platform === 'Instagram' && p.format !== 'Stories' && p.reach > 0 && p.basic_er != null && !(p._flags || []).includes('er');
+    const kpiVtr = (list) => list.length ? list.reduce((a, p) => a + p.vtr, 0) / list.length : null;
+    const kpiBer = (list) => list.length ? list.reduce((a, p) => a + p.basic_er, 0) / list.length : null;
+
+    function KpiCuentaSection({ D, chartTheme, filters, onPick }) {
+      const ct = chartTheme || CHART_THEME.dark;
+      const all = D.allPosts || [];
+      const vids = all.filter(kpiIsVid);
+      const ig = all.filter(kpiIsIg);
+      const igApplies = !(filters && filters.platforms && filters.platforms.length && !filters.platforms.includes('Instagram'));
+      const vtr = kpiVtr(vids), ber = kpiBer(ig);
+      const vOk = vids.filter(p => p.vtr >= KPI_VTR_MIN).length;
+      const iOk = ig.filter(p => p.basic_er >= KPI_IG_ER_MIN).length;
+      const byWeek = (list, f) => {
+        const m = new Map();
+        for (const p of list) { if (p.wk == null) continue; if (!m.has(p.wk)) m.set(p.wk, []); m.get(p.wk).push(p); }
+        const keys = [...m.keys()].sort((a, b) => a - b);
+        const my = multiYear(keys);
+        return keys.map(k => ({ k, label: wkLabel(k, my), v: f(m.get(k)), n: m.get(k).length }));
+      };
+      const wV = byWeek(vids, kpiVtr), wI = byWeek(ig, kpiBer);
+      const lastOf = (w) => w.length ? w[w.length - 1] : null;
+      const weeksOk = (w, min) => w.filter(x => x.v != null && x.v >= min).length;
+      const plats = [...new Set(vids.map(p => p.platform))].map(pl => {
+        const l = vids.filter(p => p.platform === pl);
+        return { pl, n: l.length, v: kpiVtr(l), ok: l.filter(p => p.vtr >= KPI_VTR_MIN).length };
+      }).sort((a, b) => b.n - a.n);
+      const fmts = [...new Set(ig.map(p => p.format || 'Sin formato'))].map(f => {
+        const l = ig.filter(p => (p.format || 'Sin formato') === f);
+        return { f, n: l.length, v: kpiBer(l), ok: l.filter(p => p.basic_er >= KPI_IG_ER_MIN).length };
+      }).sort((a, b) => b.n - a.n);
+      const pctTxt = (v) => v == null ? '—' : `${v.toFixed(2)}%`;
+      const gapTxt = (v, min) => v == null ? '' : v >= min ? `+${(v - min).toFixed(2)} pts arriba de la meta` : `faltan ${(min - v).toFixed(2)} pts para la meta`;
+      const Pill = ({ ok }) => html`<span className=${"text-[11px] font-medium rounded-full px-2.5 py-0.5 " + (ok ? "bg-success/15 text-success" : "bg-amber/15 text-amber")}>${ok ? 'Cumple' : 'No cumple'}</span>`;
+      const Dot = ({ ok }) => html`<span className=${"inline-block w-2 h-2 rounded-full " + (ok ? "bg-success" : "bg-amber")}></span>`;
+
+      const Trend = ({ data, min, name }) => data.length < 2 ? html`<div className="text-[12px] text-txt4 py-8 text-center">Hace falta más de una semana en el filtro para ver la tendencia.</div>` : html`
+        <div style=${{ height: 170 }}>
+          <${ResponsiveContainer} width="100%" height="100%">
+            <${LineChart} data=${data} margin=${{ top: 8, right: 12, left: 0, bottom: 0 }}>
+              <${CartesianGrid} vertical=${false} />
+              <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} interval="preserveStartEnd" minTickGap=${18} />
+              <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${40} tickFormatter=${(v) => `${v.toFixed(0)}%`} domain=${[0, (dm) => Math.ceil(Math.max(dm, min * 1.3))]} />
+              <${Tooltip} content=${({ active, payload }) => {
+                if (!active || !payload || !payload.length) return null;
+                const e = payload[0].payload;
+                return html`<div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, color: ct.tooltipText }}>
+                  <div style=${{ color: ct.tooltipLabel }}>${wkLong(e.k)}</div>
+                  <div>${name} ${pctTxt(e.v)} · ${e.n} ${e.n === 1 ? 'post' : 'posts'}</div>
+                  <div style=${{ color: e.v >= min ? '#3DBE8B' : '#F0B358' }}>${e.v >= min ? 'Cumple' : 'No cumple'} la meta de ${min}%</div></div>`;
+              }} />
+              <${ReferenceLine} y=${min} stroke="#3DBE8B" strokeDasharray="5 4" label=${{ value: `Meta ${min}%`, position: 'insideTopRight', fontSize: 10, fill: '#3DBE8B' }} />
+              <${Line} type="monotone" dataKey="v" stroke="#4C6EF5" strokeWidth=${2} isAnimationActive=${false}
+                dot=${(pr) => html`<circle key=${pr.index} cx=${pr.cx} cy=${pr.cy} r=${3.2} fill=${pr.payload.v >= min ? '#3DBE8B' : '#F0B358'} />`} />
+            <//>
+          <//>
+        </div>`;
+
+      return html`
+        <section id="sec-kpis" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-kpis" name="KPIs" />
+          <div className="mb-5">
+            <h2 className="text-[18px] font-medium text-txt">KPIs de cuenta</h2>
+            <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Metas fijas de la cuenta. VTR mínimo de ${KPI_VTR_MIN}% en videos de 0 a ${KPI_VTR_MAXDUR} s en todas las plataformas, y ER básico mínimo de ${KPI_IG_ER_MIN}% en Instagram. Ninguna cuenta Stories. Respeta los filtros activos.</p>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <div className="rounded-xl bg-surface p-5 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[13px] font-medium text-txt">VTR en videos de 0 a ${KPI_VTR_MAXDUR} s</div>
+                  <div className="text-[11px] text-txt4">Todas las plataformas · promedio simple · meta ${KPI_VTR_MIN}%</div>
+                </div>
+                ${vtr != null && html`<${Pill} ok=${vtr >= KPI_VTR_MIN} />`}
+              </div>
+              ${!vids.length ? html`<div className="text-[12px] text-txt4 py-8">No hay videos de 0 a ${KPI_VTR_MAXDUR} s con VTR en el filtro actual.</div>` : html`
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-3">
+                  <div className=${"text-[34px] font-medium tabular-nums leading-none " + (vtr >= KPI_VTR_MIN ? 'text-success' : 'text-amber')}>${pctTxt(vtr)}</div>
+                  <div className="text-[12px] text-txt3">${gapTxt(vtr, KPI_VTR_MIN)}</div>
+                </div>
+                <div className="text-[12px] text-txt3 mt-2">${fmtFull(vids.length)} videos · ${Math.round(vOk / vids.length * 100)}% llega a ${KPI_VTR_MIN}% por sí solo${wV.length > 1 ? ` · ${weeksOk(wV, KPI_VTR_MIN)} de ${wV.length} semanas cumplen` : ''}${lastOf(wV) ? ` · ${wkLong(lastOf(wV).k)}: ${pctTxt(lastOf(wV).v)}` : ''}</div>
+                <div className="mt-4"><${Trend} data=${wV} min=${KPI_VTR_MIN} name="VTR" /></div>
+                <table className="w-full text-[12px] whitespace-nowrap mt-4">
+                  <thead><tr><th className="text-left py-2 px-2">Plataforma</th><th className="text-right py-2 px-2">Videos</th><th className="text-right py-2 px-2">VTR prom.</th><th className="text-right py-2 px-2">Cumplen solos</th><th className="text-right py-2 px-2">Estado</th></tr></thead>
+                  <tbody>
+                    ${plats.map(r => html`<tr key=${r.pl}>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[r.pl] }}>${PLAT_LETTERS[r.pl]}</span>${r.pl}</span></td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(r.n)}</td>
+                      <td className=${"py-2 px-2 text-right tabular-nums " + (r.v >= KPI_VTR_MIN ? 'text-success' : 'text-amber')}>${pctTxt(r.v)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-txt3">${Math.round(r.ok / r.n * 100)}%</td>
+                      <td className="py-2 px-2 text-right"><${Dot} ok=${r.v >= KPI_VTR_MIN} /></td>
+                    </tr>`)}
+                  </tbody>
+                </table>`}
+            </div>
+
+            <div className="rounded-xl bg-surface p-5 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[13px] font-medium text-txt">ER básico en Instagram</div>
+                  <div className="text-[11px] text-txt4">Sin Stories · promedio simple por post · meta ${KPI_IG_ER_MIN}%</div>
+                </div>
+                ${igApplies && ber != null && html`<${Pill} ok=${ber >= KPI_IG_ER_MIN} />`}
+              </div>
+              ${!igApplies ? html`<div className="text-[12px] text-txt4 py-8">Este KPI es solo de Instagram y el filtro de plataforma no la incluye.</div>`
+              : !ig.length ? html`<div className="text-[12px] text-txt4 py-8">No hay posts de Instagram (sin Stories) en el filtro actual.</div>` : html`
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-3">
+                  <div className=${"text-[34px] font-medium tabular-nums leading-none " + (ber >= KPI_IG_ER_MIN ? 'text-success' : 'text-amber')}>${pctTxt(ber)}</div>
+                  <div className="text-[12px] text-txt3">${gapTxt(ber, KPI_IG_ER_MIN)}</div>
+                </div>
+                <div className="text-[12px] text-txt3 mt-2">Orgánico ${pctTxt(kpiBer(ig.filter(p => !isPaidP(p))))} · Pauta ${pctTxt(kpiBer(ig.filter(isPaidP)))}</div>
+                <div className="text-[12px] text-txt3 mt-1">${fmtFull(ig.length)} posts · ${Math.round(iOk / ig.length * 100)}% llega a ${KPI_IG_ER_MIN}% por sí solo${wI.length > 1 ? ` · ${weeksOk(wI, KPI_IG_ER_MIN)} de ${wI.length} semanas cumplen` : ''}${lastOf(wI) ? ` · ${wkLong(lastOf(wI).k)}: ${pctTxt(lastOf(wI).v)}` : ''}</div>
+                <div className="mt-4"><${Trend} data=${wI} min=${KPI_IG_ER_MIN} name="ER básico" /></div>
+                <table className="w-full text-[12px] whitespace-nowrap mt-4">
+                  <thead><tr><th className="text-left py-2 px-2">Formato</th><th className="text-right py-2 px-2">Posts</th><th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">Cumplen solos</th><th className="text-right py-2 px-2">Estado</th></tr></thead>
+                  <tbody>
+                    ${fmts.map(r => html`<tr key=${r.f}>
+                      <td className="py-2 px-2 text-txt2">${r.f}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(r.n)}</td>
+                      <td className=${"py-2 px-2 text-right tabular-nums " + (r.v >= KPI_IG_ER_MIN ? 'text-success' : 'text-amber')}>${pctTxt(r.v)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-txt3">${Math.round(r.ok / r.n * 100)}%</td>
+                      <td className="py-2 px-2 text-right"><${Dot} ok=${r.v >= KPI_IG_ER_MIN} /></td>
+                    </tr>`)}
+                  </tbody>
+                </table>`}
+            </div>
+          </div>
         </section>`;
     }
 
@@ -8631,6 +8774,7 @@
                 <${HeroSection} D=${D} chartTheme=${chartTheme} setFilters=${setFilters}
                   kpis=${html`<${KpiRow} embedded D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>`} />
                 <${InsightsPanel}  D=${D}/>
+                <${KpiCuentaSection} D=${D} chartTheme=${chartTheme} filters=${filters} onPick=${setSelected}/>
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme} setFilters=${setFilters}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks} setFilters=${setFilters}/>
