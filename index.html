@@ -1351,20 +1351,19 @@
         const sections = [
           { id: 'sec-resumen',      name: 'Resumen' },
           { id: 'sec-kpis',         name: 'KPIs de cuenta' },
-          { id: 'sec-plataformas',  name: 'Plataformas' },
+          { id: 'sec-followers',    name: 'Followers y meta' },
           { id: 'sec-tendencia',    name: 'Tendencia' },
+          { id: 'sec-plataformas',  name: 'Plataformas' },
           { id: 'sec-top-posts',    name: 'Top posts' },
           { id: 'sec-vtr',          name: 'VTR' },
           { id: 'sec-influencers',  name: 'Influencers' },
-          { id: 'sec-followers',    name: 'Followers y meta' },
           { id: 'sec-mezcla',       name: 'Mezcla' },
-          { id: 'sec-perfil',       name: 'Perfil por formato' },
-          { id: 'sec-tiktok',       name: 'TikTok creativo' },
+          { id: 'sec-cadencia',     name: 'Cadencia' },
+          { id: 'sec-horarios',     name: 'Horarios' },
           { id: 'sec-promedios',    name: 'Promedios' },
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
-          { id: 'sec-cadencia',     name: 'Cadencia' },
-          { id: 'sec-horarios',     name: 'Horarios' },
+          { id: 'sec-tiktok',       name: 'TikTok creativo' },
           { id: 'sec-simulador',    name: 'Simulador' },
           { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-calidad',      name: 'Calidad de datos' },
@@ -1428,7 +1427,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v53';
+    const BUILD_VERSION = '2026-10-22-v54';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2027,20 +2026,19 @@
     const NAV_ITEMS = [
       { id: 'resumen',      label: 'Resumen',            Icon: SquaresIcon,  group: 'resultados' },
       { id: 'kpis',         label: 'KPIs de cuenta',     Icon: TargetIcon,   group: 'resultados' },
-      { id: 'plataformas',  label: 'Plataformas',        Icon: LayersIcon,   group: 'resultados' },
+      { id: 'followers',    label: 'Followers y meta',   Icon: UsersIcon,    group: 'resultados' },
       { id: 'tendencia',    label: 'Tendencia',          Icon: TrendIcon,    group: 'resultados' },
+      { id: 'plataformas',  label: 'Plataformas',        Icon: LayersIcon,   group: 'resultados' },
       { id: 'top-posts',    label: 'Top posts',          Icon: RowsIcon,     group: 'resultados' },
       { id: 'vtr',          label: 'VTR',                Icon: PlayIcon,     group: 'resultados' },
       { id: 'influencers',  label: 'Influencers',        Icon: StarIcon,     group: 'resultados' },
-      { id: 'followers',    label: 'Followers y meta',   Icon: UsersIcon,    group: 'resultados' },
       { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
-      { id: 'perfil',       label: 'Perfil por formato', Icon: RadarIcon,    group: 'analisis' },
-      { id: 'tiktok',       label: 'TikTok creativo',    Icon: PlayIcon,     group: 'analisis' },
+      { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
+      { id: 'horarios',     label: 'Horarios',           Icon: ClockIcon,    group: 'analisis' },
       { id: 'promedios',    label: 'Promedios',          Icon: AvgIcon,      group: 'analisis' },
       { id: 'comparativas', label: 'Comparativas',       Icon: CompareIcon,  group: 'analisis' },
       { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
-      { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
-      { id: 'horarios',     label: 'Horarios',           Icon: ClockIcon,    group: 'analisis' },
+      { id: 'tiktok',       label: 'TikTok creativo',    Icon: PlayIcon,     group: 'analisis' },
       { id: 'simulador',    label: 'Simulador',          Icon: TargetIcon,   group: 'analisis' },
       { id: 'anomalias',    label: 'Anomalías',          Icon: AlertIcon,    group: 'control' },
       { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
@@ -8775,23 +8773,22 @@
                   kpis=${html`<${KpiRow} embedded D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>`} />
                 <${InsightsPanel}  D=${D}/>
                 <${KpiCuentaSection} D=${D} chartTheme=${chartTheme} filters=${filters} onPick=${setSelected}/>
-                <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
+                <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
                 <${TrendSection}   D=${D} chartTheme=${chartTheme} setFilters=${setFilters}/>
+                <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks} setFilters=${setFilters}/>
                 <${VtrSection}         D=${D} onPick=${setSelected}/>
                 <${InfluencersSection} D=${D} onPick=${setSelected}/>
-                <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint=${ttOnly ? "Mezcla, perfil por formato, TikTok creativo, promedios, comparativas, catálogo, cadencia, horarios y simulador" : "Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia, horarios y simulador"}
-                  count=${ttOnly ? 9 : 8} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint=${ttOnly ? "Mezcla, cadencia, horarios, promedios, comparativas, catálogo, TikTok creativo y simulador" : "Mezcla, cadencia, horarios, promedios, comparativas, catálogo y simulador"}
+                  count=${ttOnly ? 8 : 7} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
                   <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
-                  <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
-                  ${ttOnly && html`<${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme} rawPosts=${allPosts} filters=${filters}/>`}
+                  <${CadenceSection}     D=${D}/>
+                  <${HorariosSection}    D=${D}/>
                   <${AveragesSection}    D=${D}/>
                   <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
                   <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
-                  <${CadenceSection}     D=${D}/>
-                  <${HorariosSection}    D=${D}/>
+                  ${ttOnly && html`<${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme} rawPosts=${allPosts} filters=${filters}/>`}
                   <${SimuladorSection}   allPosts=${allPosts}/>
                 <//>
 
