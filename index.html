@@ -269,6 +269,28 @@
     @keyframes valuePulse { 0% { background-color: rgb(var(--c-accent2) / 0.30); box-shadow: 0 0 0 4px rgb(var(--c-accent2) / 0.18); } 100% { background-color: transparent; box-shadow: 0 0 0 0 transparent; } }
     .value-pulse { border-radius: 6px; animation: valuePulse 1.6s var(--ease-out); }
     @media (prefers-reduced-motion: reduce) { .seg-ind, .zoom-from-row, .value-pulse, .row-picked > td, .row-picked { transition: none !important; animation: none !important; } }
+    /* (4) cambio de tema: círculo que se expande desde el botón */
+    ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+    ::view-transition-new(root) { animation: vtReveal 720ms var(--ease-out) both; }
+    @keyframes vtReveal { from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 0px)); } to { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0px)); } }
+    /* (5) grupos plegables */
+    @keyframes grpOpen { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    @keyframes grpClose { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-10px); } }
+    @media (prefers-reduced-motion: no-preference) {
+      .grp-body-open { animation: grpOpen 480ms var(--ease-out) both; }
+      .grp-body-closing { animation: grpClose 240ms ease-in both; pointer-events: none; }
+    }
+    /* (6) indicador deslizante del menú lateral */
+    .nav-ind { position: absolute; left: 8px; right: 8px; z-index: 0; border-radius: 8px; background: rgb(var(--c-accent2) / 0.12); pointer-events: none;
+               transition: top 460ms var(--ease-out), height 460ms var(--ease-out), left 460ms var(--ease-out), width 460ms var(--ease-out), opacity 200ms ease; }
+    .nav-ind::before { content: ''; position: absolute; left: 0; top: 22%; bottom: 22%; width: 2px; border-radius: 2px; background: rgb(var(--c-accent2)); }
+    /* (8) detalle del post en cascada */
+    @media (prefers-reduced-motion: no-preference) {
+      .drawer-body > * { animation: riseIn 560ms var(--ease-out) both; }
+      .drawer-body > *:nth-child(2) { animation-delay: 60ms; } .drawer-body > *:nth-child(3) { animation-delay: 110ms; }
+      .drawer-body > *:nth-child(4) { animation-delay: 160ms; } .drawer-body > *:nth-child(5) { animation-delay: 210ms; }
+      .drawer-body > *:nth-child(6) { animation-delay: 260ms; } .drawer-body > *:nth-child(n+7) { animation-delay: 300ms; }
+    }
     .capturing .wave { opacity: 1 !important; animation: none !important; transform: none !important; }
     .capturing main section > *:not(button), .capturing .bar-grow, .capturing main, .capturing .pop-in { opacity: 1 !important; animation: none !important; transform: none !important; filter: none !important; }
     .pdf-only { display: none; }
@@ -1510,7 +1532,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v62';
+    const BUILD_VERSION = '2026-10-22-v63';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1758,8 +1780,20 @@
         if (meta) meta.setAttribute('content', theme === 'light' ? '#F8F7F2' : '#0A0A0F');
       }, [theme]);
 
-      const toggleTheme = useCallback(() => {
-        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+      const toggleTheme = useCallback((e) => {
+        const next = document.documentElement.classList.contains('light') ? 'dark' : 'light';
+        const reduced = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return true; } })();
+        if (!document.startViewTransition || reduced) { setTheme(next); return; }
+        // v63 — el tema nuevo se revela con un círculo que crece desde el botón
+        const x = e && e.clientX != null ? e.clientX : 60, y = e && e.clientY != null ? e.clientY : 60;
+        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+        const root = document.documentElement;
+        root.style.setProperty('--vt-x', x + 'px'); root.style.setProperty('--vt-y', y + 'px'); root.style.setProperty('--vt-r', r + 'px');
+        document.startViewTransition(() => new Promise(res => {
+          root.classList.toggle('light', next === 'light');
+          setTheme(next);
+          requestAnimationFrame(() => requestAnimationFrame(res));
+        }));
       }, []);
 
       return { theme, toggleTheme, chart: CHART_THEME[theme] };
@@ -2130,7 +2164,23 @@
 
     function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0, openGroups = {}, onOpenGroup, onNavigate, hiddenIds = [] }) {
       const [active, setActive] = useState('resumen');
-      const [tip, setTip] = useState(null);   // tooltip del menú plegado (fijo, para que el scroll del menú no lo recorte)
+      const [tip, setTip] = useState(null);
+      // v63 — indicador que se desliza a la sección activa
+      const navRef = useRef(null);
+      const [indStyle, setIndStyle] = useState({ opacity: 0 });
+      React.useLayoutEffect(() => {
+        const nav = navRef.current; if (!nav) return;
+        const place = () => {
+          const b = nav.querySelector('[aria-current="location"]');
+          if (!b) { setIndStyle(s => ({ ...s, opacity: 0 })); return; }
+          const nr = nav.getBoundingClientRect(), br = b.getBoundingClientRect();
+          setIndStyle({ opacity: 1, top: br.top - nr.top + nav.scrollTop, height: br.height, left: br.left - nr.left, width: br.width, right: 'auto' });
+        };
+        place();
+        const t = setTimeout(place, 350);
+        window.addEventListener('resize', place);
+        return () => { clearTimeout(t); window.removeEventListener('resize', place); };
+      }, [active, collapsed, JSON.stringify(openGroups), hiddenIds.join()]);   // tooltip del menú plegado (fijo, para que el scroll del menú no lo recorte)
       useEffect(() => { if (!collapsed) setTip(null); }, [collapsed]);
       // El tooltip vive en <body>: dentro del menú lo recortaba el scroll del sidebar
       useEffect(() => {
@@ -2232,7 +2282,8 @@
           </div>
 
 
-          <nav aria-label="Secciones del dashboard" className=${"flex-1 px-2 " + (collapsed ? "pt-2" : "")}>
+          <nav ref=${navRef} aria-label="Secciones del dashboard" className=${"flex-1 px-2 relative " + (collapsed ? "pt-2" : "")}>
+            <span className="nav-ind" aria-hidden="true" style=${indStyle}></span>
             ${NAV_GROUPS.map((grp, gi) => html`
             <div key=${grp.key} className=${gi ? (collapsed ? 'mt-3' : 'mt-4') : ''}>
             ${!collapsed && html`
@@ -2250,7 +2301,7 @@
                     aria-label=${id === 'anomalias' && anomalyCount > 0 ? `${label} (${anomalyCount})` : label} aria-current=${isOn ? 'location' : undefined}
                     className=${"relative group flex items-center gap-2.5 rounded-lg transition-colors text-[12px] " +
                       (collapsed ? "justify-center w-10 h-10 mx-auto" : "px-3 py-2 w-full") + " " +
-                      (isOn ? "bg-accent2/10 text-txt" : "text-txt2 hover:bg-onSurface/[0.03] hover:text-txt")}
+                      (isOn ? "text-txt z-[1]" : "text-txt2 hover:bg-onSurface/[0.03] hover:text-txt z-[1]")}
                     onMouseEnter=${collapsed ? (e) => { const r = e.currentTarget.getBoundingClientRect(); setTip({ label, x: r.right + 10, y: r.top + r.height / 2 }); } : undefined}
                     onMouseLeave=${collapsed ? () => setTip(null) : undefined}
                     onFocus=${collapsed ? (e) => { const r = e.currentTarget.getBoundingClientRect(); setTip({ label, x: r.right + 10, y: r.top + r.height / 2 }); } : undefined}
@@ -3583,7 +3634,7 @@
           <div className="rounded-xl bg-surface border border-line p-5">
             <div className="h-64">
               <${ResponsiveContainer}>
-                <${ComposedChart} data=${series} margin=${{ top:30, right:16, left:8, bottom:0 }}
+                <${ComposedChart} data=${series} syncId="trend" margin=${{ top:30, right:16, left:8, bottom:0 }}
                   style=${{ cursor: !isDailyMode && setFilters ? 'pointer' : 'default' }}
                   onClick=${(e) => !isDailyMode && setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.week)}>
                   <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
@@ -3597,10 +3648,12 @@
                     cursor=${{ fill: 'rgba(76,110,245,0.08)' }}
                     contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'8px 12px', fontSize:11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color:ct.tooltipText }}
                     labelStyle=${{ color: ct.tooltipLabel }}
+                    itemStyle=${{ color: ct.tooltipText }}
+                    itemSorter=${(it) => it.dataKey === 'value' ? 0 : 1}
                     labelFormatter=${(label) => isDailyMode ? label : ((series.find(r => r.label === label) || {}).long || label)}
                     formatter=${(v, name) => {
                       if (name === 'value') return [isPercent ? erFmt(v) : fmt(v), TREND_METRICS.find(m => m.k === metric)?.l];
-                      return [v, 'Posts'];
+                      return [v, 'Posts publicados'];
                     }} />
                   <${Bar} yAxisId="band" dataKey="posts" fill="transparent" isAnimationActive=${false} />
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
@@ -3625,13 +3678,13 @@
             <div className="text-[11px] text-txt4 mt-3 pl-1">Posts publicados</div>
             <div className="h-20">
               <${ResponsiveContainer}>
-                <${BarChart} data=${series} margin=${{ top:4, right:16, left:8, bottom:8 }}
+                <${BarChart} data=${series} syncId="trend" margin=${{ top:4, right:16, left:8, bottom:8 }}
                   style=${{ cursor: !isDailyMode && setFilters ? 'pointer' : 'default' }}
                   onClick=${(e) => !isDailyMode && setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.week)}>
                   <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11} tickLine=${false} axisLine=${false}
                             interval=${isDailyMode ? 0 : 'preserveStartEnd'} minTickGap=${22} />
                   <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${isPercent ? 56 : 96} allowDecimals=${false} tickCount=${3} />
-                  <${Tooltip} cursor=${{ fill: 'rgba(76,110,245,0.08)' }} formatter=${(v) => [v, 'Posts']}
+                  <${Tooltip} cursor=${{ fill: 'rgba(76,110,245,0.14)' }} content=${() => null} formatter=${(v) => [v, 'Posts']}
                     contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'6px 10px', fontSize:11, color:ct.tooltipText }}
                     labelStyle=${{ color: ct.tooltipLabel }} labelFormatter=${(label) => isDailyMode ? label : ((series.find(r => r.label === label) || {}).long || label)} />
                   <${Bar} dataKey="posts" fill="rgba(127,127,140,0.45)" radius=${[2, 2, 0, 0]} maxBarSize=${22} />
@@ -6565,7 +6618,7 @@
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <div className="px-5 py-5">
+              <div className="px-5 py-5 drawer-body">
                 <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-2">
                   ${dateFmt(post.date)} · Semana ${post.week || '—'}
                 </div>
@@ -8695,9 +8748,14 @@
 
     // v25 — encabezado de bloque plegable (Análisis / Control)
     function GroupBlock({ id, label, hint, count, open, onToggle, children }) {
+      const [closing, setClosing] = useState(false);
+      const toggle = () => {
+        if (open && !prefersReduced()) { setClosing(true); setTimeout(() => { setClosing(false); onToggle(); }, 230); }
+        else onToggle();
+      };
       return html`
         <div className="px-4 md:px-7 pt-8" id=${'grp-' + id}>
-          <button onClick=${onToggle} aria-expanded=${open} aria-controls=${'grp-body-' + id}
+          <button onClick=${toggle} aria-expanded=${open} aria-controls=${'grp-body-' + id}
                   className="w-full flex items-center justify-between gap-4 rounded-2xl bg-surface px-5 py-4 text-left hover:bg-onSurface/[0.03] transition-colors">
             <span className="min-w-0">
               <span className="block text-[16px] font-medium text-txt">${label}</span>
@@ -8705,11 +8763,11 @@
             </span>
             <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-mono text-txt3">
               ${open ? 'Ocultar' : 'Mostrar'}
-              <${ChevronDownIcon} size=${14} className=${open ? 'rotate-180 transition-transform' : 'transition-transform'}/>
+              <${ChevronDownIcon} size=${14} className=${(open && !closing ? 'rotate-180' : '') + ' transition-transform duration-500'} />
             </span>
           </button>
         </div>
-        ${open && html`<div id=${'grp-body-' + id}>${children}</div>`}`;
+        ${open && html`<div id=${'grp-body-' + id} className=${closing ? 'grp-body-closing' : 'grp-body-open'}>${children}</div>`}`;
     }
 
     const MenuIcon = ({ size = 18, className = '' }) => html`
