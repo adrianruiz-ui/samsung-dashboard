@@ -182,10 +182,7 @@
       -moz-osx-font-smoothing: grayscale;
       font-feature-settings: 'ss01';
       letter-spacing: -0.005em;
-      background-image:
-        radial-gradient(ellipse 800px 400px at 30% 0%, var(--c-glow1) 0%, transparent 60%),
-        radial-gradient(ellipse 600px 400px at 100% 100%, var(--c-glow2) 0%, transparent 60%);
-      background-attachment: fixed;
+      background-image: none;
     }
     .font-serif, [class*="font-serif"] { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01'; }
     .font-mono, [class*="font-mono"] { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'ss01'; }
@@ -1283,7 +1280,7 @@
 
     const PLAT_COLORS = {
       Facebook:'#3B6FB8', Instagram:'#C73E6B', TikTok:'#1FA9B0',
-      X:'#2A2A2A', YouTube:'#C53030', Threads:'#525252', LinkedIn:'#1F4D8C',
+      X:'#62626E', YouTube:'#C53030', Threads:'#8E8E99', LinkedIn:'#1F4D8C',
     };
     const PLAT_LETTERS = {
       Facebook:'FB', Instagram:'IG', YouTube:'YT', TikTok:'TT',
@@ -1450,7 +1447,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v56';
+    const BUILD_VERSION = '2026-10-22-v57';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2706,134 +2703,23 @@
     ];
     const ORG_COLOR = '#5DCAA5', PAID_COLOR = '#4C6EF5';
 
-    function HeroSection({ D, chartTheme, kpis, setFilters }) {
-      const ct = chartTheme || CHART_THEME.dark;
+    function HeroSection({ D, kpis }) {
+      // v57 — El resumen es un titular + un solo panel de cifras. La evolución
+      // semanal vive en "Tendencia" (antes aquí había una segunda gráfica que
+      // repetía la misma información).
       const g = D.global;
-      const [metric, setMetric] = useState(() => { try { return localStorage.getItem('smx-hero-metric') || 'reach'; } catch { return 'reach'; } });
-      const pickMetric = (k) => { setMetric(k); try { localStorage.setItem('smx-hero-metric', k); } catch {} };
-      const M = HERO_METRICS.find(m => m.k === metric) || HERO_METRICS[0];
-
-      // Semana a semana, separado en orgánico y pauta
-      const trend = useMemo(() => {
-        const map = new Map();
-        for (const p of (D.allPosts || [])) {
-          if (!p.wk) continue;
-          if (!map.has(p.wk)) map.set(p.wk, { wk: p.wk, week: +p.week, label: '', org: 0, paid: 0, postsOrg: 0, postsPaid: 0 });
-          const r = map.get(p.wk), v = M.f(p);
-          if (isPaidP(p)) { r.paid += v; r.postsPaid++; } else { r.org += v; r.postsOrg++; }
-        }
-        const arr = [...map.values()].sort((a, b) => a.wk - b.wk);
-        const my = multiYear(arr.map(r => r.wk));
-        arr.forEach(r => { r.label = wkLabel(r.wk, my); r.long = my ? wkLong(r.wk) : `Semana ${r.week}`; });
-        arr.forEach((d, i) => {
-          d.total = d.org + d.paid;
-          const win = arr.slice(Math.max(0, i - 3), i + 1);
-          d.ma4 = win.reduce((a, x) => a + x.org + x.paid, 0) / win.length;
-        });
-        return arr;
-      }, [D, metric]);
-      const avg = trend.length ? trend.reduce((a, d) => a + d.total, 0) / trend.length : 0;
-      const maxW = trend.reduce((m, d) => d.total > (m?.total ?? -1) ? d : m, null);
-      const lastW = trend[trend.length - 1];
-      const sumOrg = trend.reduce((a, d) => a + d.org, 0), sumPaid = trend.reduce((a, d) => a + d.paid, 0);
-      const shareOrg = (sumOrg + sumPaid) ? sumOrg / (sumOrg + sumPaid) : 0;
       const nPlat = Object.keys(D.by_platform).length;
       const nWeeks = (D.meta.weeks_in_scope || D.meta.weeks).length;
-      const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
-
-      const TipBox = ({ active, payload }) => {
-        if (!active || !payload || !payload.length) return null;
-        const d = payload[0].payload;
-        const row = (c, l, v) => html`<div style=${{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-          <span><span style=${{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 6 }}></span>${l}</span><b>${v}</b></div>`;
-        return html`
-          <div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color: ct.tooltipText, minWidth: 240 }}>
-            <div style=${{ color: ct.tooltipLabel, marginBottom: 6 }}>${d.long} · ${M.l}${d.wk === maxW?.wk ? ' · pico' : ''}</div>
-            ${row(PAID_COLOR, `Pauta (${d.postsPaid} posts)`, fmtFull(d.paid) + ' · ' + pct(d.paid, d.total))}
-            ${row(ORG_COLOR, `Orgánico (${d.postsOrg} posts)`, fmtFull(d.org) + ' · ' + pct(d.org, d.total))}
-            <div style=${{ height: 6 }}></div>
-            ${row('transparent', 'Total', fmtFull(d.total))}
-            <div style=${{ color: ct.tooltipLabel }}>Promedio 4 sem.: ${fmtFull(d.ma4)}</div>
-            <div style=${{ color: ct.tooltipLabel }}>${avg ? ((d.total / avg - 1) * 100 >= 0 ? '+' : '') + ((d.total / avg - 1) * 100).toFixed(0) + '% vs. promedio semanal' : ''}</div>
-          </div>`;
-      };
-
       return html`
-        <section id="sec-resumen" className="px-4 md:px-7 pb-6 relative group">
+        <section id="sec-resumen" className="px-4 md:px-7 pb-8 relative group">
           <${SectionExportBtn} sectionId="sec-resumen" name="Resumen" />
-          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-2">
-            ${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} → ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-txt3 mb-5">
+            <span className="text-txt2">${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} – ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}</span>
+            <span>${fmtFull(g.posts)} publicaciones</span>
+            <span>${nPlat} ${nPlat === 1 ? 'plataforma' : 'plataformas'}</span>
+            <span>${nWeeks} ${nWeeks === 1 ? 'semana activa' : 'semanas activas'}</span>
           </div>
-          <p className="text-txt2 leading-snug mb-5 max-w-4xl" style=${{ fontSize: 'clamp(16px, 1.5vw, 20px)' }}>
-            <span className="text-txt font-medium">${fmtFull(g.posts)} publicaciones</span> en ${nPlat} ${nPlat === 1 ? 'plataforma' : 'plataformas'} generaron
-            <span className="text-txt font-medium"> ${fmt(g.reach)} de alcance</span>,
-            <span className="text-txt font-medium"> ${fmt(g.inter)} interacciones</span> y
-            <span className="text-txt font-medium"> ${fmt(g.views)} reproducciones</span>${' en '}${nWeeks} ${nWeeks === 1 ? 'semana activa' : 'semanas activas'}.
-          </p>
           ${kpis}
-
-          <div className="rounded-2xl bg-surface p-5 md:p-6 mt-4">
-            <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-[15px] font-medium text-txt">${M.l} semanal</div>
-                  <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Métrica de la gráfica">
-                    ${HERO_METRICS.map(m => html`
-                      <button key=${m.k} role="radio" aria-checked=${metric === m.k} onClick=${() => pickMetric(m.k)}
-                              className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (metric === m.k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${m.l}</button>`)}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-txt3 mt-2">
-                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style=${{ background: PAID_COLOR }}></span>Pauta · ${pct(sumPaid, sumOrg + sumPaid)}</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style=${{ background: ORG_COLOR }}></span>Orgánico · ${pct(sumOrg, sumOrg + sumPaid)}</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-4 h-0.5 rounded" style=${{ background: ct.tooltipText, opacity: 0.7 }}></span>Promedio móvil 4 sem.</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t border-dashed" style=${{ borderColor: '#F0B358' }}></span>Promedio del periodo</span>
-                  ${setFilters && trend.length > 1 && html`<span className="text-txt4">· Clic en una barra para entrar a esa semana</span>`}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-x-6 gap-y-2 text-right">
-                <div>
-                  <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Promedio semanal</div>
-                  <div className="text-[14px] text-txt tabular-nums">${fmtFull(avg)}</div>
-                </div>
-                ${maxW && html`<div>
-                  <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Semana pico · ${maxW.label}</div>
-                  <div className="text-[14px] text-accent tabular-nums">${fmtFull(maxW.total)}</div>
-                </div>`}
-                ${lastW && html`<div>
-                  <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4">Última semana · ${lastW.label}</div>
-                  <div className="text-[14px] text-txt tabular-nums">${fmtFull(lastW.total)}</div>
-                </div>`}
-              </div>
-            </div>
-            <div style=${{ height: 300 }}>
-              ${trend.length <= 1 ? html`
-                <div className="h-full flex items-center justify-center text-[13px] text-txt4">
-                  Selecciona más de una semana para ver la evolución.
-                </div>` : html`
-              <${ResponsiveContainer} width="100%" height="100%">
-                <${ComposedChart} data=${trend} margin=${{ top: 18, right: 8, left: 4, bottom: 0 }}
-                  style=${{ cursor: setFilters ? 'pointer' : 'default' }}
-                  onClick=${(e) => setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.wk)}>
-                  <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                            interval="preserveStartEnd" minTickGap=${22} />
-                  <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false}
-                            tickFormatter=${fmt} width=${92} />
-                  <${Tooltip} content=${TipBox} cursor=${{ fill: 'rgba(76,110,245,0.10)' }} />
-                  <${ReferenceLine} y=${avg} stroke="#F0B358" strokeDasharray="4 4" strokeOpacity=${0.8}
-                    label=${{ value: 'Promedio', position: 'insideTopRight', fontSize: 10, fill: '#F0B358' }} />
-                  <${Bar} dataKey="org" stackId="s" fill=${ORG_COLOR} maxBarSize=${26} name="Orgánico" />
-                  <${Bar} dataKey="paid" stackId="s" fill=${PAID_COLOR} radius=${[3, 3, 0, 0]} maxBarSize=${26} name="Pauta" />
-                  <${Line} type="monotone" dataKey="ma4" stroke=${ct.tooltipText} strokeOpacity=${0.7} strokeWidth=${1.6} dot=${false} />
-                <//>
-              <//>`}
-            </div>
-            ${trend.length > 1 && html`
-              <div className="text-[12px] text-txt3 mt-3">
-                En el periodo, el ${pct(sumPaid, sumOrg + sumPaid)} de ${M.l.toLowerCase()} vino de pauta y el ${pct(sumOrg, sumOrg + sumPaid)} de orgánico.
-                ${maxW && html` La semana pico (${maxW.label}) fue ${pct(maxW.paid, maxW.total)} pauta.`}
-              </div>`}
-          </div>
         </section>`;
     }
 
@@ -2966,10 +2852,10 @@
     }
 
     function InsightLine({ insight }) {
-      const toneColor = insight.tone === 'positive' ? 'text-success' : insight.tone === 'negative' ? 'text-amber' : 'text-accent';
-      const glyph = insight.tone === 'positive' ? '↑' : insight.tone === 'negative' ? '↓' : '•';
+      const toneColor = insight.tone === 'positive' ? 'text-success' : insight.tone === 'negative' ? 'text-amber' : 'text-txt4';
+      const glyph = insight.tone === 'positive' ? '↑' : insight.tone === 'negative' ? '↓' : '–';
       return html`
-        <div className="flex items-start gap-2.5 py-1.5 first:pt-0 last:pb-0">
+        <div className="flex items-start gap-2.5 py-1.5">
           <span className=${"font-mono text-[13px] leading-[1.4] mt-0.5 shrink-0 " + toneColor}>${glyph}</span>
           <p className="text-[13px] text-txt3 leading-relaxed">
             ${insight.parts.map((part, i) => part.strong
@@ -2984,13 +2870,10 @@
       const insights = useMemo(() => computeInsights(D), [D]);
       if (!insights.length) return null;
       return html`
-        <section className="px-4 md:px-7 pb-5">
-          <div className="rounded-xl bg-surface border border-line p-5">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Lecturas del periodo</div>
-            <div className="text-[10px] font-mono text-faint mb-3">Generadas automáticamente a partir del filtro actual</div>
-            <div>
-              ${insights.map(ins => html`<${InsightLine} key=${ins.id} insight=${ins} />`)}
-            </div>
+        <section className="px-4 md:px-7 pb-8 -mt-2">
+          <div className="text-[13px] font-medium text-txt mb-3">Lecturas del periodo</div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-1">
+            ${insights.map(ins => html`<${InsightLine} key=${ins.id} insight=${ins} />`)}
           </div>
         </section>`;
     }
@@ -2998,67 +2881,57 @@
     // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
-    function KpiCell({ label, value, sub, accent, onClick, delta, deltaLabel, exact, big }) {
+    function KpiCell({ label, value, sub, onClick, delta, deltaLabel, exact }) {
       return html`
         <div onClick=${onClick} ...${kbd(onClick, `Ver de dónde sale ${label}`)}
-             className=${"rounded-xl bg-surface border border-line px-4 py-4 min-w-0 relative group focus:outline-none focus-visible:ring-1 focus-visible:ring-accent2 " +
-               (onClick ? "cursor-pointer hover:border-line2 transition-colors" : "")}
-             title=${onClick ? `Ver de dónde sale ${label}` : undefined}>
-          <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2 flex items-center justify-between">
-            <span>${label}</span>
-            ${onClick && html`<span className="opacity-0 group-hover:opacity-100 transition-opacity text-accent2 normal-case tracking-normal">trazar ↗</span>`}
+             className=${"min-w-0 rounded-lg -m-2 p-2 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent2 " + (onClick ? "cursor-pointer hover:bg-onSurface/[0.03] transition-colors" : "")}
+             title=${onClick ? `Ver de qué posts sale ${label}` : undefined}>
+          <div className="text-[13px] text-txt3">${label}</div>
+          <div className="text-txt tabular-nums mt-1.5" title=${exact || undefined}
+               style=${{ fontSize: 'clamp(19px, 2.3vw, 34px)', fontWeight: 500, lineHeight: 1.05, letterSpacing: '-0.02em' }}>${value}</div>
+          <div className="flex flex-wrap items-baseline gap-x-2 mt-2 text-[12px] text-txt4 min-h-[18px]">
+            ${delta !== undefined && delta !== null && html`<${DeltaPill} pct=${delta} />`}
+            ${delta !== undefined && delta !== null && deltaLabel && html`<span>${deltaLabel}</span>`}
+            ${sub && html`<span>${sub}</span>`}
           </div>
-          <div className=${"font-medium tabular-nums break-all " + (accent ? "text-accent" : "text-txt")}
-               title=${exact || undefined}
-               style=${{ fontSize: big ? 'clamp(22px, 2vw, 30px)' : 'clamp(18px, 1.7vw, 24px)', lineHeight: 1.15, letterSpacing: '-0.01em' }}>${value}</div>
-          ${delta !== undefined && html`
-            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              <${DeltaPill} pct=${delta} />
-              ${deltaLabel && html`<span className="text-[9px] font-mono text-faint">${deltaLabel}</span>`}
-            </div>
-          `}
-          ${sub && html`<div className=${"text-[10px] text-txt4 font-mono break-all " + (delta !== undefined ? "mt-1.5" : "mt-2")}>${sub}</div>`}
         </div>`;
     }
 
-    function KpiRow({ D, onTrace, rawPosts, filters, embedded }) {
+    function KpiRow({ D, onTrace, rawPosts, filters }) {
       const g = D.global;
       const heroDeltas = useMemo(() => computeHeroDeltas(D, rawPosts, filters), [D, rawPosts, filters]);
       const dLabel = heroDeltas ? `vs ${wkLabel(heroDeltas.prevWeek, wkYear(heroDeltas.prevWeek) !== wkYear(heroDeltas.currentWeek))}` : null;
+      const sec = [
+        ['ER total', erFmt(g.er_avg), heroDeltas?.er_avg, onTrace ? () => onTrace('er_avg') : null, 'Interacciones totales (incluye views) ÷ alcance'],
+        ['ER básico', erFmt(g.basic_er_avg), null, null, 'Reacciones + comentarios + compartidos + guardados ÷ alcance'],
+        ['CTR', g.ctr_avg > 0 ? erFmt(g.ctr_avg) : '—', null, null, 'Clics ÷ impresiones'],
+        ['Comentarios', fmtFull(g.comments), heroDeltas?.comments, onTrace ? () => onTrace('comments') : null],
+        ['Compartidos', fmtFull(g.shares), null, null],
+        ['Impresiones', g.impressions > 0 ? fmtFull(g.impressions) : '—', null, null],
+      ];
       return html`
-        <section className=${embedded ? '' : 'px-7 pb-5'}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            <${KpiCell} big label="Alcance"        exact=${fmtFull(g.reach)} value=${fmt(g.reach)}       sub=${g.impressions > 0 ? `${fmt(g.impressions)} impresiones` : null} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
-            <${KpiCell} big label="Interacciones"  exact=${fmtFull(g.inter)} value=${fmt(g.inter)}       sub=${`${fmt(g.reactions)} reacciones`} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
-            <${KpiCell} big label="Reproducciones" exact=${fmtFull(g.views)} value=${fmt(g.views)}       sub="views totales" delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
-            <${KpiCell} big label="VTR"            value=${erFmt(g.vtr_avg)}  sub="ponderado por views" accent />
+        <div className="rounded-2xl bg-surface p-6 md:p-7">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-x-6 md:gap-x-8 gap-y-6">
+            <${KpiCell} label="Alcance"        exact=${fmtFull(g.reach)} value=${fmt(g.reach)} delta=${heroDeltas?.reach} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('reach') : undefined} />
+            <${KpiCell} label="Interacciones"  exact=${fmtFull(g.inter)} value=${fmt(g.inter)} delta=${heroDeltas?.inter} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('inter') : undefined} />
+            <${KpiCell} label="Reproducciones" exact=${fmtFull(g.views)} value=${fmt(g.views)} delta=${heroDeltas?.views} deltaLabel=${dLabel} onClick=${onTrace ? () => onTrace('views') : undefined} />
+            <${KpiCell} label="VTR" value=${erFmt(g.vtr_avg)} sub="ponderado por reproducciones" />
           </div>
-          <div className="mt-3 rounded-xl bg-surface px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 text-[13px]">
-            ${[
-              ['ER ponderado', erFmt(g.er_avg), heroDeltas?.er_avg, onTrace ? () => onTrace('er_avg') : null],
-              ['ER básico', erFmt(g.basic_er_avg)],
-              ['CTR', erFmt(g.ctr_avg)],
-              ['Comentarios', fmt(g.comments), heroDeltas?.comments, onTrace ? () => onTrace('comments') : null],
-              ['Compartidos', fmt(g.shares)],
-              ['Posts', fmtFull(g.posts), heroDeltas?.posts],
-            ].map(([l, v, dv, fn]) => html`
-              <button key=${l} onClick=${fn || undefined} disabled=${!fn}
-                      className=${"inline-flex items-baseline gap-2 text-left " + (fn ? "hover:text-accent cursor-pointer" : "cursor-default")}
-                      title=${fn ? `Ver de dónde sale ${l}` : undefined}>
-                <span className="text-txt3">${l}</span>
-                <span className="text-txt font-medium tabular-nums">${v}</span>
-                ${dv != null && html`<${DeltaPill} pct=${dv} />`}
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-6 md:gap-x-8 gap-y-4 mt-7 pt-6 items-start" style=${{ boxShadow: 'inset 0 1px 0 rgb(var(--c-txt) / 0.05)' }}>
+            ${sec.map(([l, v, dv, fn, hint]) => html`
+              <button key=${l} onClick=${fn || undefined} disabled=${!fn} title=${hint || (fn ? `Ver de qué posts sale ${l}` : undefined)}
+                      className=${"text-left min-w-0 " + (fn ? "hover:text-accent cursor-pointer" : "cursor-default")}>
+                <div className="text-[12px] text-txt4">${l}</div>
+                <div className="flex items-baseline gap-2 mt-1"><span className="text-[17px] text-txt tabular-nums">${v}</span>${dv != null && html`<${DeltaPill} pct=${dv} />`}</div>
+                ${l === 'ER total' && html`<div className="text-[11px] text-txt4 mt-0.5">incluye reproducciones</div>`}
               </button>`)}
           </div>
           <${PautaSplit} D=${D} />
-        </section>`;
+        </div>`;
     }
 
-    // ============================================================
-    // v20 — PautaSplit: orgánico vs. pauta lado a lado. Mezclarlos en un
-    // solo ER esconde el desempeño orgánico (la pauta trae mucho alcance
-    // con ER bajo y arrastra el promedio hacia abajo).
-    // ============================================================
+    // v57 — Orgánico vs. pauta como tabla compacta dentro del mismo panel:
+    // mezclarlos en un solo ER esconde el orgánico, pero no necesitan dos tarjetas.
     function PautaSplit({ D }) {
       const groups = useMemo(() => groupAgg(D.allPosts || [], p => p.strategy || 'Sin clasificar'), [D]);
       const totalReach = D.global?.reach || 0;
@@ -3067,32 +2940,33 @@
       if (entries.length < 2) return null;
       const labelOf = (k) => /^paid$/i.test(k) ? 'Pauta' : k;
       return html`
-        <div className="mt-3 grid gap-3" style=${{ gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))` }}>
-          ${entries.map(([k, s]) => {
-            const share = totalReach > 0 ? (s.reach / totalReach) * 100 : 0;
-            const muted = /sin clasificar/i.test(k);
-            return html`
-              <div key=${k} className=${"rounded-xl bg-surface border px-4 py-3.5 min-w-0 " + (muted ? "border-amber/40" : "border-line")}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className=${"text-[9px] font-mono uppercase tracking-[0.18em] " + (muted ? "text-amber" : "text-txt4")}>${labelOf(k)}</span>
-                  <span className="text-[10px] font-mono text-txt4">${s.posts} posts · ${share.toFixed(0)}% del alcance</span>
-                </div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[18px] font-medium tabular-nums text-accent leading-tight">${erFmt(s.basic_er_avg)}</div>
-                    <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1">ER básico pond.</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[14px] tabular-nums text-txt2 leading-tight">${erFmt(s.er_avg)}</div>
-                    <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1">ER views pond.</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[14px] tabular-nums text-txt2 leading-tight">${fmt(s.reach)}</div>
-                    <div className="text-[9px] font-mono uppercase tracking-wider text-txt4 mt-1">alcance</div>
-                  </div>
-                </div>
-              </div>`;
-          })}
+        <div className="mt-7 overflow-x-auto">
+          <table className="w-full text-[13px] whitespace-nowrap no-zebra plain">
+            <thead><tr>
+              <th className="text-left py-2 px-3">Orgánico vs. pauta</th>
+              <th className="text-right py-2 px-3">Posts</th>
+              <th className="text-right py-2 px-3">Alcance</th>
+              <th className="text-left py-2 px-3 w-[22%]">Parte del alcance</th>
+              <th className="text-right py-2 px-3">ER básico</th>
+              <th className="text-right py-2 px-3">ER total</th>
+            </tr></thead>
+            <tbody>
+              ${entries.map(([k, s]) => {
+                const share = totalReach > 0 ? (s.reach / totalReach) * 100 : 0;
+                const muted = /sin clasificar/i.test(k);
+                return html`<tr key=${k}>
+                  <td className=${"py-2.5 px-3 " + (muted ? "text-amber" : "text-txt")}>${labelOf(k)}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums text-txt2">${fmtFull(s.posts)}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums text-txt">${fmtFull(s.reach)}</td>
+                  <td className="py-2.5 px-3">
+                    <div className="flex items-center gap-3"><div className="flex-1 h-1.5 rounded-full bg-onSurface/[0.06] overflow-hidden"><div className="h-full rounded-full bg-txt3/60" style=${{ width: share + '%', background: 'rgb(var(--c-txt) / 0.45)' }}></div></div><span className="tabular-nums text-txt3 w-10 text-right">${share.toFixed(0)}%</span></div>
+                  </td>
+                  <td className="py-2.5 px-3 text-right tabular-nums text-txt">${erFmt(s.basic_er_avg)}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums text-txt2">${erFmt(s.er_avg)}</td>
+                </tr>`;
+              })}
+            </tbody>
+          </table>
         </div>`;
     }
 
@@ -3109,7 +2983,7 @@
       inter:     { field: 'interactions', type: 'sum', label: 'Interacciones',  formula: 'Suma del campo "Interacciones" de cada post dentro del filtro actual.' },
       views:     { field: 'views',        type: 'sum', label: 'Reproducciones', formula: 'Suma del campo "Reproducciones" de cada post dentro del filtro actual (aplica principalmente a video).' },
       comments:  { field: 'comments',     type: 'sum', label: 'Comentarios',    formula: 'Suma del campo "Comentarios" de cada post dentro del filtro actual.' },
-      er_avg:    { field: 'er',           type: 'ratio', label: 'ER ponderado', formula: 'Σ Interacciones totales ÷ Σ Alcance de los posts del filtro. Cada post pesa según su alcance (misma fórmula que el Sheet, aplicada al conjunto). Se excluyen posts sin alcance y posts con valores imposibles (ER Básico > 100%).' },
+      er_avg:    { field: 'er',           type: 'ratio', label: 'ER total', formula: 'Σ Interacciones totales ÷ Σ Alcance de los posts del filtro. Cada post pesa según su alcance (misma fórmula que el Sheet, aplicada al conjunto). Se excluyen posts sin alcance y posts con valores imposibles (ER Básico > 100%).' },
     };
 
     function computeKpiTrace(D, key) {
@@ -3189,7 +3063,7 @@
         <tr onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver post de ${p.platform}, ${dateShort(p.date)}`)}
             className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors">
           <td className="py-2 px-3">
-            <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
+            <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>${p.platform}</span>
           </td>
           <td className="py-2 px-3 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
           <td className="py-2 px-3 text-[12px] text-txt2 truncate max-w-[160px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
@@ -3301,8 +3175,7 @@
                (active ? "border-accent2 ring-1 ring-accent2/50 bg-accent2/[0.04]" : "border-line hover:border-line2")}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded"
-                    style=${{ background: color }}>${PLAT_LETTERS[name]}</span>
+              <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
               <span className="text-[13px] text-txt">${name}</span>
               ${active && html`<span className="text-[9px] font-mono uppercase tracking-wider text-accent2 border border-accent2/40 rounded-full px-1.5 py-0.5">filtrado</span>`}
             </div>
@@ -3385,23 +3258,59 @@
           <div className="flex items-baseline justify-between mb-4">
             <div>
               <h2 className="text-[18px] font-medium text-txt">Por plataforma</h2>
-            </div>
-            <div className="text-[11px] font-mono text-txt4">
-              ${isDailyMode ? 'Tendencia diaria · ' : ''}Ordenadas por alcance
+              <p className="text-txt4 text-[12px] mt-1">Ordenadas por alcance.</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
-            ${platforms.map(p => html`
-              <${PlatformCard}
-                key=${p}
-                name=${p}
-                stat=${D.by_platform[p]}
-                weekly=${dailyByPlatform ? null : D.by_plat_week[p]}
-                dailySeries=${dailyByPlatform ? dailyByPlatform[p] : null}
-                onClick=${() => handlePlatformClick(p)}
-                active=${filters.platforms.length === 1 && filters.platforms[0] === p} />
-            `)}
-          </div>
+          ${(() => {
+            // v57 — Comparar plataformas es la tarea: una tabla ordenada con la
+            // participación del alcance y una mini tendencia por fila se lee
+            // mejor que siete tarjetas sueltas.
+            const total = platforms.reduce((a, p) => a + (D.by_platform[p].reach || 0), 0);
+            const maxShare = Math.max(...platforms.map(p => (D.by_platform[p].reach || 0) / (total || 1)));
+            const seriesOf = (p) => dailyByPlatform ? dailyByPlatform[p].map(d => ({ v: d.reach })) :
+              Object.keys(D.by_plat_week[p] || {}).sort((a, b) => +a - +b).map(w => ({ v: D.by_plat_week[p][w].reach }));
+            return html`
+            <div className="rounded-2xl bg-surface p-2 md:p-3 overflow-x-auto">
+              <table className="w-full text-[13px] whitespace-nowrap">
+                <thead><tr>
+                  <th className="text-left py-2.5 px-3">Plataforma</th>
+                  <th className="text-right py-2.5 px-3">Posts</th>
+                  <th className="text-right py-2.5 px-3">Alcance</th>
+                  <th className="text-left py-2.5 px-3 w-[18%]">Parte del alcance</th>
+                  <th className="text-right py-2.5 px-3">Interacciones</th>
+                  <th className="text-right py-2.5 px-3">ER total</th>
+                  <th className="text-right py-2.5 px-3">ER básico</th>
+                  <th className="text-right py-2.5 px-3">VTR</th>
+                  <th className="text-left py-2.5 px-3 w-[140px]">${isDailyMode ? 'Alcance por día' : 'Alcance semanal'}</th>
+                </tr></thead>
+                <tbody>
+                  ${platforms.map(p => {
+                    const st = D.by_platform[p];
+                    const share = total ? (st.reach || 0) / total : 0;
+                    const active = filters.platforms.length === 1 && filters.platforms[0] === p;
+                    const ser = seriesOf(p);
+                    return html`<tr key=${p} onClick=${() => handlePlatformClick(p)} ...${kbd(() => handlePlatformClick(p), `Filtrar el dashboard a ${p}`)}
+                        title=${active ? 'Quitar el filtro de plataforma' : `Filtrar todo el dashboard a ${p}`}
+                        className=${"cursor-pointer transition-colors " + (active ? "bg-accent2/[0.07]" : "hover:bg-onSurface/[0.03]")}>
+                      <td className="py-3 px-3"><span className="inline-flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full shrink-0" style=${{ background: PLAT_COLORS[p] }}></span><span className="text-txt">${p}</span>${active && html`<span className="text-[11px] text-accent2">filtrada</span>`}</span></td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt3">${fmtFull(st.posts)}</td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt">${fmtFull(st.reach)}</td>
+                      <td className="py-3 px-3"><div className="flex items-center gap-3"><div className="flex-1 h-1.5 rounded-full bg-onSurface/[0.06] overflow-hidden"><div className="h-full rounded-full" style=${{ width: (maxShare ? share / maxShare * 100 : 0) + '%', background: 'rgb(var(--c-txt) / 0.45)' }}></div></div><span className="tabular-nums text-txt3 w-9 text-right">${(share * 100).toFixed(0)}%</span></div></td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt2">${fmtFull(st.inter)}</td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt2">${erFmt(st.er_avg)}</td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt">${st.basic_er_avg > 0 ? erFmt(st.basic_er_avg) : '—'}</td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt2">${st.vtr_avg > 0 ? erFmt(st.vtr_avg) : '—'}</td>
+                      <td className="py-1.5 px-3"><div style=${{ width: 130, height: 28 }}>${ser.length > 1 ? html`
+                        <${ResponsiveContainer} width="100%" height="100%"><${LineChart} data=${ser} margin=${{ top: 3, right: 2, left: 2, bottom: 3 }}>
+                          <${YAxis} hide domain=${[0, 'dataMax']} /><${Line} type="linear" dataKey="v" stroke=${PLAT_COLORS[p]} strokeWidth=${1.4} dot=${false} isAnimationActive=${false} />
+                        <//><//>` : ''}</div></td>
+                    </tr>`;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[12px] text-txt4 mt-3">Clic en una plataforma para filtrar todo el dashboard. La barra compara su parte del alcance contra la plataforma líder.</p>`;
+          })()}
         </section>`;
     }
 
@@ -3849,10 +3758,10 @@
               <thead>
                 <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">
                   <th scope="col" className="text-left py-2.5 px-4 font-medium">#</th>
-                  <th scope="col" className="text-left py-2.5 px-4 font-medium">Plat.</th>
+                  <th scope="col" className="text-left py-2.5 px-4 font-medium">Plataforma</th>
                   <th className="text-left py-2.5 px-4 font-medium">Fecha</th>
                   <th className="text-left py-2.5 px-4 font-medium">Sem.</th>
-                  <th scope="col" className="text-left py-2.5 px-4 font-medium">Pauta</th>
+                  ${pautaSel === 'all' && html`<th scope="col" className="text-left py-2.5 px-4 font-medium">Pauta</th>`}
                   <th className="text-left py-2.5 px-4 font-medium">Formato</th>
                   <th className="text-left py-2.5 px-4 font-medium">Producto</th>
                   <th className="text-left py-2.5 px-4 font-medium">Campaña</th>
@@ -3877,17 +3786,14 @@
                         ...${kbd(() => onPick(p), `Ver detalle: ${p.format || 'post'} de ${p.platform}, ${dateShort(p.date)}`)}
                         className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors group">
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt4 group-hover:text-txt2">${i+1}</td>
-                      <td className="py-2.5 px-4">
-                        <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded"
-                              style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
-                      </td>
+                      <td className="py-2.5 px-4"><span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="w-2 h-2 rounded-full" style=${{ background: color }}></span>${p.platform}</span></td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3 whitespace-nowrap">${dateShort(p.date)}</td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">${p.wk ? html`<button onClick=${(e) => { e.stopPropagation(); toggleWeekFilter(setFilters, p.wk); }} title="Ver esa semana" className="hover:text-accent hover:underline">S${p.week}</button>` : 'S—'}</td>
-                      <td className="py-2.5 px-4 text-[11px] whitespace-nowrap">
+                      ${pautaSel === 'all' && html`<td className="py-2.5 px-4 text-[11px] whitespace-nowrap">
                         ${p.strategy
                           ? html`<span className=${"rounded-full px-2 py-0.5 " + (isPaid(p) ? "bg-accent2/12 text-accent2" : "bg-onSurface/[0.06] text-txt3")}>${isPaid(p) ? 'Pauta' : p.strategy}</span>`
                           : html`<span className="text-amber">Sin pauta</span>`}
-                      </td>
+                      </td>`}
                       <td className="py-2.5 px-4 text-[12px] text-txt2">${p.format || '—'}</td>
                       <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.product ? `Filtrar por ${p.product}` : ''}>
                         ${p.product ? html`<button onClick=${cellFilter(setFilters, 'products', p.product)} className="hover:text-accent hover:underline text-left truncate max-w-full">${p.product}</button>` : html`<span className="text-faint">—</span>`}
@@ -3897,7 +3803,7 @@
                       </td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt">${fmt(p.reach)}</td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt2">${fmt(p.interactions)}</td>
-                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px]" style=${{ color }}>${erFmt(p.er)}</td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt2">${erFmt(p.er)}</td>
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[12px] text-txt3">
                         ${p.basic_er != null ? erFmt(p.basic_er) : html`<span className="text-faint italic" title="Sin dato">—</span>`}
                       </td>
@@ -4009,54 +3915,24 @@
             <div>
               <h2 className="text-[18px] font-medium text-txt">VTR · Video Through Rate</h2>
             </div>
-            <div className="text-[11px] font-mono text-txt4">${vtr.totalVideos} videos · stories excluidas</div>
+
           </div>
 
-          <!-- KPI general -->
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-            <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">VTR general</div>
-              <div className="text-[28px] font-medium text-accent tabular-nums leading-none break-all">${erFmt(vtr.general.vtr)}</div>
-              <div className="text-[11px] font-mono text-txt4 mt-2">promedio aritmético</div>
+          <div className="rounded-2xl bg-surface p-6 md:p-7 mb-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-8 gap-y-6">
+              ${[
+                ['VTR', erFmt(vtr.general.vtr), 'ponderado por reproducciones', true],
+                ['Videos', fmtFull(vtr.totalVideos), 'sin Stories'],
+                ['Reproducciones', fmtFull(vtr.general.views), ''],
+                ['VTR · videos ≤ 30 s', erFmt(vtr.byDuration.short.vtr), `${fmtFull(vtr.byDuration.short.n)} videos · ${vtr.byDuration.short.duration_avg != null ? vtr.byDuration.short.duration_avg.toFixed(0) + ' s prom.' : ''}`],
+                ['VTR · videos > 30 s', erFmt(vtr.byDuration.long.vtr), `${fmtFull(vtr.byDuration.long.n)} videos · ${vtr.byDuration.long.duration_avg != null ? vtr.byDuration.long.duration_avg.toFixed(0) + ' s prom.' : ''}`],
+              ].map(([l, v, sub, big]) => html`<div key=${l} className="min-w-0">
+                <div className="text-[13px] text-txt3">${l}</div>
+                <div className="text-txt tabular-nums mt-1.5" style=${{ fontSize: big ? 'clamp(24px, 2.3vw, 34px)' : 'clamp(20px, 1.8vw, 26px)', fontWeight: 500, lineHeight: 1.05, letterSpacing: '-0.02em' }}>${v}</div>
+                ${sub && html`<div className="text-[12px] text-txt4 mt-2">${sub}</div>`}
+              </div>`)}
             </div>
-            <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Videos</div>
-              <div className="text-[28px] font-medium text-txt tabular-nums leading-none break-all">${fmtFull(vtr.totalVideos)}</div>
-              <div className="text-[11px] font-mono text-txt4 mt-2">en el filtro actual</div>
-            </div>
-            <div className="rounded-xl bg-surface border border-line p-5 min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Reproducciones</div>
-              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(18px, 2vw, 28px)' }}>${fmt(vtr.general.views)}</div>
-              <div className="text-[11px] font-mono text-txt4 mt-2">total views</div>
-            </div>
-          </div>
-
-          <!-- Por duración -->
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
-            ${['short', 'long'].map(k => {
-              const b = vtr.byDuration[k];
-              const isShort = k === 'short';
-              return html`
-                <div key=${k} className="rounded-xl bg-surface border border-line p-5">
-                  <div className="flex items-baseline justify-between mb-3">
-                    <div>
-                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">${isShort ? 'Videos cortos' : 'Videos largos'}</div>
-                      <div className="text-[15px] text-txt font-medium">${b.label}</div>
-                    </div>
-                    <div className="text-[11px] font-mono text-txt4">${b.n} videos</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-line">
-                    <div>
-                      <div className="text-[10px] font-mono text-txt4 mb-1">VTR</div>
-                      <div className="text-[18px] tabular-nums text-accent">${erFmt(b.vtr)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-mono text-txt4 mb-1">Dur. prom.</div>
-                      <div className="text-[18px] tabular-nums text-txt2">${b.duration_avg != null ? b.duration_avg.toFixed(0) + 's' : '—'}</div>
-                    </div>
-                  </div>
-                </div>`;
-            })}
+            <p className="text-[12px] text-txt4 mt-6">Aquí el VTR se pondera por reproducciones (los videos con más views pesan más). La meta de cuenta de 25% se mide con promedio simple por video: está en "KPIs de cuenta".</p>
           </div>
 
           <!-- Por plataforma -->
@@ -4084,12 +3960,12 @@
                       <tr key=${plat} className="border-b border-line/40 hover:bg-onSurface/[0.02] transition-colors">
                         <td className="py-2.5 pr-3">
                           <div className="flex items-center gap-2.5">
-                            <span className="w-6 h-6 rounded-md flex items-center justify-center text-[9px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[plat]}</span>
+                            <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
                             <span className="text-txt text-[13px] font-sans">${plat}</span>
                           </div>
                         </td>
                         <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${b.n}</td>
-                        <td className="text-right py-2.5 px-3 tabular-nums text-accent">${erFmt(b.vtr)}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums text-txt">${erFmt(b.vtr)}</td>
                         <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(b.views)}</td>
                         <td className="text-right py-2.5 pl-3 tabular-nums text-txt3">${b.duration_avg != null ? b.duration_avg.toFixed(0) + 's' : '—'}</td>
                       </tr>`;
@@ -4130,7 +4006,7 @@
                           <td className="py-2.5 pr-3 text-txt4 tabular-nums">${i + 1}</td>
                           <td className="py-2.5 pr-3">
                             <div className="flex items-center gap-2">
-                              <span className="w-5 h-5 rounded flex items-center justify-center text-[8px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
+                              <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
                               <span className="text-txt2 text-[12px] font-sans">${p.platform}</span>
                             </div>
                           </td>
@@ -4138,7 +4014,7 @@
                           <td className="py-2.5 pr-3 text-txt3 font-sans truncate max-w-[220px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
                           <td className="text-right py-2.5 px-3 tabular-nums text-txt3">${p.duration != null ? p.duration + 's' : '—'}</td>
                           <td className="text-right py-2.5 px-3 tabular-nums text-txt2">${fmt(p.views)}</td>
-                          <td className="text-right py-2.5 px-3 tabular-nums text-accent font-medium">${erFmt(p.vtr)}</td>
+                          <td className="text-right py-2.5 px-3 tabular-nums text-txt font-medium">${erFmt(p.vtr)}</td>
                           <td className="text-right py-2.5 pl-3"><${PostLink} p=${p} /></td>
                         </tr>`;
                     })}
@@ -4233,28 +4109,16 @@
           <div className="flex items-baseline justify-between mb-5">
             <div>
               <h2 className="text-[18px] font-medium text-txt">Promedios por publicación</h2>
-              <p className="text-txt4 text-[12px] mt-1">Total dividido entre número de posts. Ordenable por columna.</p>
+              <p className="text-txt4 text-[12px] mt-1">Total dividido entre número de posts (${fmtFull(g.posts)} en el filtro). Las tablas se ordenan por columna.</p>
             </div>
-            <div className="text-[11px] font-mono text-txt4">${g.posts} posts en el filtro</div>
           </div>
 
-          <!-- KPI row de promedios globales -->
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-3">
-            <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Alcance promedio</div>
-              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmt(g.reach_per_post)}</div>
-              <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
-            </div>
-            <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Interacciones promedio</div>
-              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmt(g.inter_per_post)}</div>
-              <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
-            </div>
-            <div className="rounded-xl bg-surface border border-line px-5 py-4 min-w-0">
-              <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Reproducciones promedio</div>
-              <div className="font-medium text-txt tabular-nums leading-tight break-all" style=${{ fontSize: 'clamp(16px, 1.8vw, 24px)' }}>${fmt(g.views_per_post)}</div>
-              <div className="text-[10px] font-mono text-faint mt-2">por publicación</div>
-            </div>
+          <div className="rounded-2xl bg-surface p-6 md:p-7 grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-6 mb-3">
+            ${[['Alcance por publicación', g.reach_per_post], ['Interacciones por publicación', g.inter_per_post], ['Reproducciones por publicación', g.views_per_post]].map(([l, v]) => html`
+              <div key=${l} className="min-w-0">
+                <div className="text-[13px] text-txt3">${l}</div>
+                <div className="text-txt tabular-nums mt-1.5" style=${{ fontSize: 'clamp(20px, 1.8vw, 26px)', fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.015em' }}>${fmtFull(v)}</div>
+              </div>`)}
           </div>
 
           <!-- Tablas: por plataforma + por formato -->
@@ -4726,7 +4590,7 @@
                       <td className="py-2.5 pr-3">
                         ${color ? html`
                           <div className="flex items-center gap-2.5">
-                            <span className="w-5 h-5 rounded flex items-center justify-center text-[9px] text-white font-medium" style=${{ background: color }}>${PLAT_LETTERS[r.name]}</span>
+                            <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
                             <span className="text-txt text-[13px] font-sans">${r.name}</span>
                           </div>` : html`
                           <span className="text-txt text-[13px] font-sans truncate inline-block max-w-[200px]" title=${r.name}>${r.name}</span>
@@ -4892,7 +4756,7 @@
         <tr onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver anomalía: post de ${p.platform}`)}
             className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors group">
           <td className="py-2.5 px-4">
-            <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: color }}>${PLAT_LETTERS[p.platform]}</span>
+            <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>${p.platform}</span>
           </td>
           <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
           <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
@@ -5308,7 +5172,7 @@
                   <div key=${pp.platform} className="py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-2 text-[12px] text-txt2">
-                        <span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[pp.platform] }}>${PLAT_LETTERS[pp.platform]}</span>
+                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[pp.platform] }}></span>
                         ${pp.platform}
                       </span>
                       <span className="text-[12px] tabular-nums ${''}">
@@ -5316,7 +5180,7 @@
                       </span>
                     </div>
                     <div className="text-[10px] font-mono text-txt4 mt-0.5 pl-8">
-                      ${pp.n} posts · donde más publican: ${pp.busiest && pp.busiest.n ? bandLabel(pp.busiest.b) : '—'}${pp.worst ? ` · más bajo: ${bandLabel(pp.worst.b)} ${idxTxt(pp.worst.idx)}` : ''}
+                      <span className="whitespace-nowrap">${pp.n} posts</span> · <span className="whitespace-nowrap">donde más publican: ${pp.busiest && pp.busiest.n ? bandLabel(pp.busiest.b) : '—'}</span>
                     </div>
                   </div>`)}
               </div>
@@ -5435,7 +5299,7 @@
                   <thead><tr><th className="text-left py-2 px-2">Plataforma</th><th className="text-right py-2 px-2">Videos</th><th className="text-right py-2 px-2">VTR prom.</th><th className="text-right py-2 px-2">Cumplen solos</th><th className="text-right py-2 px-2">Estado</th></tr></thead>
                   <tbody>
                     ${plats.map(r => html`<tr key=${r.pl}>
-                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[r.pl] }}>${PLAT_LETTERS[r.pl]}</span>${r.pl}</span></td>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[r.pl] }}></span>${r.pl}</span></td>
                       <td className="py-2 px-2 text-right tabular-nums">${fmtFull(r.n)}</td>
                       <td className=${"py-2 px-2 text-right tabular-nums " + (r.v >= KPI_VTR_MIN ? 'text-success' : 'text-amber')}>${pctTxt(r.v)}</td>
                       <td className="py-2 px-2 text-right tabular-nums text-txt3">${Math.round(r.ok / r.n * 100)}%</td>
@@ -5564,60 +5428,40 @@
           : state.error ? html`<div className="rounded-xl bg-surface p-6 text-[12px] text-amber">No se pudo leer la pestaña Followers: ${state.error}</div>`
           : html`
             ${!rows.length && html`<div className="rounded-xl bg-surface p-6 text-[12px] text-txt4 mb-3">No hay cuentas de ${platSel ? folPlatTxt(platSel) : 'esta selección'} en la pestaña Followers.</div>`}
-            <div className=${"grid grid-cols-1 gap-3 mb-3 " + (rows.length >= 4 ? "sm:grid-cols-2 xl:grid-cols-4" : rows.length === 3 ? "sm:grid-cols-3" : rows.length === 2 ? "sm:grid-cols-2" : "")}>
-              ${rows.map(r => html`
-                <div key=${r.name} className="rounded-xl bg-surface px-4 py-4 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="inline-flex items-center gap-2 text-[13px] text-txt2 min-w-0">
-                      <span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded shrink-0" style=${{ background: r.color }}>${FOL_LETTERS(r.name)}</span>
-                      <span className="truncate">${r.label}</span>
-                    </span>
-                    ${r.goalPct != null && html`<span className="text-[10px] rounded-full bg-accent2/10 text-accent px-2 py-0.5 whitespace-nowrap" title="Avance de la meta 2026 de followers">Meta ${r.goalPct.toFixed(1)}%</span>`}
-                  </div>
-                  <div className="text-[22px] font-medium text-txt tabular-nums leading-tight">${fmtFull(r.cur)}</div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[12px] tabular-nums">
-                    <span className=${r.wow == null ? 'text-txt4' : r.wow >= 0 ? 'text-success' : 'text-amber'}>${sgn(r.wow)} <span className="text-txt4">vs S${W - 1}</span></span>
-                    <span className=${r.ytd == null ? 'text-txt4' : r.ytd >= 0 ? 'text-success' : 'text-amber'}>${r.ytdPct == null ? '—' : `${r.ytdPct >= 0 ? '+' : ''}${r.ytdPct.toFixed(2)}%`} <span className="text-txt4">en el año</span></span>
-                  </div>
-                  <div className="h-10 mt-2">
-                    <${ResponsiveContainer} width="100%" height="100%">
-                      <${LineChart} data=${r.spark} margin=${{ top: 4, right: 2, left: 2, bottom: 2 }}>
-                        <${YAxis} hide domain=${['dataMin', 'dataMax']} />
-                        <${Line} type="monotone" dataKey="v" stroke=${r.color} strokeWidth=${1.6} dot=${false} isAnimationActive=${false} />
-                      <//>
-                    <//>
-                  </div>
-                </div>`)}
-            </div>
-            ${rows.length > 1 && html`<div className="rounded-2xl bg-surface p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <div className="text-[15px] font-medium text-txt">${mode === 'pct' ? 'Crecimiento desde la S1 (%)' : 'Followers ganados desde la S1'}</div>
-                <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Escala">
-                  ${[['pct', 'Crecimiento %'], ['abs', 'Followers ganados']].map(([k, l]) => html`
-                    <button key=${k} role="radio" aria-checked=${mode === k} onClick=${() => setMode(k)}
-                            className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (mode === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
-                </div>
-              </div>
-              <div style=${{ height: 280 }}>
-                <${ResponsiveContainer} width="100%" height="100%">
-                  <${LineChart} data=${chart} margin=${{ top: 8, right: 12, left: 4, bottom: 0 }}>
-                    <${CartesianGrid} vertical=${false} />
-                    <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} interval="preserveStartEnd" minTickGap=${18} />
-                    <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${mode === 'pct' ? 48 : 80}
-                              tickFormatter=${mode === 'pct' ? (v) => `${v.toFixed(0)}%` : (v) => fmt(v)} />
-                    <${Tooltip} contentStyle=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, fontSize: 11, color: ct.tooltipText }}
-                      labelStyle=${{ color: ct.tooltipLabel }}
-                      formatter=${(v, n) => [v == null ? '—' : mode === 'pct' ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : `${v >= 0 ? '+' : ''}${fmtFull(v)}`, FOL_ACCOUNT_LABEL(n)]}
-                      itemSorter=${(it) => -(it.value || 0)} />
-                    <${ReferenceLine} y=${0} stroke=${ct.axis} strokeOpacity=${0.5} />
-                    ${(F ? F.series : []).map(({ name }) => html`
-                      <${Line} key=${name} type="monotone" dataKey=${name} name=${name} stroke=${FOL_ACCOUNT_COLOR(name)} strokeWidth=${1.8} dot=${false} connectNulls />`)}
-                  <//>
-                <//>
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
-                ${rows.map(r => html`<span key=${r.name} className="inline-flex items-center gap-1.5 text-[11px] text-txt3"><span className="w-3 h-0.5 rounded" style=${{ background: r.color }}></span>${r.label}</span>`)}
-              </div>
+            ${rows.length > 0 && html`<div className="rounded-2xl bg-surface p-2 md:p-3 overflow-x-auto">
+              <table className="w-full text-[13px] whitespace-nowrap">
+                <thead><tr>
+                  <th className="text-left py-2.5 px-3">Cuenta</th>
+                  <th className="text-right py-2.5 px-3">Followers</th>
+                  <th className="text-right py-2.5 px-3">vs S${W - 1}</th>
+                  <th className="text-right py-2.5 px-3">Ganados en ${PRESS_YEAR}</th>
+                  <th className="text-left py-2.5 px-3 w-[22%]">Crecimiento en el año</th>
+                  <th className="text-right py-2.5 px-3">Meta 2026</th>
+                  <th className="text-left py-2.5 px-3 w-[140px]">Tendencia</th>
+                </tr></thead>
+                <tbody>
+                  ${(() => { const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.ytdPct || 0)));
+                    return rows.map(r => html`<tr key=${r.name}>
+                      <td className="py-3 px-3"><span className="inline-flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full shrink-0" style=${{ background: r.color }}></span><span className="text-txt">${r.label}</span></span></td>
+                      <td className="py-3 px-3 text-right tabular-nums text-txt">${fmtFull(r.cur)}</td>
+                      <td className=${"py-3 px-3 text-right tabular-nums " + (r.wow == null ? 'text-txt4' : r.wow >= 0 ? 'text-txt2' : 'text-amber')}>${sgn(r.wow)}</td>
+                      <td className=${"py-3 px-3 text-right tabular-nums " + (r.ytd == null ? 'text-txt4' : r.ytd >= 0 ? 'text-txt2' : 'text-amber')}>${sgn(r.ytd)}</td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-1.5 rounded-full bg-onSurface/[0.06] overflow-hidden">
+                            <div className="h-full rounded-full" style=${{ width: Math.abs(r.ytdPct || 0) / maxAbs * 100 + '%', background: (r.ytdPct || 0) >= 0 ? 'rgb(var(--c-success) / 0.75)' : 'rgb(var(--c-amber) / 0.8)' }}></div>
+                          </div>
+                          <span className=${"tabular-nums w-14 text-right " + ((r.ytdPct || 0) >= 0 ? 'text-txt2' : 'text-amber')}>${r.ytdPct == null ? '—' : `${r.ytdPct >= 0 ? '+' : ''}${r.ytdPct.toFixed(1)}%`}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-right tabular-nums">${r.goalPct != null ? html`<span className=${r.goalPct >= 100 ? 'text-success' : 'text-txt2'}>${r.goalPct.toFixed(1)}%</span>` : html`<span className="text-txt4">sin meta</span>`}</td>
+                      <td className="py-1.5 px-3"><div style=${{ width: 130, height: 28 }}>
+                        <${ResponsiveContainer} width="100%" height="100%"><${LineChart} data=${r.spark} margin=${{ top: 3, right: 2, left: 2, bottom: 3 }}>
+                          <${YAxis} hide domain=${['dataMin', 'dataMax']} /><${Line} type="linear" dataKey="v" stroke=${r.color} strokeWidth=${1.4} dot=${false} isAnimationActive=${false} />
+                        <//><//></div></td>
+                    </tr>`); })()}
+                </tbody>
+              </table>
             </div>`}`}
           <${FollowerGoalsSection} embedded fetchedAt=${fetchedAt} chartTheme=${chartTheme} platforms=${platSel} />
         </section>`;
@@ -5685,9 +5529,9 @@
       const vsCls = (d) => d == null ? 'text-txt4' : d >= 0 ? 'text-success' : 'text-amber';
       const Stat = ({ l, i, b, f, per }) => {
         const d = ratio(i, b);
-        return html`<div className="rounded-xl bg-surface px-4 py-4 min-w-0">
-          <div className="text-[12px] text-txt3 mb-1.5">${l}</div>
-          <div className="text-[22px] font-medium text-txt tabular-nums leading-tight">${f(i)}</div>
+        return html`<div className="min-w-0">
+          <div className="text-[13px] text-txt3 mb-1.5">${l}</div>
+          <div className="text-txt tabular-nums" style=${{ fontSize: 'clamp(20px, 1.8vw, 26px)', fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.015em' }}>${f(i)}</div>
           <div className="text-[12px] mt-1.5 tabular-nums"><span className=${vsCls(d)}>${vsTxt(d)}</span> <span className="text-txt4">vs marca${per ? ' por post' : ''} (${f(b)})</span></div>
         </div>`;
       };
@@ -5699,10 +5543,10 @@
             <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Contenido marcado como influencer en ${plats.length ? plats.join(', ') : 'ninguna plataforma de este filtro'}. Se compara contra el contenido de marca de la misma plataforma y formato, para comparar peras con peras.</p>
           </div>
           ${!infl.length ? html`<div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">No hay contenido de influencers en el filtro actual.</div>` : html`
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
-              <div className="rounded-xl bg-surface px-4 py-4">
-                <div className="text-[12px] text-txt3 mb-1.5">Posts de influencers</div>
-                <div className="text-[22px] font-medium text-txt tabular-nums leading-tight">${fmtFull(I.posts)}</div>
+            <div className="rounded-2xl bg-surface p-6 md:p-7 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6 mb-3">
+              <div className="min-w-0">
+                <div className="text-[13px] text-txt3 mb-1.5">Posts de influencers</div>
+                <div className="text-txt tabular-nums" style=${{ fontSize: 'clamp(20px, 1.8vw, 26px)', fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.015em' }}>${fmtFull(I.posts)}</div>
                 <div className="text-[12px] text-txt4 mt-1.5">${ranking.length} influencers · ${infl.filter(isPaidP).length} con pauta · ${(I.posts / Math.max(1, I.posts + B.posts) * 100).toFixed(0)}% de su segmento</div>
               </div>
               <${Stat} l="Alcance por post" i=${I.reach_per_post} b=${B && B.reach_per_post} f=${fmtFull} per />
@@ -5723,7 +5567,7 @@
                   </tr></thead>
                   <tbody>
                     ${byPlat.map(({ pl, i, b }) => html`<tr key=${pl}>
-                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[pl] }}>${PLAT_LETTERS[pl]}</span>${pl}</span></td>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[pl] }}></span>${pl}</span></td>
                       <td className="py-2 px-2 text-right tabular-nums">${i.posts}</td>
                       <td className="py-2 px-2 text-right tabular-nums">${fmtFull(i.reach_per_post)}<div className=${"text-[10px] " + vsCls(ratio(i.reach_per_post, b && b.reach_per_post))}>${vsTxt(ratio(i.reach_per_post, b && b.reach_per_post))} vs marca</div></td>
                       <td className="py-2 px-2 text-right tabular-nums">${erFmt(i.basic_er_avg)}<div className=${"text-[10px] " + vsCls(ratio(i.basic_er_avg, b && b.basic_er_avg))}>${vsTxt(ratio(i.basic_er_avg, b && b.basic_er_avg))} vs marca</div></td>
@@ -6386,7 +6230,7 @@
                     return html`
                       <tr key=${key} className="border-b border-line/50 last:border-0">
                         <td className="py-2.5 px-4">
-                          <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[g.platform] }}>${PLAT_LETTERS[g.platform]}</span>
+                          <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[g.platform] }}></span>${g.platform}</span>
                         </td>
                         <td className="py-2.5 px-4 text-[12px] text-txt2">${g.format}</td>
                         <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[11px]">
@@ -6566,8 +6410,7 @@
                  style=${{ boxShadow: '-20px 0 40px rgba(0,0,0,0.4)' }}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-line">
               <div className="flex items-center gap-2.5">
-                <span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded"
-                      style=${{ background: color }}>${PLAT_LETTERS[post.platform]}</span>
+                <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
                 <span className="text-[14px] text-txt font-medium">${post.platform}</span>
               </div>
               <button onClick=${onClose} aria-label="Cerrar detalle" autoFocus
@@ -7154,7 +6997,7 @@
         <article className="rounded-xl bg-surface border border-line p-5 min-w-0 flex flex-col" aria-label=${`Meta de followers ${g.name}`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
-              ${PLAT_LETTERS[g.name] && html`<span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: color }}>${PLAT_LETTERS[g.name]}</span>`}
+              ${PLAT_LETTERS[g.name] && html`<span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>`}
               <span className="text-[14px] text-txt">${g.name}</span>
             </div>
             <span className=${"text-[10px] font-mono uppercase tracking-wider border rounded-full px-2 py-0.5 " + st.cls}>${st.label}</span>
@@ -7432,10 +7275,10 @@
 
     function QualityStat({ label, value, hint, warn }) {
       return html`
-        <div className=${"rounded-xl bg-surface border px-4 py-3.5 min-w-0 " + (warn ? 'border-amber/40' : 'border-line')}>
-          <div className=${"text-[9px] font-mono uppercase tracking-[0.18em] mb-1.5 " + (warn ? 'text-amber' : 'text-txt4')}>${label}</div>
-          <div className=${"text-[22px] font-medium tabular-nums leading-none " + (warn ? 'text-amber' : 'text-success')}>${value}</div>
-          <div className="text-[10px] text-txt4 mt-1.5">${hint}</div>
+        <div className="min-w-0">
+          <div className="text-[13px] text-txt3">${label}</div>
+          <div className=${"text-[26px] font-medium tabular-nums leading-none mt-2 " + (warn ? 'text-amber' : 'text-txt4')}>${value}</div>
+          <div className="text-[12px] text-txt4 mt-2 leading-snug">${hint}</div>
         </div>`;
     }
 
@@ -7473,7 +7316,7 @@
               </div>`}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
+          <div className="rounded-2xl bg-surface p-6 md:p-7 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-x-8 gap-y-6 mb-4">
             <${QualityStat} label="Links duplicados" value=${c.duplicados} warn=${c.duplicados > 0} hint="El mismo post capturado más de una vez" />
             <${QualityStat} label="Campos mal llenados" value=${c.campos} warn=${c.campos > 0} hint="Fecha, semana, mes, formato, link o escritura" />
             <${QualityStat} label="Sin métricas" value=${c.sinMetricas} warn=${c.sinMetricas > 0} hint="Sin alcance, impresiones, interacciones ni views" />
@@ -7534,7 +7377,7 @@
                     ${shown.slice(0, limit).map(({ post: p, tags }, i) => html`
                       <tr key=${i} onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver post de ${p.platform}, ${dateShort(p.date)}`)}
                           className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors">
-                        <td className="py-2 px-4"><span className="font-mono text-[10px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[p.platform] }}>${PLAT_LETTERS[p.platform]}</span></td>
+                        <td className="py-2 px-4"><span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[p.platform] }}></span>${p.platform}</span></td>
                         <td className="py-2 px-4 font-mono text-[11px] text-txt3 whitespace-nowrap">${dateShort(p.date)}</td>
                         <td className="py-2 px-4 text-[12px] text-txt2">${p.format || html`<span className="text-faint">—</span>`}</td>
                         <td className="py-2 px-4 text-[12px] text-txt3 truncate max-w-[180px]" title=${p.campaign || ''}>${p.campaign || html`<span className="text-faint">—</span>`}</td>
@@ -8814,8 +8657,8 @@
               </div>
             ` : html`
               <main>
-                <${HeroSection} D=${D} chartTheme=${chartTheme} setFilters=${setFilters}
-                  kpis=${html`<${KpiRow} embedded D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>`} />
+                <${HeroSection} D=${D}
+                  kpis=${html`<${KpiRow} D=${D} onTrace=${(key) => setKpiTrace(computeKpiTrace(D, key))} rawPosts=${allPosts} filters=${filters}/>`} />
                 <${InsightsPanel}  D=${D}/>
                 <${KpiCuentaSection} D=${D} chartTheme=${chartTheme} filters=${filters} onPick=${setSelected}/>
                 <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
