@@ -1427,7 +1427,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-21-v49';
+    const BUILD_VERSION = '2026-10-22-v50';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2044,7 +2044,7 @@
       { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
     ];
 
-    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0, openGroups = {}, onOpenGroup, onNavigate }) {
+    function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0, openGroups = {}, onOpenGroup, onNavigate, hiddenIds = [] }) {
       const [active, setActive] = useState('resumen');
 
       // Scroll-spy: el nav resaltaba solo al hacer clic, pero se
@@ -2063,7 +2063,7 @@
         }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
         els.forEach(el => observer.observe(el));
         return () => observer.disconnect();
-      }, [JSON.stringify(openGroups)]);
+      }, [JSON.stringify(openGroups), hiddenIds.join()]);
 
       const scrollTo = (id) => {
         setActive(id);
@@ -2146,7 +2146,7 @@
             `}
             ${collapsed && gi > 0 && html`<div className="mx-auto w-5 h-px bg-line2 mb-2" aria-hidden="true"></div>`}
             <div className="flex flex-col gap-0.5">
-              ${NAV_ITEMS.filter(n => n.group === grp.key).map(({ id, label, Icon }) => {
+              ${NAV_ITEMS.filter(n => n.group === grp.key && !hiddenIds.includes(n.id)).map(({ id, label, Icon }) => {
                 const isOn = active === id;
                 return html`
                   <button key=${id} onClick=${() => scrollTo(id)}
@@ -5595,9 +5595,15 @@
     // (compartidos y guardados), followers ganados y atributos (audio,
     // subtítulos, IA). Respeta los filtros de periodo, pauta y contenido.
     // ============================================================
+    // Detección tolerante a mayúsculas, acentos y variantes ("stay and play",
+    // "Stay&Play", "TENDENCIA"): así un post mal escrito no se pierde del
+    // análisis. Calidad de datos lista las variantes para estandarizarlas.
+    const RX_STAY = /stay\s*(?:&|and|y|n|\+|-)?\s*play/;
+    const RX_TEND = /tendencia/;
+    const ttTxt = (p) => foldTxt(`${p.campaign || ''} ${p.subcampaign || ''}`);
     const TT_GROUPS = [
-      { k: 'tend', l: 'Tendencia',   color: '#F0B358', test: (p) => /tendencia/i.test(`${p.campaign || ''} ${p.subcampaign || ''}`) },
-      { k: 'stay', l: 'Stay & Play', color: '#5DCAA5', test: (p) => /stay\s*(&|and|y)\s*play/i.test(`${p.campaign || ''} ${p.subcampaign || ''}`) },
+      { k: 'tend', l: 'Tendencia',   color: '#F0B358', test: (p) => RX_TEND.test(ttTxt(p)) },
+      { k: 'stay', l: 'Stay & Play', color: '#5DCAA5', test: (p) => RX_STAY.test(ttTxt(p)) },
     ];
     const ttGroupOf = (p) => (TT_GROUPS.find(g => g.test(p)) || { k: 'rest', l: 'Resto de TikTok', color: '#4C6EF5' });
     const TT_DUR = [[0, 10, '≤10 s'], [10, 15, '11–15 s'], [15, 30, '16–30 s'], [30, 60, '31–60 s'], [60, 1e9, '60+ s']];
@@ -5628,10 +5634,24 @@
       };
     }
 
-    function TikTokLabSection({ D, onPick, chartTheme }) {
+    const TT_MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const ttYes = (v) => /^s[ií]/i.test(String(v || '').trim());
+    const ttNo = (v) => /^no/i.test(String(v || '').trim());
+    const TT_QUADS = [
+      { k: 'q1', l: 'Retiene y conversa',     hint: 'VTR y ER arriba de la mediana', good: true },
+      { k: 'q2', l: 'Retiene, no conversa',   hint: 'Se ve completo, pero no genera interacción' },
+      { k: 'q3', l: 'Conversa, no retiene',   hint: 'Genera interacción, pero se abandona pronto' },
+      { k: 'q4', l: 'Ni retiene ni conversa', hint: 'Abajo de la mediana en ambas' },
+    ];
+
+    function TikTokLabSection({ D, onPick, chartTheme, rawPosts, filters }) {
       const ct = chartTheme || CHART_THEME.dark;
       const [scope, setScope] = useState('org');   // org | paid | all — peras con peras: la pauta infla alcance y baja tasas
-      const ttAll = (D.allPosts || []).filter(p => p.platform === 'TikTok');
+      const [span, setSpan] = useState('filtro');  // filtro | hist — histórico junta 2025 + 2026 para engrosar muestras chicas
+      const [evoMetric, setEvoMetric] = useState('vtr');
+      const ttAll = (span === 'hist' && rawPosts
+        ? applyFilters(rawPosts, { ...filters, year: 'all', weeks: [], months: [] })
+        : (D.allPosts || [])).filter(p => p.platform === 'TikTok');
       const tt = ttAll.filter(p => scope === 'all' || (scope === 'paid') === isPaidP(p));
       const [focus, setFocus] = useState('all');   // all | tend | stay
       const groups = [...TT_GROUPS, { k: 'rest', l: 'Resto de TikTok', color: '#4C6EF5' }].map(g => {
@@ -5672,7 +5692,7 @@
         ['Comentarios por 1,000 de alcance', s => num1(s.commentsK), 'commentsK'],
         ['Nuevos seguidores por post', s => fmtFull(s.follPP), 'follPP'],
       ];
-      const medBer = (() => { const a = tt.map(p => p.basic_er).filter(v => v != null).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; })();
+      const medBer = (() => { const a = tt.filter(p => !(p._flags || []).includes('er')).map(p => p.basic_er).filter(v => v != null).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; })();
       const medVtr = (() => { const a = tt.map(p => p.vtr).filter(v => v > 0).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; })();
       const reads = [];
       for (const g of groups.slice(0, 2)) {
@@ -5682,23 +5702,110 @@
       }
       if (bestB) reads.push(`En TikTok, los videos de ${bestB.l} retienen mejor: VTR promedio ${pct(bestB.vtr)} con ${bestB.n} videos.`);
 
+      // Matriz ER básico × VTR (cuadrantes por la mediana de TikTok)
+      const qPosts = tt.filter(p => p.vtr > 0 && p.basic_er != null && !(p._flags || []).includes('er'));
+      const quadOf = (p) => (p.vtr >= medVtr ? (p.basic_er >= medBer ? 'q1' : 'q2') : (p.basic_er >= medBer ? 'q3' : 'q4'));
+      const quadPts = (k) => qPosts.filter(p => ttGroupOf(p).k === k).map(p => ({ x: p.vtr, y: p.basic_er, p }));
+      const quadRows = groups.map(g => {
+        const list = qPosts.filter(p => ttGroupOf(p).k === g.k);
+        const c = { q1: 0, q2: 0, q3: 0, q4: 0 };
+        list.forEach(p => c[quadOf(p)]++);
+        return { ...g, total: list.length, c };
+      });
+      const yCap = (() => { const a = qPosts.map(p => p.basic_er).sort((x, y) => x - y); if (!a.length) return 10; const v = a[Math.floor(a.length * 0.97)] || a[a.length - 1]; return Math.ceil(v * 1.1); })();
+      const offScale = qPosts.filter(p => p.basic_er > yCap).length;
+      for (const g of quadRows.slice(0, 2)) {
+        if (g.total < 3) continue;
+        const top = TT_QUADS.map(q => [q, g.c[q.k]]).sort((a, b) => b[1] - a[1])[0];
+        reads.push(`${g.l}: ${Math.round(top[1] / g.total * 100)}% de sus posts cae en "${top[0].l}".`);
+      }
+
+      // Evolución mensual (mes calendario)
+      const monthKey = (p) => { const d = parseDate(p.date); return d && !isNaN(d) ? d.getFullYear() * 100 + d.getMonth() + 1 : null; };
+      const evoStat = (list) => evoMetric === 'vtr' ? ttStats(list).vtr : ttStats(list).ber;
+      const evo = (() => {
+        const keys = [...new Set(tt.map(monthKey).filter(Boolean))].sort((a, b) => a - b);
+        const multiY = new Set(keys.map(k => Math.floor(k / 100))).size > 1;
+        return keys.map(k => {
+          const inM = tt.filter(p => monthKey(p) === k);
+          const st = inM.filter(p => ttGroupOf(p).k === 'stay'), te = inM.filter(p => ttGroupOf(p).k === 'tend');
+          return { k, label: TT_MES[k % 100 - 1] + (multiY ? ` '${String(Math.floor(k / 100)).slice(2)}` : ''),
+                   stay: st.length ? evoStat(st) : null, tend: te.length ? evoStat(te) : null, all: evoStat(inM),
+                   nStay: st.length, nTend: te.length, nAll: inM.length };
+        });
+      })();
+      const stayMonths = evo.filter(e => e.stay != null);
+      if (stayMonths.length >= 3) {
+        const h = Math.floor(stayMonths.length / 2);
+        const a = ttMean(stayMonths.slice(0, h).map(e => e.stay)), b = ttMean(stayMonths.slice(-h).map(e => e.stay));
+        const d = vs(b, a);
+        if (d != null) reads.push(`Stay & Play en el tiempo: su ${evoMetric === 'vtr' ? 'VTR' : 'ER básico'} de los meses recientes está ${Math.abs(d) < 5 ? 'estable' : `${Math.abs(d).toFixed(0)}% ${d > 0 ? 'arriba' : 'abajo'}`} vs. sus primeros meses.`);
+      }
+
+      // Receta ganadora: duración × audio × subtítulos
+      const recipe = (() => {
+        const m = new Map();
+        for (const p of tt) {
+          if (!(p.duration > 0) || !(p.vtr > 0) || (p._flags || []).includes('er')) continue;
+          const au = ttYes(p.audio) ? 1 : ttNo(p.audio) ? 0 : null, su = ttYes(p.subtitles) ? 1 : ttNo(p.subtitles) ? 0 : null;
+          if (au == null || su == null) continue;
+          const b = TT_DUR.find(([a, z]) => p.duration > a && p.duration <= z);
+          const key = `${b[2]}|${au}|${su}`;
+          if (!m.has(key)) m.set(key, { dur: b[2], au, su, list: [] });
+          m.get(key).list.push(p);
+        }
+        const MIN = 5;
+        return [...m.values()].filter(c => c.list.length >= MIN).map(c => {
+          const st = ttStats(c.list);
+          // Se ordena por la métrica más floja de las dos: premia lo que funciona en ambas, no lo que brilla en una y se cae en la otra
+          const score = Math.min((st.vtr || 0) / (base.vtr || 1), (st.ber || 0) / (base.ber || 1));
+          return { ...c, st, score, focusN: c.list.filter(p => ttGroupOf(p).k !== 'rest').length };
+        }).sort((a, b) => b.score - a.score).slice(0, 3);
+      })();
+      const recipeName = (r) => `${r.dur} · ${r.au ? 'con' : 'sin'} audio · ${r.su ? 'con' : 'sin'} subtítulos`;
+
       return html`
         <section id="sec-tiktok" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-tiktok" name="TikTok" />
           <div className="mb-5">
             <h2 className="text-[18px] font-medium text-txt">TikTok · Laboratorio creativo</h2>
             <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Solo TikTok. Foco en Tendencia y Stay & Play (según su campaña o subcampaña) contra el resto del contenido de TikTok. Por default compara solo orgánico: la pauta infla el alcance y baja las tasas, y estos contenidos son orgánicos.</p>
-            <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5 mt-3" role="radiogroup" aria-label="Pauta en TikTok">
-              ${[['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todo']].map(([k, l]) => html`
-                <button key=${k} role="radio" aria-checked=${scope === k} onClick=${() => setScope(k)}
-                        className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (scope === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+            <div className="flex flex-wrap gap-2 mt-3">
+              <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Pauta en TikTok">
+                ${[['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todo']].map(([k, l]) => html`
+                  <button key=${k} role="radio" aria-checked=${scope === k} onClick=${() => setScope(k)}
+                          className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (scope === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+              </div>
+              <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Periodo del laboratorio">
+                ${[['filtro', 'Periodo del filtro'], ['hist', 'Histórico 2025 + 2026']].map(([k, l]) => html`
+                  <button key=${k} role="radio" aria-checked=${span === k} onClick=${() => setSpan(k)}
+                          title=${k === 'hist' ? 'Ignora año, semana y mes para juntar más posts; respeta los demás filtros' : 'Usa el periodo seleccionado en los filtros'}
+                          className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (span === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+              </div>
             </div>
           </div>
           ${!tt.length ? html`<div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">No hay posts de TikTok en el filtro actual.</div>` : html`
             ${reads.length > 0 && html`<div className="rounded-xl bg-surface px-5 py-4 mb-3 space-y-1.5">
               ${reads.map((r, i) => html`<p key=${i} className="text-[13px] text-txt2 leading-snug">• ${r}</p>`)}
-              ${groups.slice(0, 2).some(g => g.s.n > 0 && g.s.n < 5) && html`<p className="text-[11px] text-txt4">Ojo: grupos con menos de 5 posts dan una lectura direccional, no concluyente.</p>`}
+              ${groups.slice(0, 2).some(g => g.s.n > 0 && g.s.n < 5) && html`<p className="text-[11px] text-txt4">Ojo: grupos con menos de 5 posts dan una lectura direccional, no concluyente.${span === 'filtro' ? ' Prueba "Histórico 2025 + 2026" para juntar más.' : ''}</p>`}
             </div>`}
+
+            <div className="rounded-xl bg-surface p-5 mb-3">
+              <div className="text-[13px] font-medium text-txt">Receta ganadora</div>
+              <div className="text-[11px] text-txt4 mb-3">La combinación de duración, audio y subtítulos que mejor sostiene VTR y ER básico a la vez, contra el promedio de TikTok. Se ordena por la más floja de las dos métricas, para premiar lo que funciona en ambas. Solo combinaciones con 5 videos o más.</div>
+              ${!recipe.length ? html`<div className="text-[12px] text-txt4">Aún no hay combinaciones con 5 videos o más en este filtro. Prueba "Histórico 2025 + 2026".</div>` : html`
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                  ${recipe.map((r, i) => html`<div key=${i} className=${"rounded-lg p-4 " + (i === 0 ? "bg-success/10" : "bg-onSurface/[0.03]")}>
+                    <div className=${"text-[10px] font-mono uppercase tracking-[0.15em] mb-1 " + (i === 0 ? "text-success" : "text-txt4")}>${i === 0 ? 'La que mejor funciona' : `Opción ${i + 1}`}</div>
+                    <div className="text-[14px] font-semibold text-txt leading-snug">${recipeName(r)}</div>
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-[12px]">
+                      <div><div className="text-txt4 text-[10px]">VTR</div><div className="tabular-nums text-txt">${pct(r.st.vtr)}</div><${Vs} v=${r.st.vtr} b=${base.vtr} /></div>
+                      <div><div className="text-txt4 text-[10px]">ER básico</div><div className="tabular-nums text-txt">${pct(r.st.ber)}</div><${Vs} v=${r.st.ber} b=${base.ber} /></div>
+                    </div>
+                    <div className="text-[11px] text-txt4 mt-2">${r.list.length} videos · ${r.focusN ? `${r.focusN} de Tendencia o Stay & Play` : 'ninguno de Tendencia o Stay & Play'}</div>
+                  </div>`)}
+                </div>`}
+            </div>
 
             <div className="rounded-xl bg-surface p-5 mb-3 overflow-x-auto">
               <div className="text-[13px] font-medium text-txt mb-3">Comparativo de grupos</div>
@@ -5739,8 +5846,8 @@
                           <div>Alcance ${fmtFull(p.reach)}</div></div>`;
                       }} />
                       ${medVtr != null && html`<${ReferenceLine} y=${medVtr} stroke="#888" strokeDasharray="4 4" label=${{ value: 'Mediana VTR', position: 'insideTopRight', fontSize: 10, fill: '#888' }} />`}
-                      <${Scatter} name="Resto de TikTok" data=${scatter('rest')} fill="#4C6EF5" fillOpacity=${0.25} onClick=${(d) => onPick && onPick(d.p)} />
-                      ${TT_GROUPS.map(g => html`<${Scatter} key=${g.k} name=${g.l} data=${scatter(g.k)} fill=${g.color} fillOpacity=${0.95} onClick=${(d) => onPick && onPick(d.p)} />`)}
+                      <${Scatter} name="Resto de TikTok" data=${scatter('rest')} fill="#4C6EF5" fillOpacity=${0.25} isAnimationActive=${false} onClick=${(d) => onPick && onPick(d.p)} />
+                      ${TT_GROUPS.map(g => html`<${Scatter} key=${g.k} name=${g.l} data=${scatter(g.k)} fill=${g.color} fillOpacity=${0.95} isAnimationActive=${false} onClick=${(d) => onPick && onPick(d.p)} />`)}
                     <//>
                   <//>
                 </div>
@@ -5780,6 +5887,88 @@
                   </tbody>
                 </table>
                 <div className="text-[11px] text-txt4 mt-2">Con menos de 10 posts en un lado, tómalo como referencia, no como regla.</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3 mb-3">
+              <div className="rounded-xl bg-surface p-5">
+                <div className="text-[13px] font-medium text-txt">Matriz ER básico × VTR</div>
+                <div className="text-[11px] text-txt4 mb-3">Cada punto es un video, dividido por la mediana de TikTok (VTR ${pct(medVtr)} · ER básico ${pct(medBer)}). Arriba a la derecha: retiene y conversa. Clic para abrir el post.</div>
+                <div className="relative" style=${{ height: 300 }}>
+                  ${[['top-1 right-3 text-right', 'q1'], ['bottom-9 right-3 text-right', 'q2'], ['top-1 left-14', 'q3'], ['bottom-9 left-14', 'q4']].map(([pos, k]) => {
+                    const q = TT_QUADS.find(x => x.k === k);
+                    return html`<div key=${k} className=${"absolute pointer-events-none z-10 text-[10px] font-medium " + pos + (q.good ? " text-success" : " text-txt4")}>${q.l}</div>`;
+                  })}
+                  <${ResponsiveContainer} width="100%" height="100%">
+                    <${ScatterChart} margin=${{ top: 18, right: 12, left: 0, bottom: 8 }}>
+                      <${CartesianGrid} vertical=${false} />
+                      <${XAxis} type="number" dataKey="x" name="VTR" unit="%" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} domain=${[0, 'auto']} />
+                      <${YAxis} type="number" dataKey="y" name="ER básico" unit="%" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${44} domain=${[0, yCap]} allowDataOverflow=${true} />
+                      <${ZAxis} range=${[60, 60]} />
+                      <${Tooltip} cursor=${{ strokeDasharray: '3 3' }} content=${({ active, payload }) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const p = payload[0].payload.p;
+                        return html`<div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, color: ct.tooltipText }}>
+                          <div style=${{ color: ct.tooltipLabel }}>${dateShort(p.date)} · ${ttGroupOf(p).l}</div>
+                          <div>${p.campaign || '—'}${p.subcampaign ? ' · ' + p.subcampaign : ''}</div>
+                          <div>VTR ${pct(p.vtr)} · ER básico ${pct(p.basic_er)} · ${p.duration ? p.duration + ' s' : 's/d'}</div>
+                          <div>${TT_QUADS.find(q => q.k === quadOf(p)).l}</div></div>`;
+                      }} />
+                      ${medVtr != null && html`<${ReferenceLine} x=${medVtr} stroke="#888" strokeDasharray="4 4" />`}
+                      ${medBer != null && html`<${ReferenceLine} y=${medBer} stroke="#888" strokeDasharray="4 4" />`}
+                      <${Scatter} name="Resto de TikTok" data=${quadPts('rest')} fill="#4C6EF5" fillOpacity=${0.25} isAnimationActive=${false} onClick=${(d) => onPick && onPick(d.p)} />
+                      ${TT_GROUPS.map(g => html`<${Scatter} key=${g.k} name=${g.l} data=${quadPts(g.k)} fill=${g.color} fillOpacity=${0.95} isAnimationActive=${false} onClick=${(d) => onPick && onPick(d.p)} />`)}
+                    <//>
+                  <//>
+                </div>
+                ${offScale > 0 && html`<div className="text-[10px] text-txt4 mt-1">${offScale} ${offScale === 1 ? 'video queda' : 'videos quedan'} arriba de la escala por su ER muy alto (cuentan en la tabla).</div>`}
+                <table className="w-full text-[12px] whitespace-nowrap mt-3">
+                  <thead><tr><th className="text-left py-2 px-2">Grupo</th>${TT_QUADS.map(q => html`<th key=${q.k} className="text-right py-2 px-2" title=${q.hint}>${q.l}</th>`)}</tr></thead>
+                  <tbody>
+                    ${quadRows.map(g => html`<tr key=${g.k}>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style=${{ background: g.color }}></span>${g.l}</span></td>
+                      ${TT_QUADS.map(q => html`<td key=${q.k} className=${"py-2 px-2 text-right tabular-nums " + (q.good && g.total && g.c[q.k] / g.total >= 0.25 ? 'text-success' : '')}>${g.total ? `${Math.round(g.c[q.k] / g.total * 100)}%` : '—'}<span className="text-txt4 text-[10px]"> · ${g.c[q.k]}</span></td>`)}
+                    </tr>`)}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="rounded-xl bg-surface p-5">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[13px] font-medium text-txt">Evolución mensual</div>
+                    <div className="text-[11px] text-txt4 mb-3">Stay & Play y Tendencia contra todo TikTok, mes a mes. Sirve para ver si el formato madura o se desgasta.</div>
+                  </div>
+                  <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Métrica">
+                    ${[['vtr', 'VTR'], ['ber', 'ER básico']].map(([k, l]) => html`
+                      <button key=${k} role="radio" aria-checked=${evoMetric === k} onClick=${() => setEvoMetric(k)}
+                              className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (evoMetric === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+                  </div>
+                </div>
+                ${evo.length < 2 ? html`<div className="text-[12px] text-txt4 py-10 text-center">Hace falta más de un mes en el filtro. Prueba "Histórico 2025 + 2026".</div>` : html`
+                <div style=${{ height: 300 }}>
+                  <${ResponsiveContainer} width="100%" height="100%">
+                    <${LineChart} data=${evo} margin=${{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                      <${CartesianGrid} vertical=${false} />
+                      <${XAxis} dataKey="label" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} interval="preserveStartEnd" />
+                      <${YAxis} unit="%" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${44} />
+                      <${Tooltip} content=${({ active, payload, label }) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const e = payload[0].payload;
+                        const row = (c, l, v, n) => html`<div style=${{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><span><span style=${{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: c, marginRight: 6 }}></span>${l}</span><span>${v == null ? '—' : pct(v)}${n ? ` · ${n} posts` : ''}</span></div>`;
+                        return html`<div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, color: ct.tooltipText, minWidth: 200 }}>
+                          <div style=${{ color: ct.tooltipLabel, marginBottom: 4 }}>${label} · ${evoMetric === 'vtr' ? 'VTR' : 'ER básico'}</div>
+                          ${row('#5DCAA5', 'Stay & Play', e.stay, e.nStay)}${row('#F0B358', 'Tendencia', e.tend, e.nTend)}${row('#888', 'Todo TikTok', e.all, e.nAll)}</div>`;
+                      }} />
+                      <${Line} type="monotone" dataKey="all" name="Todo TikTok" stroke="#888" strokeDasharray="4 4" strokeWidth=${1.5} dot=${false} isAnimationActive=${false} />
+                      <${Line} type="monotone" dataKey="stay" name="Stay & Play" stroke="#5DCAA5" strokeWidth=${2.5} dot=${{ r: 3 }} connectNulls=${true} isAnimationActive=${false} />
+                      <${Line} type="monotone" dataKey="tend" name="Tendencia" stroke="#F0B358" strokeWidth=${2.5} dot=${{ r: 4 }} connectNulls=${false} isAnimationActive=${false} />
+                    <//>
+                  <//>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                  ${[['#5DCAA5', 'Stay & Play'], ['#F0B358', 'Tendencia'], ['#888', 'Todo TikTok (punteada)']].map(([c, l]) => html`<span key=${l} className="inline-flex items-center gap-1.5 text-[11px] text-txt3"><span className="w-2.5 h-2.5 rounded-full" style=${{ background: c }}></span>${l}</span>`)}
+                </div>`}
               </div>
             </div>
 
@@ -6962,6 +7151,17 @@
             : `${label} escrito distinto: "${v}" (la mayoría usa "${w}")`);
         }
       }
+      // 2a) Clasificación creativa: Tendencia / Stay & Play escritos distinto
+      //     (el laboratorio de TikTok agrupa por este texto)
+      for (const p of all) {
+        for (const [f, label] of [['campaign', 'Campaña'], ['subcampaign', 'Subcampaña']]) {
+          const v = String(p[f] || ''); if (!v.trim()) continue;
+          const fv = foldTxt(v);
+          if (RX_STAY.test(fv) && !v.includes('Stay & Play')) add(p, `Clasificación: ${label} "${v.trim()}" escrito distinto (usar "Stay & Play")`);
+          else if (RX_TEND.test(fv) && !/(^|[^A-Za-zÁ-ú])Tendencia([^A-Za-zÁ-ú]|$)/.test(v)) add(p, `Clasificación: ${label} "${v.trim()}" escrito distinto (usar "Tendencia")`);
+          else if (/\btrend/.test(fv) && !RX_TEND.test(fv)) add(p, `Clasificación: ${label} "${v.trim()}" ¿es Tendencia? (si lo es, escribe "Tendencia" para que entre al análisis)`);
+        }
+      }
       // 2b) Nombres de influencer casi iguales ("Paty Meza" / "Patty Meza")
       {
         const lev = (a, b) => {
@@ -7067,6 +7267,7 @@
         ['campos', 'Campos mal llenados', (t) => !/^(Link duplicado|Mismo link|Sin |Valor imposible)/.test(t)],
         ['metricas', 'Sin métricas', (t) => t === 'Sin métricas'],
         ['clasif', 'Sin clasificar', (t) => /^Sin (Tipo|Formato)/.test(t)],
+        ['tyc', 'Tendencia / Stay & Play', (t) => /^Clasificación:/.test(t)],
         ['imposibles', 'Valores imposibles', (t) => /^Valor imposible/.test(t)],
       ];
       const kf = (KINDS.find(k => k[0] === kind) || KINDS[0])[2];
@@ -8328,6 +8529,9 @@
 
       const D = filteredData;
       const noResults = D.global.posts === 0;
+      // El laboratorio creativo de TikTok solo existe cuando el filtro de plataforma es únicamente TikTok
+      const ttOnly = filters.platforms.length === 1 && filters.platforms[0] === 'TikTok';
+      const navHidden = ttOnly ? [] : ['tiktok'];
 
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
@@ -8345,6 +8549,7 @@
             onToggleTheme=${toggleTheme}
             onOpenExport=${() => setExportOpen(true)}
             anomalyCount=${noResults ? 0 : anomalyCount}
+            hiddenIds=${navHidden}
           />
           </div>
           ${mobileNav && html`
@@ -8358,7 +8563,7 @@
                   fetchedAt=${fetchedAt} autoRefreshMin=${autoRefreshMin}
                   theme=${theme} onToggleTheme=${toggleTheme}
                   onOpenExport=${() => { setMobileNav(false); setExportOpen(true); }}
-                  anomalyCount=${noResults ? 0 : anomalyCount} />
+                  anomalyCount=${noResults ? 0 : anomalyCount} hiddenIds=${navHidden} />
               </div>
             </div>`}
 
@@ -8436,11 +8641,11 @@
                 <${InfluencersSection} D=${D} onPick=${setSelected}/>
                 <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, TikTok creativo, promedios, comparativas, catálogo, cadencia, horarios y simulador"
-                  count=${9} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint=${ttOnly ? "Mezcla, perfil por formato, TikTok creativo, promedios, comparativas, catálogo, cadencia, horarios y simulador" : "Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia, horarios y simulador"}
+                  count=${ttOnly ? 9 : 8} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
                   <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
                   <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
-                  <${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme}/>
+                  ${ttOnly && html`<${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme} rawPosts=${allPosts} filters=${filters}/>`}
                   <${AveragesSection}    D=${D}/>
                   <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
                   <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
