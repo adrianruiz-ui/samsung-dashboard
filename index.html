@@ -532,11 +532,11 @@
       for (const p of allPosts || []) {
         if (!benchEligible(p)) continue;
         const k = segKey(p);
-        if (!map.has(k)) map.set(k, { n: 0, reach: 0, ber_num: 0, ber_den: 0, er_num: 0, er_den: 0, reaches: [] });
+        if (!map.has(k)) map.set(k, { n: 0, reach: 0, ber_num: 0, ber_den: 0, er_num: 0, er_den: 0, ers: [], reaches: [] });
         const s = map.get(k);
         s.n += 1; s.reach += p.reach; s.reaches.push(p.reach);
         if (p.basic_er != null) { s.ber_num += p.basic_er; s.ber_den += 1; }   // v58: promedio por post
-        if (p.er != null)       { s.er_num  += p.interactions != null ? p.interactions : p.er * p.reach / 100;           s.er_den  += p.reach; }
+        if (p.er != null)       { s.ers.push(p.er); }   // v59: mediana por post
       }
       for (const s of map.values()) s.reaches.sort((a, b) => a - b);
       return map;
@@ -552,14 +552,14 @@
       if (n < BENCH_MIN_N) return { n, label, enough: false };
       const bNum = s.ber_num - (self && post.basic_er != null ? post.basic_er : 0);
       const bDen = s.ber_den - (self && post.basic_er != null ? 1 : 0);
-      const eNum = s.er_num - (self && post.er != null ? (post.interactions != null ? post.interactions : post.er * post.reach / 100) : 0);
-      const eDen = s.er_den - (self && post.er != null ? post.reach : 0);
+      let ers = s.ers;
+      if (self && post.er != null) { const i = ers.indexOf(post.er); if (i >= 0) ers = ers.slice(0, i).concat(ers.slice(i + 1)); }
       let reaches = s.reaches;
       if (self) { const i = reaches.indexOf(post.reach); if (i >= 0) reaches = reaches.slice(0, i).concat(reaches.slice(i + 1)); }
       const mid = Math.floor(reaches.length / 2);
       const reachMed = reaches.length % 2 ? reaches[mid] : (reaches[mid - 1] + reaches[mid]) / 2;
       const basic_er = bDen > 0 ? bNum / bDen : null;
-      const er = eDen > 0 ? (eNum / eDen) * 100 : null;
+      const er = ers.length ? medianOf(ers) : null;
       const rel = (v, b) => (v != null && b != null && b > 0) ? ((v - b) / b) * 100 : null;
       return {
         n, label, enough: true, basic_er, er, reachMed,
@@ -588,17 +588,26 @@
     // Así cada post pesa según su tamaño: un post de 200 de alcance ya no
     // mueve el KPI igual que uno de 2M (sesgo del promedio simple v19).
     // ============================================================
+    function medianOf(arr) {
+      if (!arr || !arr.length) return null;
+      const a = [...arr].sort((x, y) => x - y), m = a.length >> 1;
+      return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+    }
     function rateAccum() {
-      return { er_num:0, er_den:0, ber_num:0, ber_den:0, ctr_num:0, ctr_den:0,
+      return { er_num:0, er_den:0, er_vals: [], ber_num:0, ber_den:0, ctr_num:0, ctr_den:0,
                vtr_num:0, vtr_den:0, flagged:0, er_mean_sum:0, er_mean_n:0 };
     }
     function rateAdd(r, p) {
       const bad = p._flags || [];
       if (bad.length) r.flagged += 1;
       if (p.reach > 0 && !bad.includes('er')) {
-        if (p.er != null) {
-          r.er_num += p.interactions != null ? p.interactions : p.er * p.reach / 100;
-          r.er_den += p.reach;
+        // v59 — ER total = MEDIANA por post, sin Stories. Incluye reproducciones y
+        // no tiene techo (hay posts de 100,000%), así que el promedio se dispara;
+        // la mediana describe el post típico sin que la pauta domine.
+        if (p.er != null && p.format !== 'Stories') {
+          r.er_num += p.er;
+          r.er_den += 1;
+          r.er_vals.push(p.er);
           if (p.er !== 0) { r.er_mean_sum += p.er; r.er_mean_n += 1; }
         }
         // v58 — ER básico = promedio por post, sin Stories (así lo mide el cliente).
@@ -623,7 +632,7 @@
     }
     function rateFinal(r) {
       return {
-        er_avg:       r.er_den  ? (r.er_num  / r.er_den)  * 100 : 0,
+        er_avg:       r.er_vals.length ? medianOf(r.er_vals) : 0,
         basic_er_avg: r.ber_den ? r.ber_num / r.ber_den : 0,
         ctr_avg:      r.ctr_den ? (r.ctr_num / r.ctr_den) * 100 : 0,
         vtr_avg:      r.vtr_den ? r.vtr_num / r.vtr_den : 0,
@@ -1450,7 +1459,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v58';
+    const BUILD_VERSION = '2026-10-22-v59';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2905,7 +2914,7 @@
       const heroDeltas = useMemo(() => computeHeroDeltas(D, rawPosts, filters), [D, rawPosts, filters]);
       const dLabel = heroDeltas ? `vs ${wkLabel(heroDeltas.prevWeek, wkYear(heroDeltas.prevWeek) !== wkYear(heroDeltas.currentWeek))}` : null;
       const sec = [
-        ['ER total', erFmt(g.er_avg), heroDeltas?.er_avg, onTrace ? () => onTrace('er_avg') : null, 'Interacciones totales (incluye views) ÷ alcance'],
+        ['ER total', erFmt(g.er_avg), heroDeltas?.er_avg, onTrace ? () => onTrace('er_avg') : null, 'Mediana del ER total por post (interacciones totales, incluye reproducciones, ÷ alcance; sin Stories)'],
         ['ER básico', erFmt(g.basic_er_avg), null, null, 'Promedio del ER básico de cada post (sin Stories)'],
         ['CTR', g.ctr_avg > 0 ? erFmt(g.ctr_avg) : '—', null, null, 'Clics ÷ impresiones'],
         ['Comentarios', fmtFull(g.comments), heroDeltas?.comments, onTrace ? () => onTrace('comments') : null],
@@ -2926,7 +2935,7 @@
                       className=${"text-left min-w-0 " + (fn ? "hover:text-accent cursor-pointer" : "cursor-default")}>
                 <div className="text-[12px] text-txt4">${l}</div>
                 <div className="flex items-baseline gap-2 mt-1"><span className="text-[17px] text-txt tabular-nums">${v}</span>${dv != null && html`<${DeltaPill} pct=${dv} />`}</div>
-                ${l === 'ER total' && html`<div className="text-[11px] text-txt4 mt-0.5">incluye reproducciones</div>`}
+                ${l === 'ER total' && html`<div className="text-[11px] text-txt4 mt-0.5">mediana · incluye reproducciones</div>`}
               </button>`)}
           </div>
           <${PautaSplit} D=${D} />
@@ -2986,7 +2995,7 @@
       inter:     { field: 'interactions', type: 'sum', label: 'Interacciones',  formula: 'Suma del campo "Interacciones" de cada post dentro del filtro actual.' },
       views:     { field: 'views',        type: 'sum', label: 'Reproducciones', formula: 'Suma del campo "Reproducciones" de cada post dentro del filtro actual (aplica principalmente a video).' },
       comments:  { field: 'comments',     type: 'sum', label: 'Comentarios',    formula: 'Suma del campo "Comentarios" de cada post dentro del filtro actual.' },
-      er_avg:    { field: 'er',           type: 'ratio', label: 'ER total', formula: 'Σ Interacciones totales ÷ Σ Alcance de los posts del filtro. Cada post pesa según su alcance (misma fórmula que el Sheet, aplicada al conjunto). Se excluyen posts sin alcance y posts con valores imposibles (ER Básico > 100%).' },
+      er_avg:    { field: 'er',           type: 'ratio', label: 'ER total', formula: 'Mediana del ER total (interacciones totales, incluye reproducciones, ÷ alcance) de los posts del filtro: el valor del post típico. Se usa mediana porque hay posts con valores extremos (más reproducciones que alcance) que disparan un promedio. Se excluyen Stories, posts sin alcance y valores imposibles.' },
     };
 
     function computeKpiTrace(D, key) {
@@ -3001,11 +3010,11 @@
       }
 
       if (cfg.type === 'ratio') {
-        const included = posts.filter(p => p.reach > 0 && p.er != null && !(p._flags || []).includes('er'));
+        const included = posts.filter(p => p.reach > 0 && p.er != null && !(p._flags || []).includes('er') && p.format !== 'Stories');
         const flagged = posts.filter(p => (p._flags || []).includes('er'));
-        const num = included.reduce((s, p) => s + (p.interactions != null ? p.interactions : p.er * p.reach / 100), 0);
-        const den = included.reduce((s, p) => s + p.reach, 0);
-        const value = den ? (num / den) * 100 : 0;
+        const num = 0;
+        const den = included.length;
+        const value = den ? medianOf(included.map(p => p.er)) : 0;
         const nz = included.filter(p => p.er !== 0);
         const mean = nz.length ? nz.reduce((s, p) => s + p.er, 0) / nz.length : 0;
         const top = [...included].sort((a, b) => (b.reach || 0) - (a.reach || 0)).slice(0, 12);
@@ -3110,10 +3119,9 @@
                 ` : isRatio ? html`
                   <p className="text-[13px] text-txt3 leading-relaxed">
                     <span className="text-txt2 font-medium">${fmtFull(trace.includedCount)} de ${fmtFull(trace.postsCount)} posts</span> entran al cálculo
-                    ${trace.excludedCount > 0 ? html` · <span className="text-amber">${fmtFull(trace.excludedCount)} excluido${trace.excludedCount === 1 ? '' : 's'}</span> (sin alcance, sin ER o con valor imposible)` : '.'}
+                    ${trace.excludedCount > 0 ? html` · <span className="text-amber">${fmtFull(trace.excludedCount)} excluido${trace.excludedCount === 1 ? '' : 's'}</span> (Stories, sin alcance, sin ER o con valor imposible)` : '.'}
                   </p>
-                  <p className="text-[11px] font-mono text-faint mt-2">Σ interacciones ${fmtFull(Math.round(trace.num))} ÷ Σ alcance ${fmtFull(Math.round(trace.den))} = ${erFmt(trace.value)}</p>
-                  <p className="text-[11px] font-mono text-faint mt-1">Referencia · promedio simple por post (método v19): ${erFmt(trace.mean)}</p>
+                  <p className="text-[12px] text-txt4 mt-2">Mediana de ${fmtFull(trace.den)} posts = ${erFmt(trace.value)}</p>
                   ${trace.flagged.length > 0 && html`
                     <div className="mt-3 rounded-lg border border-amber/40 bg-amber/[0.06] px-3 py-2.5">
                       <div className="text-[11px] text-amber font-medium mb-1">${trace.flagged.length} post${trace.flagged.length === 1 ? '' : 's'} con ER Básico > 100% (revisar en el Sheet)</div>
@@ -3312,7 +3320,7 @@
                 </tbody>
               </table>
             </div>
-            <p className="text-[12px] text-txt4 mt-3">Clic en una plataforma para filtrar todo el dashboard. La barra compara su parte del alcance contra la plataforma líder.</p>`;
+            <p className="text-[12px] text-txt4 mt-3">Clic en una plataforma para filtrar todo el dashboard. La barra compara su parte del alcance contra la plataforma líder. ER total = mediana por post; ER básico = promedio por post. Ambos sin Stories.</p>`;
           })()}
         </section>`;
     }
