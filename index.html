@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <!-- deploy 2026-10-22 v63 -->
+  
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0A0A0F" />
@@ -271,8 +271,16 @@
     .value-pulse { border-radius: 6px; animation: valuePulse 1.6s var(--ease-out); }
     @media (prefers-reduced-motion: reduce) { .seg-ind, .zoom-from-row, .value-pulse, .row-picked > td, .row-picked { transition: none !important; animation: none !important; } }
     /* (4) cambio de tema: círculo que se expande desde el botón */
+    :root { --ch-axis: #4A4A55; --ch-axis-strong: #6B6B78; --ch-grid: rgba(255,255,255,0.10); --ch-tip-bg: #1A1A22; --ch-tip-border: rgba(255,255,255,0.10); --ch-tip-text: #FFFFFF; --ch-tip-label: #888894; }
+    html.light { --ch-axis: #B2B2BA; --ch-axis-strong: #8A8A92; --ch-grid: rgba(10,10,15,0.12); --ch-tip-bg: #FFFFFF; --ch-tip-border: rgba(10,10,15,0.12); --ch-tip-text: #0F0F14; --ch-tip-label: #686872; }
+    /* El navegador no dibuja las secciones fuera de pantalla (cambio de tema, scroll y filtros más ligeros) */
+    main section[id] { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+    .capturing main section[id] { content-visibility: visible; }
+    .theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
+    html.theme-switching, html.theme-switching body, html.theme-switching #root { transition: none !important; }
     ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-    ::view-transition-new(root) { animation: vtReveal 720ms var(--ease-out) both; }
+    ::view-transition-new(root) { animation: vtReveal 560ms cubic-bezier(.4, 0, .2, 1) both; }
+    ::view-transition-group(root) { animation-duration: 560ms; }
     @keyframes vtReveal { from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 0px)); } to { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0px)); } }
     /* (5) grupos plegables */
     @keyframes grpOpen { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
@@ -1533,7 +1541,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v63';
+    const BUILD_VERSION = '2026-10-22-v64';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1764,6 +1772,12 @@
       },
     };
 
+    // v64 — Los colores de las gráficas salen de variables CSS: cambiar de tema
+    // ya no obliga a React a volver a dibujar todas las gráficas.
+    const CHART_VARS = {
+      axis: 'var(--ch-axis)', axisStrong: 'var(--ch-axis-strong)', grid: 'var(--ch-grid)',
+      tooltipBg: 'var(--ch-tip-bg)', tooltipBorder: 'var(--ch-tip-border)', tooltipText: 'var(--ch-tip-text)', tooltipLabel: 'var(--ch-tip-label)',
+    };
     function useTheme() {
       const [theme, setTheme] = useState(() => {
         try {
@@ -1781,23 +1795,30 @@
         if (meta) meta.setAttribute('content', theme === 'light' ? '#F8F7F2' : '#0A0A0F');
       }, [theme]);
 
+      const applyTheme = (next) => {
+        try { localStorage.setItem('smx-theme', next); } catch {}
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', next === 'light' ? '#F8F7F2' : '#0A0A0F');
+        window.dispatchEvent(new CustomEvent('smx-theme', { detail: next }));
+      };
       const toggleTheme = useCallback((e) => {
         const next = document.documentElement.classList.contains('light') ? 'dark' : 'light';
         const reduced = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return true; } })();
-        if (!document.startViewTransition || reduced) { setTheme(next); return; }
-        // v63 — el tema nuevo se revela con un círculo que crece desde el botón
+        const root = document.documentElement;
+        // v64 — Sin trabas: durante el cambio se apagan las transiciones de color
+        // (cientos de elementos animando a la vez) y React vuelve a pintar las
+        // gráficas hasta que termina el círculo, no a la mitad.
+        root.classList.add('theme-switching');
+        const done = () => requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
+        if (!document.startViewTransition || reduced) { root.classList.toggle('light', next === 'light'); applyTheme(next); done(); return; }
         const x = e && e.clientX != null ? e.clientX : 60, y = e && e.clientY != null ? e.clientY : 60;
         const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-        const root = document.documentElement;
         root.style.setProperty('--vt-x', x + 'px'); root.style.setProperty('--vt-y', y + 'px'); root.style.setProperty('--vt-r', r + 'px');
-        document.startViewTransition(() => new Promise(res => {
-          root.classList.toggle('light', next === 'light');
-          setTheme(next);
-          requestAnimationFrame(() => requestAnimationFrame(res));
-        }));
+        const vt = document.startViewTransition(() => { root.classList.toggle('light', next === 'light'); });
+        vt.finished.finally(() => { applyTheme(next); done(); });
       }, []);
 
-      return { theme, toggleTheme, chart: CHART_THEME[theme] };
+      return { theme, toggleTheme, chart: CHART_VARS };
     }
 
     // ============================================================
@@ -2166,6 +2187,8 @@
     function Sidebar({ collapsed, onToggle, liveAlcance, livePosts, fetchedAt, autoRefreshMin, theme, onToggleTheme, onOpenExport, anomalyCount = 0, openGroups = {}, onOpenGroup, onNavigate, hiddenIds = [] }) {
       const [active, setActive] = useState('resumen');
       const [tip, setTip] = useState(null);
+      const [themeNow, setThemeNow] = useState(theme);
+      useEffect(() => { const f = (e) => setThemeNow(e.detail); window.addEventListener('smx-theme', f); return () => window.removeEventListener('smx-theme', f); }, []);
       // v63 — indicador que se desliza a la sección activa
       const navRef = useRef(null);
       const [indStyle, setIndStyle] = useState({ opacity: 0 });
@@ -2216,7 +2239,13 @@
       const scrollTo = (id) => {
         setActive(id);
         const item = NAV_ITEMS.find(n => n.id === id);
-        const go = () => { const el = document.getElementById('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+        const go = () => {
+          const el = document.getElementById('sec-' + id); if (!el) return;
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Las secciones fuera de pantalla se dibujan al acercarse y cambian de alto:
+          // se corrige el destino un par de veces mientras se asienta el scroll.
+          [650, 1300].forEach(ms => setTimeout(() => { const t = el.getBoundingClientRect().top; if (Math.abs(t) > 24) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, ms));
+        };
         if (item && NAV_GROUPS.find(g => g.key === item.group)?.foldable && !openGroups[item.group] && onOpenGroup) {
           onOpenGroup(item.group);
           setTimeout(go, 80);
@@ -2266,9 +2295,9 @@
             <button onClick=${onToggleTheme}
                     className=${"inline-flex items-center gap-1.5 rounded-lg border border-line text-txt3 hover:text-txt hover:bg-onSurface/[0.03] transition-colors " +
                       (collapsed ? "w-8 h-8 justify-center" : "px-2.5 py-1.5 text-[11px]")}
-                    title=${theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'} aria-label=${theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}>
-              ${theme === 'light' ? html`<${MoonIcon} size=${13}/>` : html`<${SunIcon} size=${13}/>`}
-              ${!collapsed && html`<span>${theme === 'light' ? 'Oscuro' : 'Claro'}</span>`}
+                    title=${themeNow === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'} aria-label=${themeNow === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}>
+              ${themeNow === 'light' ? html`<${MoonIcon} size=${13}/>` : html`<${SunIcon} size=${13}/>`}
+              ${!collapsed && html`<span>${themeNow === 'light' ? 'Oscuro' : 'Claro'}</span>`}
             </button>
           </div>
 
@@ -3502,7 +3531,7 @@
     ];
 
     function TrendSection({ D, chartTheme, setFilters }) {
-      const ct = chartTheme || CHART_THEME.dark;
+      const ct = chartTheme || CHART_VARS;
       const [metric, setMetric] = useState('reach');
       const isPercent = TREND_METRICS.find(m => m.k === metric)?.isPercent;
 
@@ -4435,7 +4464,7 @@
     }
 
     function ComparativasSection({ D, rawPosts, filters, chartTheme, setFilters }) {
-      const ct = chartTheme || CHART_THEME.dark;
+      const ct = chartTheme || CHART_VARS;
       const [mode, setMode] = useState('wow'); // 'wow' | 'entities'
 
       // ============================================================
@@ -4986,7 +5015,7 @@
             `}
           </div>
           ${(capDup > 0 || capCampos > 0) && html`
-            <button onClick=${() => { const el = document.getElementById('sec-calidad'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+            <button onClick=${() => { const el = document.getElementById('sec-calidad'); if (!el) return; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); [650, 1300].forEach(ms => setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top) > 24) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, ms)); }}
                     className="w-full mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber/[0.08] px-4 py-3 text-left hover:bg-amber/[0.14] transition-colors">
               <span className="text-[13px] text-txt">
                 <span className="text-amber font-medium">Errores de captura:</span>
@@ -5402,7 +5431,7 @@
     const kpiBer = (list) => list.length ? list.reduce((a, p) => a + p.basic_er, 0) / list.length : null;
 
     function KpiCuentaSection({ D, chartTheme, filters, onPick }) {
-      const ct = chartTheme || CHART_THEME.dark;
+      const ct = chartTheme || CHART_VARS;
       const all = D.allPosts || [];
       const vids = all.filter(kpiIsVid);
       const ig = all.filter(kpiIsIg);
@@ -5562,7 +5591,7 @@
     const folPlatTxt = (sel) => sel.length === 1 ? sel[0] : sel.length === 2 ? sel.join(' y ') : `${sel.slice(0, -1).join(', ')} y ${sel[sel.length - 1]}`;
 
     function FollowersSection({ filters, chartTheme, fetchedAt }) {
-      const ct = chartTheme || CHART_THEME.dark;
+      const ct = chartTheme || CHART_VARS;
       const [state, setState] = useState({ loading: true });
       const [mode, setMode] = useState('pct');
       useEffect(() => {
@@ -5883,7 +5912,7 @@
     ];
 
     function TikTokLabSection({ D, onPick, chartTheme, rawPosts, filters }) {
-      const ct = chartTheme || CHART_THEME.dark;
+      const ct = chartTheme || CHART_VARS;
       const [scope, setScope] = useState('org');   // org | paid | all — peras con peras: la pauta infla alcance y baja tasas
       const [span, setSpan] = useState('filtro');  // filtro | hist — histórico junta 2025 + 2026 para engrosar muestras chicas
       const [evoMetric, setEvoMetric] = useState('vtr');
@@ -8890,13 +8919,16 @@
         const onResize = () => all();
         window.addEventListener('resize', onResize);
         try { document.fonts && document.fonts.ready.then(all); } catch {}
+        // con content-visibility las secciones fuera de pantalla no tienen medidas: se recalcula al aparecer
+        const onCv = () => requestAnimationFrame(all);
+        document.addEventListener('contentvisibilityautostatechange', onCv, true);
         const onDown = (e) => {
           window.__smxPickY = e.clientY;
           const tr = e.target.closest && e.target.closest('tbody tr.cursor-pointer, tbody tr[role="button"]');
           if (tr && !e.target.closest('a, button, input, select')) { tr.classList.remove('row-picked'); void tr.offsetWidth; tr.classList.add('row-picked'); setTimeout(() => tr.classList.remove('row-picked'), 950); }
         };
         document.addEventListener('pointerdown', onDown, true);
-        return () => { mo.disconnect(); window.removeEventListener('resize', onResize); document.removeEventListener('pointerdown', onDown, true); };
+        return () => { mo.disconnect(); window.removeEventListener('resize', onResize); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('contentvisibilityautostatechange', onCv, true); };
       }, [loading]);
       const firstSwap = useRef(true);
       useEffect(() => {
