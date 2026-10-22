@@ -248,6 +248,28 @@
       tbody tr { transition: background-color var(--d-fast) ease; }
       [role="radiogroup"] button[aria-checked="true"] { transition: background-color var(--d-med) var(--ease-out), box-shadow var(--d-med) var(--ease-out), color var(--d-fast) ease; }
     }
+    /* (2) indicador deslizante de selectores */
+    .seg-ind { position: absolute; z-index: 0; pointer-events: none; border-radius: 6px; transition: left var(--d-med) var(--ease-out), top var(--d-med) var(--ease-out), width var(--d-med) var(--ease-out), height var(--d-med) var(--ease-out), opacity var(--d-fast) ease; }
+    [role="radiogroup"].has-ind > button { position: relative; z-index: 1; }
+    .seg-ind-surface { background: rgb(var(--c-surface)); box-shadow: 0 1px 2px rgba(10,10,15,.10), 0 0 0 1px rgba(10,10,15,.04); }
+    html:not(.light) .seg-ind-surface { background: rgb(var(--c-txt) / 0.11); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+    [role="radiogroup"].has-ind > button[aria-checked="true"] { background-color: transparent !important; box-shadow: none !important; }
+    /* (4) mapas de calor que se encienden en ola */
+    @keyframes cellIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: no-preference) {
+      html.motion main section:not(.in-view) .wave { opacity: 0; }
+      html.motion main section.in-view .wave { animation: cellIn 520ms var(--ease-out) both; animation-delay: var(--wd, 0ms); }
+    }
+    /* (5) detalle del post: se abre desde la fila */
+    @keyframes zoomFromRow { from { opacity: 0; transform: translateX(36px) scale(.94); } to { opacity: 1; transform: none; } }
+    .zoom-from-row { animation: zoomFromRow 460ms var(--ease-out) both; }
+    @keyframes rowPicked { 0% { background-color: rgb(var(--c-accent2) / 0.22); } 100% { background-color: transparent; } }
+    .row-picked > td, .row-picked { animation: rowPicked 900ms var(--ease-out); }
+    /* (6) pulso en cifras que cambiaron al actualizar el Sheet */
+    @keyframes valuePulse { 0% { background-color: rgb(var(--c-accent2) / 0.30); box-shadow: 0 0 0 4px rgb(var(--c-accent2) / 0.18); } 100% { background-color: transparent; box-shadow: 0 0 0 0 transparent; } }
+    .value-pulse { border-radius: 6px; animation: valuePulse 1.6s var(--ease-out); }
+    @media (prefers-reduced-motion: reduce) { .seg-ind, .zoom-from-row, .value-pulse, .row-picked > td, .row-picked { transition: none !important; animation: none !important; } }
+    .capturing .wave { opacity: 1 !important; animation: none !important; transform: none !important; }
     .capturing main section > *:not(button), .capturing .bar-grow, .capturing main, .capturing .pop-in { opacity: 1 !important; animation: none !important; transform: none !important; filter: none !important; }
     .pdf-only { display: none; }
     .capturing .pdf-only { display: block; }
@@ -1488,7 +1510,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v61';
+    const BUILD_VERSION = '2026-10-22-v62';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1541,6 +1563,7 @@
           const { data: rawByPlatform, errors, fetchedAt } = await fetchAllPlatforms();
           const data = transformAll(rawByPlatform);
           writeCache({ rawByPlatform, errors, fetchedAt });
+          window.__smxRefreshAt = Date.now();   // v62 — las cifras que cambien con esta carga pulsan
           setState({ data, loading:false, refreshing:false, error:null, errors, fetchedAt });
         } catch (e) {
           setState(s => ({ ...s, loading:false, refreshing:false, error: e?.message || 'Error desconocido' }));
@@ -2923,12 +2946,48 @@
     // ============================================================
     // KpiRow — strip de 6 cards
     // ============================================================
+    // v62 — FLIP: al reordenar una tabla, cada fila se desliza de su posición
+    // anterior a la nueva (se identifica por data-flip, no por el nodo de React).
+    function useFlip(ref, dep) {
+      const prev = useRef(null);
+      React.useLayoutEffect(() => {
+        const el = ref.current; if (!el) return;
+        const rows = [...el.querySelectorAll('[data-flip]')];
+        const now = new Map(rows.map(r => [r.getAttribute('data-flip'), r.getBoundingClientRect().top]));
+        const before = prev.current;
+        prev.current = now;
+        if (!before || prefersReduced()) return;
+        for (const r of rows) {
+          const k = r.getAttribute('data-flip');
+          const was = before.get(k);
+          const dy = was == null ? 24 : was - now.get(k);
+          if (!dy) continue;
+          r.style.transition = 'none';
+          r.style.transform = `translateY(${dy}px)`;
+          r.style.opacity = was == null ? '0' : '';
+        }
+        el.getBoundingClientRect();
+        requestAnimationFrame(() => {
+          for (const r of rows) {
+            if (!r.style.transform) continue;
+            r.style.transition = 'transform 520ms cubic-bezier(.16,1,.3,1), opacity 320ms ease';
+            r.style.transform = ''; r.style.opacity = '';
+          }
+        });
+      }, [dep]);
+    }
+
     // v61 — Cifra que cuenta hasta su valor al aparecer o al cambiar de filtro.
     // Arranca desde el valor anterior (no desde 0) para que se lea el cambio.
     const prefersReduced = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
     function CountUp({ value, format, duration = 900 }) {
       const [shown, setShown] = useState(value);
+      const [pulse, setPulse] = useState(0);
       const from = useRef(null);
+      useEffect(() => {
+        // Pulso solo si el cambio viene de una actualización del Sheet (no de un filtro)
+        if (from.current != null && value != null && from.current !== value && Date.now() - (window.__smxRefreshAt || 0) < 2500) setPulse(k => k + 1);
+      }, [value]);
       useEffect(() => {
         if (value == null || !isFinite(value) || prefersReduced() || document.documentElement.classList.contains('capturing')) { setShown(value); from.current = value; return; }
         const start = from.current == null ? 0 : from.current;
@@ -2944,7 +3003,7 @@
         raf = requestAnimationFrame(tick);
         return () => { cancelAnimationFrame(raf); from.current = value; };
       }, [value]);
-      return html`<span className="tabular-nums">${shown == null ? '—' : format(shown)}</span>`;
+      return html`<span key=${pulse} className=${"tabular-nums" + (pulse ? " value-pulse" : "")}>${shown == null ? '—' : format(shown)}</span>`;
     }
 
     function KpiCell({ label, value, sub, onClick, delta, deltaLabel, exact, num, format }) {
@@ -3511,12 +3570,11 @@
                   ${setFilters && html` · <button onClick=${() => setFilters(prev => ({ ...prev, weeks: [] }))} className="text-accent hover:underline">← volver a todas las semanas</button>`}</div>
               ` : html`<div className="text-[12px] text-txt4 mt-1">Clic en una semana para entrar a ella</div>`}
             </div>
-            <div className="flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
+            <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Métrica de la evolución">
               ${TREND_METRICS.map((m, i) => html`
-                <button key=${m.k} onClick=${() => setMetric(m.k)}
-                  className=${"px-3 py-1.5 text-[11px] transition-colors " +
-                    (i > 0 ? "border-l border-line " : "") +
-                    (metric === m.k ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                <button key=${m.k} onClick=${() => setMetric(m.k)} role="radio" aria-checked=${metric === m.k}
+                  className=${"px-3 py-1.5 rounded-md text-[11px] transition-colors " +
+                    (metric === m.k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
                   ${m.l}
                 </button>
               `)}
@@ -3546,6 +3604,7 @@
                     }} />
                   <${Bar} yAxisId="band" dataKey="posts" fill="transparent" isAnimationActive=${false} />
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
+                           isAnimationActive=${true} animationDuration=${750} animationEasing="ease-in-out"
                            stroke="#4C6EF5" strokeWidth=${2}
                            dot=${{ fill:'#4C6EF5', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#4C6EF5', strokeWidth:2 }} />
                   ${launchesSorted.map((l, i) => html`
@@ -3747,6 +3806,8 @@
       const [filterPlat, setFilterPlat] = useState('all');
       const [pautaSel, setPautaSel] = useState('org');   // v21.4: por defecto solo orgánico
       const [limit, setLimit] = useState(15);
+      const flipRef = useRef(null);
+      useFlip(flipRef, `${sortBy}|${filterPlat}|${pautaSel}`);
       const platforms = Object.keys(D.by_platform);
       // Si el filtro GLOBAL de Pauta está activo, manda ese y el selector local se oculta
       const globalPautaLock = filters?.strategies?.length > 0;
@@ -3853,7 +3914,7 @@
                   <th scope="col" className="text-right py-2.5 px-4 pr-6 font-medium">Link</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref=${flipRef}>
                 ${visible.length === 0 && html`
                   <tr><td colSpan=${15} className="py-12 text-center text-faint text-sm">Sin posts que cumplan los filtros.</td></tr>
                 `}
@@ -3861,7 +3922,7 @@
                   const color = PLAT_COLORS[p.platform];
                   const b = benchFor(p, benchmarks);
                   return html`
-                    <tr key=${i} onClick=${() => onPick(p)}
+                    <tr key=${i} data-flip=${`${p.platform}|${p.link || ''}|${p.date || ''}|${p._row || i}`} onClick=${() => onPick(p)}
                         ...${kbd(() => onPick(p), `Ver detalle: ${p.format || 'post'} de ${p.platform}, ${dateShort(p.date)}`)}
                         className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors group">
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt4 group-hover:text-txt2">${i+1}</td>
@@ -4449,13 +4510,13 @@
               ${mode === 'wow' ? 'Compara una semana contra la anterior.' : `Compara dos ${dimLabel.toLowerCase()}s, semana relativa a semana relativa.`}
             </p>
           </div>
-          <div className="flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden shrink-0">
-            <button onClick=${() => setMode('wow')}
-              className=${"px-3 py-1.5 text-[11px] transition-colors " + (mode === 'wow' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+          <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5 shrink-0" role="radiogroup" aria-label="Tipo de comparativa">
+            <button onClick=${() => setMode('wow')} role="radio" aria-checked=${mode === 'wow'}
+              className=${"px-3 py-1.5 rounded-md text-[11px] transition-colors " + (mode === 'wow' ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
               Semana vs. anterior
             </button>
-            <button onClick=${() => setMode('entities')}
-              className=${"px-3 py-1.5 text-[11px] border-l border-line transition-colors " + (mode === 'entities' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+            <button onClick=${() => setMode('entities')} role="radio" aria-checked=${mode === 'entities'}
+              className=${"px-3 py-1.5 rounded-md text-[11px] transition-colors " + (mode === 'entities' ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
               Comparar entidades
             </button>
           </div>
@@ -5009,7 +5070,8 @@
                 ${weeks.map((week, wi) => { const day = week[di];
                   return html`<div key=${wi}
                     title=${day && day.inRange ? `${dateShort(day.date)} · ${day.posts} post${day.posts === 1 ? '' : 's'}${day.posts ? ` · ${fmt(day.reach)} alcance` : ''}` : undefined}
-                    style=${{ width: '100%', aspectRatio: '1 / 1', borderRadius: 4, ...(day ? cadenceCellStyle(day.posts, maxPostsInDay, day.inRange) : { visibility: 'hidden' }) }}></div>`; })}
+                    className="wave"
+                    style=${{ width: '100%', aspectRatio: '1 / 1', borderRadius: 4, '--wd': `${wi * 16 + di * 30}ms`, ...(day ? cadenceCellStyle(day.posts, maxPostsInDay, day.inRange) : { visibility: 'hidden' }) }}></div>`; })}
               <//>`)}
           </div>
           <div className="flex items-center gap-1.5 mt-5 text-[11px] text-txt4">
@@ -5218,8 +5280,8 @@
                     <tr key=${d} style=${{ background: 'transparent' }}>
                       <th scope="row" className="text-[11px] font-normal text-txt3 text-left pr-2">${WD_ES[d]}</th>
                       ${row.map((c, b) => html`
-                        <td key=${b} className="rounded-md text-center align-middle h-10"
-                            style=${heat(c)}
+                        <td key=${b} className="wave rounded-md text-center align-middle h-10"
+                            style=${{ ...heat(c), '--wd': `${(d + b) * 45}ms` }}
                             title=${c.n ? `${WD_ES[d]} ${bandLabel(b)} · ${c.n} posts · mediana ${H.M.fmtv(c.val)} · ${idxTxt(c.idx)} vs. típico` : `${WD_ES[d]} ${bandLabel(b)} · sin posts`}>
                           ${c.n >= HORA_MIN_N
                             ? html`<div className="text-[11px] font-medium text-txt tabular-nums leading-tight">${idxTxt(c.idx)}</div><div className="text-[9px] font-mono text-txt3">${c.n}</div>`
@@ -5595,6 +5657,8 @@
       const [sortK, setSortK] = useState('inter');
       const [sortDir, setSortDir] = useState('desc');
       const [minPosts, setMinPosts] = useState(1);
+      const infFlip = useRef(null);
+      useFlip(infFlip, `${sortK}|${sortDir}|${minPosts}`);
       const S = INF_SORTS.find(x => x.k === sortK) || INF_SORTS[0];
       const ranked = ranking.filter(r => r.a.posts >= minPosts && (S.k !== 'vtr' || r.a.vtr_avg))
         .sort((x, y) => (sortDir === 'desc' ? -1 : 1) * ((S.f(x.a) ?? -Infinity) - (S.f(y.a) ?? -Infinity)));
@@ -5684,8 +5748,8 @@
                     <${Th} k="vtr" l="VTR" />
                     <th className="text-right py-2 px-2">Mejor post</th>
                   </tr></thead>
-                  <tbody>
-                    ${ranked.slice(0, limit).map((r, k) => html`<tr key=${r.name}>
+                  <tbody ref=${infFlip}>
+                    ${ranked.slice(0, limit).map((r, k) => html`<tr key=${r.name} data-flip=${r.name}>
                       <td className="py-2 px-2 text-txt4 tabular-nums">${k + 1}</td>
                       <td className="py-2 px-2 min-w-[170px]">
                         <div className="text-txt">${r.name}</div>
@@ -6164,14 +6228,14 @@
       return html`
         <div>
           <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">${label}</div>
-          <div className="inline-flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
-            <button onClick=${() => onChange('all')}
-              className=${"px-3 py-1.5 text-[11px] transition-colors " + (value === 'all' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+          <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label=${label}>
+            <button onClick=${() => onChange('all')} role="radio" aria-checked=${value === 'all'}
+              className=${"px-3 py-1.5 rounded-md text-[11px] transition-colors " + (value === 'all' ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
               Todos
             </button>
             ${options.map(o => html`
-              <button key=${o} onClick=${() => onChange(o)}
-                className=${"px-3 py-1.5 text-[11px] border-l border-line transition-colors " + (value === o ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+              <button key=${o} onClick=${() => onChange(o)} role="radio" aria-checked=${value === o}
+                className=${"px-3 py-1.5 rounded-md text-[11px] transition-colors " + (value === o ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
                 ${o}
               </button>
             `)}
@@ -6259,10 +6323,10 @@
             <div className="flex flex-wrap items-end gap-4">
               <div>
                 <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Métrica meta</div>
-                <div className="inline-flex rounded-lg border border-line bg-onSurface/[0.02] overflow-hidden">
+                <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Métrica meta">
                   ${SIM_METRICS.map((m, i) => html`
-                    <button key=${m.key} onClick=${() => setGoalMetric(m.key)}
-                      className=${"px-3 py-1.5 text-[11px] transition-colors " + (i > 0 ? "border-l border-line " : "") + (goalMetric === m.key ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                    <button key=${m.key} onClick=${() => setGoalMetric(m.key)} role="radio" aria-checked=${goalMetric === m.key}
+                      className=${"px-3 py-1.5 rounded-md text-[11px] transition-colors " + (goalMetric === m.key ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
                       ${m.label}
                     </button>
                   `)}
@@ -6487,8 +6551,8 @@
         <${Fragment}>
           <div className="fixed inset-0 z-40 fade-in" style=${{ background: 'rgba(0,0,0,0.6)' }} onClick=${onClose}/>
           <aside role="dialog" aria-modal="true" aria-label=${`Detalle del post de ${post.platform}`}
-                 className="fixed top-0 right-0 bottom-0 w-full sm:w-[480px] z-50 bg-ink border-l border-line2 slide-in flex flex-col"
-                 style=${{ boxShadow: '-20px 0 40px rgba(0,0,0,0.4)' }}>
+                 className="fixed top-0 right-0 bottom-0 w-full sm:w-[480px] z-50 bg-ink border-l border-line2 zoom-from-row flex flex-col"
+                 style=${{ boxShadow: '-20px 0 40px rgba(0,0,0,0.4)', transformOrigin: `0 ${(window.__smxPickY || 0)}px` }}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-line">
               <div className="flex items-center gap-2.5">
                 <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>
@@ -6916,15 +6980,15 @@
                   y elige qué descargar en un Excel (.xlsx) — se abre directo en Excel o se importa a Google Sheets con "Archivo → Importar".
                 </div>
 
-                <div className="flex rounded-lg border border-line overflow-hidden mb-4">
-                  <button onClick=${() => setMode('summary')}
-                          className=${"flex-1 px-3 py-2 text-[12px] transition-colors " +
-                            (mode === 'summary' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                <div className="flex rounded-lg bg-onSurface/[0.04] p-0.5 mb-4" role="radiogroup" aria-label="Tipo de exportación">
+                  <button onClick=${() => setMode('summary')} role="radio" aria-checked=${mode === 'summary'}
+                          className=${"flex-1 px-3 py-2 rounded-md text-[12px] transition-colors " +
+                            (mode === 'summary' ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
                     Resumen agrupado
                   </button>
-                  <button onClick=${() => setMode('raw')}
-                          className=${"flex-1 px-3 py-2 text-[12px] border-l border-line transition-colors " +
-                            (mode === 'raw' ? "bg-accent2/15 text-txt" : "text-txt3 hover:text-txt hover:bg-onSurface/[0.03]")}>
+                  <button onClick=${() => setMode('raw')} role="radio" aria-checked=${mode === 'raw'}
+                          className=${"flex-1 px-3 py-2 rounded-md text-[12px] transition-colors " +
+                            (mode === 'raw' ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
                     Posts individuales
                   </button>
                 </div>
@@ -8736,6 +8800,45 @@
         if (main) mo.observe(main, { childList: true, subtree: true });
         return () => { io.disconnect(); mo.disconnect(); };
       }, [loading, !!filteredData]);
+      // v62 — (2) indicador deslizante para todos los selectores segmentados y
+      // (5) la fila elegida se ilumina y el detalle se abre desde su altura.
+      useEffect(() => {
+        const place = (g) => {
+          const btn = g.querySelector(':scope > button[aria-checked="true"]');
+          let ind = g.querySelector(':scope > .seg-ind');
+          if (!btn) { if (ind) ind.style.opacity = '0'; return; }
+          if (!ind) {
+            const cs = getComputedStyle(btn);   // toma el estilo activo original antes de transparentarlo
+            ind = document.createElement('span'); ind.className = 'seg-ind'; ind.setAttribute('aria-hidden', 'true');
+            if (/\bbg-surface\b/.test(btn.className)) ind.classList.add('seg-ind-surface');   // pastilla neutra (según tema)
+            else { ind.style.background = cs.backgroundColor; ind.style.boxShadow = cs.boxShadow; }
+            ind.style.borderRadius = cs.borderRadius;
+            if (getComputedStyle(g).position === 'static') g.style.position = 'relative';
+            g.prepend(ind); g.classList.add('has-ind');
+            ind.style.transition = 'none';
+            requestAnimationFrame(() => { ind.style.transition = ''; });
+          }
+          ind.style.opacity = '1';
+          ind.style.left = btn.offsetLeft + 'px'; ind.style.top = btn.offsetTop + 'px';
+          ind.style.width = btn.offsetWidth + 'px'; ind.style.height = btn.offsetHeight + 'px';
+        };
+        const all = () => document.querySelectorAll('[role="radiogroup"]').forEach(place);
+        all();
+        const mo = new MutationObserver((muts) => {
+          if (muts.some(m => m.type === 'attributes' || [...m.addedNodes].some(n => n.nodeType === 1 && !(n.classList && n.classList.contains('seg-ind'))))) requestAnimationFrame(all);
+        });
+        mo.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-checked'] });
+        const onResize = () => all();
+        window.addEventListener('resize', onResize);
+        try { document.fonts && document.fonts.ready.then(all); } catch {}
+        const onDown = (e) => {
+          window.__smxPickY = e.clientY;
+          const tr = e.target.closest && e.target.closest('tbody tr.cursor-pointer, tbody tr[role="button"]');
+          if (tr && !e.target.closest('a, button, input, select')) { tr.classList.remove('row-picked'); void tr.offsetWidth; tr.classList.add('row-picked'); setTimeout(() => tr.classList.remove('row-picked'), 950); }
+        };
+        document.addEventListener('pointerdown', onDown, true);
+        return () => { mo.disconnect(); window.removeEventListener('resize', onResize); document.removeEventListener('pointerdown', onDown, true); };
+      }, [loading]);
       const firstSwap = useRef(true);
       useEffect(() => {
         if (firstSwap.current) { firstSwap.current = false; return; }
