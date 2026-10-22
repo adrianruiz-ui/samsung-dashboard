@@ -1427,7 +1427,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v51';
+    const BUILD_VERSION = '2026-10-22-v52';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -5680,11 +5680,6 @@
       }).filter(b => b.n > 0);
       const bestB = buckets.filter(b => b.n >= 5 && b.vtr != null).sort((x, y) => y.vtr - x.vtr)[0];
       const scatter = (k) => vids.filter(p => ttGroupOf(p).k === k && p.vtr > 0).map(p => ({ x: p.duration, y: p.vtr, z: Math.max(1, p.reach || 1), p }));
-      // Atributos
-      const ATTRS = [['audio', 'Audio'], ['subtitles', 'Subtítulos'], ['ai', 'IA']].map(([f, l]) => {
-        const yes = tt.filter(p => /^s[ií]/i.test(String(p[f] || '').trim())), no = tt.filter(p => /^no/i.test(String(p[f] || '').trim()));
-        return { l, yes: ttStats(yes), no: ttStats(no) };
-      });
       const pct = (v, d = 2) => v == null ? '—' : `${v.toFixed(d)}%`;
       const num1 = (v, suf = '') => v == null ? '—' : `${v.toFixed(1)}${suf}`;
       const vs = (v, b) => (v == null || b == null || !b) ? null : (v / b - 1) * 100;
@@ -5885,18 +5880,6 @@
                     </tr>`)}
                   </tbody>
                 </table>
-                <div className="text-[13px] font-medium text-txt mt-5 mb-2">Atributos del video</div>
-                <table className="w-full text-[12px] whitespace-nowrap">
-                  <thead><tr><th className="text-left py-2 px-2">Atributo</th><th className="text-right py-2 px-2">Con · posts</th><th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">VTR</th><th className="text-right py-2 px-2">Sin · posts</th><th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">VTR</th></tr></thead>
-                  <tbody>
-                    ${ATTRS.map(a => html`<tr key=${a.l}>
-                      <td className="py-2 px-2 text-txt2">${a.l}</td>
-                      <td className="py-2 px-2 text-right tabular-nums">${a.yes.n}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.yes.ber)}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.yes.vtr)}</td>
-                      <td className="py-2 px-2 text-right tabular-nums">${a.no.n}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.no.ber)}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.no.vtr)}</td>
-                    </tr>`)}
-                  </tbody>
-                </table>
-                <div className="text-[11px] text-txt4 mt-2">Con menos de 10 posts en un lado, tómalo como referencia, no como regla.</div>
               </div>
             </div>
 
