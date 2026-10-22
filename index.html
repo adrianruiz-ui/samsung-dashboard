@@ -224,6 +224,8 @@
     .border-line\/40, .border-line\/50, .border-line\/30 { border-color: transparent !important; }
     .tracking-wider, .tracking-\[0\.15em\], .tracking-\[0\.18em\] { letter-spacing: 0 !important; }
     .uppercase:not(.keep-upper) { text-transform: none !important; }
+    .pdf-only { display: none; }
+    .capturing .pdf-only { display: block; }
     table.dense th, table.dense td { padding-left: 9px !important; padding-right: 9px !important; }
     table.dense th:first-child, table.dense td:first-child { padding-left: 16px !important; }
     table.dense th:last-child, table.dense td:last-child { padding-right: 16px !important; }
@@ -1357,6 +1359,8 @@
         logging: false,
         windowWidth: el.scrollWidth,
         windowHeight: el.scrollHeight,
+        // Marca el clon para estilos solo-de-exportación (p. ej. el título del Resumen)
+        onclone: (doc) => doc.documentElement.classList.add('capturing'),
       });
     }
 
@@ -1459,7 +1463,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v59';
+    const BUILD_VERSION = '2026-10-22-v60';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2725,6 +2729,7 @@
       return html`
         <section id="sec-resumen" className="px-4 md:px-7 pb-8 relative group">
           <${SectionExportBtn} sectionId="sec-resumen" name="Resumen" />
+          <h2 className="pdf-only text-[22px] font-semibold text-txt mb-2">Resumen ejecutivo</h2>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-txt3 mb-5">
             <span className="text-txt2">${dateFmt(D.meta.date_min_scope ?? D.meta.date_min)} – ${dateFmt(D.meta.date_max_scope ?? D.meta.date_max)}</span>
             <span>${fmtFull(g.posts)} publicaciones</span>
@@ -3075,7 +3080,7 @@
         <tr onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver post de ${p.platform}, ${dateShort(p.date)}`)}
             className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors">
           <td className="py-2 px-3">
-            <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>${p.platform}</span>
+            <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>${p.platform}</span>
           </td>
           <td className="py-2 px-3 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
           <td className="py-2 px-3 text-[12px] text-txt2 truncate max-w-[160px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
@@ -3186,7 +3191,7 @@
                (active ? "border-accent2 ring-1 ring-accent2/50 bg-accent2/[0.04]" : "border-line hover:border-line2")}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
+              <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>
               <span className="text-[13px] text-txt">${name}</span>
               ${active && html`<span className="text-[9px] font-mono uppercase tracking-wider text-accent2 border border-accent2/40 rounded-full px-1.5 py-0.5">filtrado</span>`}
             </div>
@@ -3303,7 +3308,7 @@
                     return html`<tr key=${p} onClick=${() => handlePlatformClick(p)} ...${kbd(() => handlePlatformClick(p), `Filtrar el dashboard a ${p}`)}
                         title=${active ? 'Quitar el filtro de plataforma' : `Filtrar todo el dashboard a ${p}`}
                         className=${"cursor-pointer transition-colors " + (active ? "bg-accent2/[0.07]" : "hover:bg-onSurface/[0.03]")}>
-                      <td className="py-3 px-3"><span className="inline-flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full shrink-0" style=${{ background: PLAT_COLORS[p] }}></span><span className="text-txt">${p}</span>${active && html`<span className="text-[11px] text-accent2">filtrada</span>`}</span></td>
+                      <td className="py-3 px-3"><span className="inline-flex items-center gap-2.5"><svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0" aria-hidden="true"><circle cx="5" cy="5" r="5" fill=${PLAT_COLORS[p]} /></svg><span className="text-txt">${p}</span>${active && html`<span className="text-[11px] text-accent2">filtrada</span>`}</span></td>
                       <td className="py-3 px-3 text-right tabular-nums text-txt3">${fmtFull(st.posts)}</td>
                       <td className="py-3 px-3 text-right tabular-nums text-txt">${fmtFull(st.reach)}</td>
                       <td className="py-3 px-3"><div className="flex items-center gap-3"><div className="flex-1 h-1.5 rounded-full bg-onSurface/[0.06] overflow-hidden"><div className="h-full rounded-full" style=${{ width: (maxShare ? share / maxShare * 100 : 0) + '%', background: 'rgb(var(--c-txt) / 0.45)' }}></div></div><span className="tabular-nums text-txt3 w-9 text-right">${(share * 100).toFixed(0)}%</span></div></td>
@@ -3469,21 +3474,18 @@
             </div>
           </div>
           <div className="rounded-xl bg-surface border border-line p-5">
-            <div className="h-72">
+            <div className="h-64">
               <${ResponsiveContainer}>
-                <${ComposedChart} data=${series} margin=${{ top:30, right:16, left:8, bottom:8 }}
+                <${ComposedChart} data=${series} margin=${{ top:30, right:16, left:8, bottom:0 }}
                   style=${{ cursor: !isDailyMode && setFilters ? 'pointer' : 'default' }}
                   onClick=${(e) => !isDailyMode && setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.week)}>
                   <${CartesianGrid} stroke=${ct.tooltipBorder} strokeDasharray="0" vertical=${false} />
-                  <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11}
-                            tickLine=${false} axisLine=${{ stroke: ct.tooltipBorder }}
-                            interval=${isDailyMode ? 0 : 'preserveStartEnd'} minTickGap=${22} />
+                  <${XAxis} dataKey="label" hide />
+                  <${YAxis} yAxisId="band" hide />
                   <${YAxis} yAxisId="left" stroke=${ct.axisStrong} fontSize=${11}
                             tickLine=${false} axisLine=${false}
                             tickFormatter=${isPercent ? (v) => v.toFixed(1) + '%' : fmt}
                             width=${isPercent ? 56 : 96} />
-                  <${YAxis} yAxisId="right" orientation="right" stroke=${ct.axis} fontSize=${11}
-                            tickLine=${false} axisLine=${false} width=${32} />
                   <${Tooltip}
                     cursor=${{ fill: 'rgba(76,110,245,0.08)' }}
                     contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'8px 12px', fontSize:11, fontFamily: "'Bricolage Grotesque', system-ui, sans-serif", fontVariantNumeric: 'tabular-nums', color:ct.tooltipText }}
@@ -3493,7 +3495,7 @@
                       if (name === 'value') return [isPercent ? erFmt(v) : fmt(v), TREND_METRICS.find(m => m.k === metric)?.l];
                       return [v, 'Posts'];
                     }} />
-                  <${Bar} yAxisId="right" dataKey="posts" fill="rgba(127,127,140,0.22)" radius=${[3, 3, 0, 0]} maxBarSize=${22} />
+                  <${Bar} yAxisId="band" dataKey="posts" fill="transparent" isAnimationActive=${false} />
                   <${Line} yAxisId="left" type="monotone" dataKey="value"
                            stroke="#4C6EF5" strokeWidth=${2}
                            dot=${{ fill:'#4C6EF5', r:3, strokeWidth:0 }} activeDot=${{ r:5, fill:ct.tooltipBg, stroke:'#4C6EF5', strokeWidth:2 }} />
@@ -3511,6 +3513,23 @@
                 <//>
               <//>
             </div>
+            <!-- v60 — El volumen de posts va en su propia franja (antes compartía gráfica con un segundo eje, que se presta a malas lecturas) -->
+            <div className="text-[11px] text-txt4 mt-3 pl-1">Posts publicados</div>
+            <div className="h-20">
+              <${ResponsiveContainer}>
+                <${BarChart} data=${series} margin=${{ top:4, right:16, left:8, bottom:8 }}
+                  style=${{ cursor: !isDailyMode && setFilters ? 'pointer' : 'default' }}
+                  onClick=${(e) => !isDailyMode && setFilters && e && e.activePayload && e.activePayload[0] && toggleWeekFilter(setFilters, e.activePayload[0].payload.week)}>
+                  <${XAxis} dataKey="label" stroke=${ct.axisStrong} fontSize=${11} tickLine=${false} axisLine=${false}
+                            interval=${isDailyMode ? 0 : 'preserveStartEnd'} minTickGap=${22} />
+                  <${YAxis} stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${isPercent ? 56 : 96} allowDecimals=${false} tickCount=${3} />
+                  <${Tooltip} cursor=${{ fill: 'rgba(76,110,245,0.08)' }} formatter=${(v) => [v, 'Posts']}
+                    contentStyle=${{ background:ct.tooltipBg, border:`1px solid ${ct.tooltipBorder}`, borderRadius:6, padding:'6px 10px', fontSize:11, color:ct.tooltipText }}
+                    labelStyle=${{ color: ct.tooltipLabel }} labelFormatter=${(label) => isDailyMode ? label : ((series.find(r => r.label === label) || {}).long || label)} />
+                  <${Bar} dataKey="posts" fill="rgba(127,127,140,0.45)" radius=${[2, 2, 0, 0]} maxBarSize=${22} />
+                <//>
+              <//>
+            </div>
             ${launchesSorted.length > 0 && html`
               <div className="flex flex-wrap gap-1.5 mt-4">
                 ${launchesSorted.map((l, i) => html`<span key=${l.name} className="inline-flex items-center gap-1.5 rounded-full bg-amber/10 pl-1 pr-2.5 py-0.5 text-[11px] text-txt2">
@@ -3519,7 +3538,7 @@
               </div>`}
             <div className="flex flex-wrap gap-x-5 gap-y-1 mt-4 text-[11px] text-txt3">
               <div className="flex items-center gap-2"><span className="w-3 h-0.5 rounded" style=${{ background: '#4C6EF5' }}></span><span>${TREND_METRICS.find(m => m.k === metric)?.l}</span></div>
-              <div className="flex items-center gap-2"><span className="w-3 h-2 rounded-sm" style=${{ background: 'rgba(127,127,140,0.35)' }}></span><span>Volumen de posts</span></div>
+
               ${campaignLaunches.length > 0 && html`
                 <div className="flex items-center gap-2"><span style=${{ width: 12, borderTop: '2px dashed #F0B358' }}></span><span>Lanzamiento de campaña</span></div>
               `}
@@ -3797,7 +3816,7 @@
                         ...${kbd(() => onPick(p), `Ver detalle: ${p.format || 'post'} de ${p.platform}, ${dateShort(p.date)}`)}
                         className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors group">
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt4 group-hover:text-txt2">${i+1}</td>
-                      <td className="py-2.5 px-4"><span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="w-2 h-2 rounded-full" style=${{ background: color }}></span>${p.platform}</span></td>
+                      <td className="py-2.5 px-4"><span className="inline-flex items-center gap-2 text-[12px] text-txt2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>${p.platform}</span></td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3 whitespace-nowrap">${dateShort(p.date)}</td>
                       <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">${p.wk ? html`<button onClick=${(e) => { e.stopPropagation(); toggleWeekFilter(setFilters, p.wk); }} title="Ver esa semana" className="hover:text-accent hover:underline">S${p.week}</button>` : 'S—'}</td>
                       ${pautaSel === 'all' && html`<td className="py-2.5 px-4 text-[11px] whitespace-nowrap">
@@ -3971,7 +3990,7 @@
                       <tr key=${plat} className="border-b border-line/40 hover:bg-onSurface/[0.02] transition-colors">
                         <td className="py-2.5 pr-3">
                           <div className="flex items-center gap-2.5">
-                            <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
+                            <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>
                             <span className="text-txt text-[13px] font-sans">${plat}</span>
                           </div>
                         </td>
@@ -4017,7 +4036,7 @@
                           <td className="py-2.5 pr-3 text-txt4 tabular-nums">${i + 1}</td>
                           <td className="py-2.5 pr-3">
                             <div className="flex items-center gap-2">
-                              <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
+                              <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>
                               <span className="text-txt2 text-[12px] font-sans">${p.platform}</span>
                             </div>
                           </td>
@@ -4601,7 +4620,7 @@
                       <td className="py-2.5 pr-3">
                         ${color ? html`
                           <div className="flex items-center gap-2.5">
-                            <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
+                            <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>
                             <span className="text-txt text-[13px] font-sans">${r.name}</span>
                           </div>` : html`
                           <span className="text-txt text-[13px] font-sans truncate inline-block max-w-[200px]" title=${r.name}>${r.name}</span>
@@ -4767,7 +4786,7 @@
         <tr onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver anomalía: post de ${p.platform}`)}
             className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors group">
           <td className="py-2.5 px-4">
-            <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>${p.platform}</span>
+            <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>${p.platform}</span>
           </td>
           <td className="py-2.5 px-4 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
           <td className="py-2.5 px-4 text-[12px] text-txt2 truncate max-w-[200px]" title=${p.campaign || ''}>${p.campaign || '—'}</td>
@@ -5094,9 +5113,10 @@
 
     function HorariosSection({ D }) {
       const [metric, setMetric] = useState('ber');
-      const [plat, setPlat] = useState('all');
+      // v60 — la plataforma se elige con el filtro general (antes había un selector propio que lo duplicaba)
+      const plat = 'all';
       const [scope, setScope] = useState('org');
-      const H = useMemo(() => computeHorarios(D.allPosts || [], metric, plat, scope), [D, metric, plat, scope]);
+      const H = useMemo(() => computeHorarios(D.allPosts || [], metric, plat, scope), [D, metric, scope]);
       const idxTxt = (x) => x == null ? '—' : (x >= 1 ? '+' : '') + Math.round((x - 1) * 100) + '%';
       const heat = (c) => {
         if (!c.n) return { background: 'transparent' };
@@ -5127,7 +5147,6 @@
           <div className="flex flex-wrap items-center gap-2 mb-4">
             ${seg(HORA_METRICS.map(m => [m.k, m.l]), metric, setMetric, 'Métrica')}
             ${seg([['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todos']], scope, setScope, 'Pauta')}
-            ${seg([['all', 'Todas'], ...POSTTIME_PLATS.map(p => [p, p])], plat, setPlat, 'Plataforma')}
           </div>
 
           ${H.n < 12 ? html`
@@ -5183,7 +5202,7 @@
                   <div key=${pp.platform} className="py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-2 text-[12px] text-txt2">
-                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[pp.platform] }}></span>
+                        <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[pp.platform]} /></svg>
                         ${pp.platform}
                       </span>
                       <span className="text-[12px] tabular-nums ${''}">
@@ -5310,7 +5329,7 @@
                   <thead><tr><th className="text-left py-2 px-2">Plataforma</th><th className="text-right py-2 px-2">Videos</th><th className="text-right py-2 px-2">VTR prom.</th><th className="text-right py-2 px-2">Cumplen solos</th><th className="text-right py-2 px-2">Estado</th></tr></thead>
                   <tbody>
                     ${plats.map(r => html`<tr key=${r.pl}>
-                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[r.pl] }}></span>${r.pl}</span></td>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[r.pl]} /></svg>${r.pl}</span></td>
                       <td className="py-2 px-2 text-right tabular-nums">${fmtFull(r.n)}</td>
                       <td className=${"py-2 px-2 text-right tabular-nums " + (r.v >= KPI_VTR_MIN ? 'text-success' : 'text-amber')}>${pctTxt(r.v)}</td>
                       <td className="py-2 px-2 text-right tabular-nums text-txt3">${Math.round(r.ok / r.n * 100)}%</td>
@@ -5453,7 +5472,7 @@
                 <tbody>
                   ${(() => { const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.ytdPct || 0)));
                     return rows.map(r => html`<tr key=${r.name}>
-                      <td className="py-3 px-3"><span className="inline-flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full shrink-0" style=${{ background: r.color }}></span><span className="text-txt">${r.label}</span></span></td>
+                      <td className="py-3 px-3"><span className="inline-flex items-center gap-2.5"><svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0" aria-hidden="true"><circle cx="5" cy="5" r="5" fill=${r.color} /></svg><span className="text-txt">${r.label}</span></span></td>
                       <td className="py-3 px-3 text-right tabular-nums text-txt">${fmtFull(r.cur)}</td>
                       <td className=${"py-3 px-3 text-right tabular-nums " + (r.wow == null ? 'text-txt4' : r.wow >= 0 ? 'text-txt2' : 'text-amber')}>${sgn(r.wow)}</td>
                       <td className=${"py-3 px-3 text-right tabular-nums " + (r.ytd == null ? 'text-txt4' : r.ytd >= 0 ? 'text-txt2' : 'text-amber')}>${sgn(r.ytd)}</td>
@@ -5578,7 +5597,7 @@
                   </tr></thead>
                   <tbody>
                     ${byPlat.map(({ pl, i, b }) => html`<tr key=${pl}>
-                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[pl] }}></span>${pl}</span></td>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[pl]} /></svg>${pl}</span></td>
                       <td className="py-2 px-2 text-right tabular-nums">${i.posts}</td>
                       <td className="py-2 px-2 text-right tabular-nums">${fmtFull(i.reach_per_post)}<div className=${"text-[10px] " + vsCls(ratio(i.reach_per_post, b && b.reach_per_post))}>${vsTxt(ratio(i.reach_per_post, b && b.reach_per_post))} vs marca</div></td>
                       <td className="py-2 px-2 text-right tabular-nums">${erFmt(i.basic_er_avg)}<div className=${"text-[10px] " + vsCls(ratio(i.basic_er_avg, b && b.basic_er_avg))}>${vsTxt(ratio(i.basic_er_avg, b && b.basic_er_avg))} vs marca</div></td>
@@ -6124,6 +6143,7 @@
       const [goalMetric, setGoalMetric] = useState('reach');
       const [goalTarget, setGoalTarget] = useState('');
       const [allocations, setAllocations] = useState({});
+      const [simAll, setSimAll] = useState(false);   // v60 — por default solo las 10 combinaciones con mejor promedio
 
       // Si cambia el universo (tipo de contenido / pauta), las filas ya
       // no son las mismas — se resetea lo planeado para no dejar
@@ -6222,7 +6242,7 @@
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">
-                    <th className="text-left py-2.5 px-4 font-medium">Plat.</th>
+                    <th className="text-left py-2.5 px-4 font-medium">Plataforma</th>
                     <th className="text-left py-2.5 px-4 font-medium">Formato</th>
                     <th className="text-right py-2.5 px-4 font-medium">Posts hist. 2026</th>
                     <th className="text-right py-2.5 px-4 font-medium">Prom. ${metricCfg.label}/post</th>
@@ -6231,7 +6251,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  ${sortedGroups.map(g => {
+                  ${(simAll ? sortedGroups : sortedGroups.filter((g, i) => i < 10 || Number(allocations[g.platform + '|' + g.format]) > 0)).map(g => {
                     const key = g.platform + '|' + g.format;
                     const n = allocations[key] ?? '';
                     const subtotal = (Number(n) || 0) * g[metricCfg.avgKey];
@@ -6239,7 +6259,7 @@
                     return html`
                       <tr key=${key} className="border-b border-line/50 last:border-0">
                         <td className="py-2.5 px-4">
-                          <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[g.platform] }}></span>${g.platform}</span>
+                          <span className="inline-flex items-center gap-2 text-[12px] text-txt2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[g.platform]} /></svg>${g.platform}</span>
                         </td>
                         <td className="py-2.5 px-4 text-[12px] text-txt2">${g.format}</td>
                         <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[11px]">
@@ -6257,6 +6277,9 @@
                   })}
                 </tbody>
               </table>
+              ${sortedGroups.length > 10 && html`<div className="text-center py-3">
+                <button onClick=${() => setSimAll(v => !v)} className="text-[12px] text-txt3 hover:text-txt rounded-lg bg-onSurface/[0.04] hover:bg-onSurface/[0.07] px-4 py-2 transition-colors">
+                  ${simAll ? 'Ver solo las 10 con mejor promedio' : `Ver las ${sortedGroups.length} combinaciones`}</button></div>`}
             </div>
 
             <div className="rounded-xl bg-surface border border-line p-5">
@@ -6419,7 +6442,7 @@
                  style=${{ boxShadow: '-20px 0 40px rgba(0,0,0,0.4)' }}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-line">
               <div className="flex items-center gap-2.5">
-                <span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>
+                <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>
                 <span className="text-[14px] text-txt font-medium">${post.platform}</span>
               </div>
               <button onClick=${onClose} aria-label="Cerrar detalle" autoFocus
@@ -7006,7 +7029,7 @@
         <article className="rounded-xl bg-surface border border-line p-5 min-w-0 flex flex-col" aria-label=${`Meta de followers ${g.name}`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
-              ${PLAT_LETTERS[g.name] && html`<span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: color }}></span>`}
+              ${PLAT_LETTERS[g.name] && html`<svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${color} /></svg>`}
               <span className="text-[14px] text-txt">${g.name}</span>
             </div>
             <span className=${"text-[10px] font-mono uppercase tracking-wider border rounded-full px-2 py-0.5 " + st.cls}>${st.label}</span>
@@ -7336,10 +7359,10 @@
 
 
 
-          <div className="grid lg:grid-cols-[minmax(0,300px)_1fr] gap-4 items-start">
+          <div className="grid xl:grid-cols-[minmax(0,280px)_1fr] gap-4 items-start">
             <div className="rounded-xl bg-surface border border-line p-5">
-              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-3">Completitud por semana</div>
-              <ul className="space-y-2.5">
+              <div className="text-[13px] font-medium text-txt mb-3">Completitud por semana</div>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-1 gap-x-8 gap-y-2.5">
                 ${q.weeks.map(w => {
                   const done = w.total - w.pending;
                   const pct = w.total ? (done / w.total) * 100 : 0;
@@ -7386,7 +7409,7 @@
                     ${shown.slice(0, limit).map(({ post: p, tags }, i) => html`
                       <tr key=${i} onClick=${() => onPick(p)} ...${kbd(() => onPick(p), `Ver post de ${p.platform}, ${dateShort(p.date)}`)}
                           className="border-b border-line/50 last:border-0 hover:bg-onSurface/[0.025] focus:outline-none focus-visible:bg-accent2/10 cursor-pointer transition-colors">
-                        <td className="py-2 px-4"><span className="inline-flex items-center gap-2 text-[12px] text-txt2"><span className="inline-block w-2 h-2 rounded-full shrink-0" style=${{ background: PLAT_COLORS[p.platform] }}></span>${p.platform}</span></td>
+                        <td className="py-2 px-4"><span className="inline-flex items-center gap-2 text-[12px] text-txt2"><svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[p.platform]} /></svg>${p.platform}</span></td>
                         <td className="py-2 px-4 font-mono text-[11px] text-txt3 whitespace-nowrap">${dateShort(p.date)}</td>
                         <td className="py-2 px-4 text-[12px] text-txt2">${p.format || html`<span className="text-faint">—</span>`}</td>
                         <td className="py-2 px-4 text-[12px] text-txt3 truncate max-w-[180px]" title=${p.campaign || ''}>${p.campaign || html`<span className="text-faint">—</span>`}</td>
@@ -7862,6 +7885,87 @@
         </div>`;
     }
 
+    // v60 — Slide opcional "[SNS Summary] Account KPIs": mismas reglas que la
+    // sección KPIs de cuenta, calculadas sobre la semana del reporte (año 2026).
+    function computePressKpis(allPosts, week) {
+      const posts = (allPosts || []).filter(p => postYear(p) === PRESS_YEAR && p.week != null && +p.week <= week);
+      const vids = posts.filter(kpiIsVid), ig = posts.filter(kpiIsIg);
+      const wkOf = (list, w) => list.filter(p => +p.week === w);
+      const series = Array.from({ length: week }, (_, i) => ({ w: i + 1, vtr: kpiVtr(wkOf(vids, i + 1)), ber: kpiBer(wkOf(ig, i + 1)) }));
+      const cur = series[week - 1] || {}, prev = series[week - 2] || {};
+      const byPlat = {};
+      for (const p of wkOf(vids, week)) (byPlat[p.platform] = byPlat[p.platform] || []).push(p);
+      const byFmt = {};
+      for (const p of wkOf(ig, week)) (byFmt[p.format || 'Sin formato'] = byFmt[p.format || 'Sin formato'] || []).push(p);
+      return {
+        series, cur, prev,
+        nVid: wkOf(vids, week).length, nIg: wkOf(ig, week).length,
+        plats: Object.entries(byPlat).map(([k, l]) => ({ k, n: l.length, v: kpiVtr(l) })).sort((a, b) => b.n - a.n),
+        fmts: Object.entries(byFmt).map(([k, l]) => ({ k, n: l.length, v: kpiBer(l) })).sort((a, b) => b.n - a.n),
+        ytdVtr: kpiVtr(vids), ytdBer: kpiBer(ig),
+      };
+    }
+
+    function addKpiSlide(pptx, d, per) {
+      const K = d.kpis; if (!K) return;
+      const E = (emu) => emu / 914400;
+      const REG = 'Samsung SS Body Regular', BOLD = 'Samsung SS Body Bold';
+      const s = pptx.addSlide();
+      s.addText([{ text: '[SNS Summary] ', options: {} }, { text: 'Account KPIs', options: {} }],
+        { x: E(308592), y: E(34914), w: E(8453700), h: E(483900), fontFace: 'Samsung SS Head Bold', bold: true, fontSize: 24, color: '2F5496', margin: 0, valign: 'middle' });
+      const W = d.week;
+      const blocks = [
+        { title: 'VTR · videos 0–30 s (goal ≥ 25%)', min: KPI_VTR_MIN, cur: K.cur.vtr, prev: K.prev.vtr, ytd: K.ytdVtr, n: K.nVid, unit: 'videos',
+          rows: K.plats, rowHead: 'Platform', key: 'vtr', note: 'All platforms incl. Shorts · average per video · Stories excluded' },
+        { title: 'Instagram Basic ER · feed (goal ≥ 5%)', min: KPI_IG_ER_MIN, cur: K.cur.ber, prev: K.prev.ber, ytd: K.ytdBer, n: K.nIg, unit: 'posts',
+          rows: K.fmts, rowHead: 'Format', key: 'ber', note: 'Whole account · average per post · Stories excluded' },
+      ];
+      const X = [298075, 6165000], BW = 5730000, Y = 860000, BH = 5560000;
+      blocks.forEach((b, i) => {
+        const x = X[i];
+        s.addShape(pptx.ShapeType.rect, { x: E(x), y: E(Y + 323700), w: E(BW), h: E(BH), fill: { color: 'FFFFFF', transparency: 100 }, line: { color: '000000', width: 0.75 } });
+        s.addText(b.title, { x: E(x), y: E(Y), w: E(BW), h: E(323700), fill: { color: '002060' }, line: { color: '000000', width: 0.75 }, color: 'FFFFFF', bold: true, fontFace: BOLD, fontSize: 12, align: 'center', valign: 'middle', margin: 0 });
+        const ok = b.cur != null && b.cur >= b.min;
+        const dpp = b.cur != null && b.prev != null ? b.cur - b.prev : null;
+        s.addText([
+          { text: `Week ${W}: `, options: { fontSize: 12 } },
+          { text: b.cur != null ? `${b.cur.toFixed(b.key === 'vtr' ? 1 : 2)}%` : 'n/d', options: { fontSize: 22, color: b.cur == null ? '000000' : ok ? '00B050' : 'FF0000' } },
+        ], { x: E(x + 120000), y: E(Y + 460000), w: E(3300000), h: E(520000), fontFace: BOLD, bold: true, color: '000000', valign: 'middle', margin: 0 });
+        s.addText(b.cur == null ? 'No data this week' : ok ? 'On target' : 'Below target',
+          { x: E(x + BW - 1700000), y: E(Y + 540000), w: E(1580000), h: E(330000), fill: { color: b.cur == null ? 'D9D9D9' : ok ? '00B050' : 'FF0000' }, color: 'FFFFFF', bold: true, fontFace: BOLD, fontSize: 10, align: 'center', valign: 'middle', margin: 0 });
+        s.addText(`${dpp == null ? 'n/d' : `${dpp >= 0 ? '+' : ''}${dpp.toFixed(1)} pp`} vs W${W - 1} · ${b.n} ${b.unit} · YTD ${b.ytd != null ? b.ytd.toFixed(b.key === 'vtr' ? 1 : 2) + '%' : 'n/d'}`,
+          { x: E(x + 120000), y: E(Y + 1000000), w: E(BW - 240000), h: E(240000), fontFace: REG, fontSize: 8, color: '000000', margin: 0 });
+        // Tendencia semanal vs. meta
+        const pts = K.series.filter(r => r[b.key] != null);
+        if (pts.length > 1) {
+          s.addChart(pptx.ChartType.line, [
+            { name: b.key === 'vtr' ? 'VTR 0–30 s' : 'IG Basic ER', labels: pts.map(r => `W${r.w}`), values: pts.map(r => r[b.key] / 100) },
+            { name: 'Goal', labels: pts.map(r => `W${r.w}`), values: pts.map(() => b.min / 100) },
+          ], {
+            x: E(x + 60000), y: E(Y + 1300000), w: E(BW - 120000), h: E(2450000),
+            chartColors: ['1F3864', '00B050'], lineSize: 1.5, lineDataSymbol: 'circle', lineDataSymbolSize: 3,
+            showLegend: true, legendPos: 'b', legendFontSize: 7, legendFontFace: 'Arial',
+            catAxisLabelFontSize: 6, catAxisLabelFontFace: 'Arial', catAxisLineShow: false,
+            valAxisLabelFontSize: 6, valAxisLabelFontFace: 'Arial', valAxisLabelFormatCode: '0%', valAxisMinVal: 0, valAxisLineShow: false,
+            valGridLine: { color: 'E7E7E7', style: 'solid', size: 0.5 },
+          });
+        }
+        // Desglose de la semana
+        const cell = (t, o = {}) => ({ text: t, options: o });
+        const HEAD = { fill: { color: '002060' }, color: 'FFFFFF', bold: true, fontFace: BOLD };
+        const rows = [[cell(b.rowHead, HEAD), cell(b.key === 'vtr' ? 'Videos' : 'Posts', HEAD), cell(b.key === 'vtr' ? 'VTR' : 'Basic ER', HEAD), cell('Status', HEAD)]];
+        b.rows.slice(0, 6).forEach(r => rows.push([cell(r.k, { align: 'left' }), cell(String(r.n)), cell(r.v != null ? `${r.v.toFixed(b.key === 'vtr' ? 1 : 2)}%` : '—'),
+          cell(r.v == null ? '—' : r.v >= b.min ? 'On target' : 'Below', { color: r.v == null ? '000000' : r.v >= b.min ? '00B050' : 'FF0000', bold: true, fontFace: BOLD })]));
+        if (rows.length > 1) s.addTable(rows, {
+          x: E(x + 120000), y: E(Y + 3850000), w: E(BW - 240000), colW: [E(1990000), E(1000000), E(1250000), E(1250000)],
+          rowH: E(250000), fontFace: REG, fontSize: 8, color: '000000', align: 'center', valign: 'middle', margin: 2,
+          border: { type: 'solid', pt: 0.5, color: 'BFBFBF' },
+        });
+        s.addText(b.note, { x: E(x + 120000), y: E(Y + BH + 323700 - 260000), w: E(BW - 240000), h: E(200000), fontFace: REG, fontSize: 6, color: '7F7F7F', margin: 0 });
+      });
+      s.addText(per, { x: E(9900000), y: E(6560000), w: E(2100000), h: E(200000), fontFace: REG, fontSize: 6, color: '000000', align: 'right', margin: 0 });
+    }
+
     function buildPressPptx(d) {
       const P = window.PptxGenJS;
       if (!P) throw new Error('No se cargó la librería de PowerPoint. Revisa tu conexión y recarga.');
@@ -8010,6 +8114,7 @@
       const per = a.getMonth() === b.getMonth() ? `PERIOD: ${ordEn(a)} - ${String(b.getDate()).padStart(2, '0')}th` : `PERIOD: ${ordEn(a)} - ${ordEn(b)}`;
       s.addText(per, { x: E(9900000), y: E(6560000), w: E(2100000), h: E(200000), fontFace: REG, fontSize: 6, color: '000000', align: 'right', margin: 0 });
       addFollowersSlide(pptx, d, per);
+      if (d.kpis) addKpiSlide(pptx, d, per);
       (d.topics || []).forEach(T => addTopicSlide(pptx, T, per));
       return pptx.writeFile({ fileName: `SNS_W${d.week}_Press.pptx` });
     }
@@ -8051,6 +8156,8 @@
       const campOpts = useMemo(() => (week ? pressCampaignOptions(allPosts, week) : []), [allPosts, week]);
       const [boxes, setBoxes] = useState([null, null, null]);   // { camp, subs: string[], title, touched }
       const [topics, setTopics] = useState([]);
+      const [withKpis, setWithKpis] = useState(() => { try { return localStorage.getItem('smx-press-kpis') === '1'; } catch { return false; } });
+      useEffect(() => { try { localStorage.setItem('smx-press-kpis', withKpis ? '1' : '0'); } catch {} }, [withKpis]);
       // v42 — pendientes de calidad de la semana a exportar
       const weekQ = useMemo(() => (week ? computeDataQuality(pressWeekPosts(allPosts, week), allPosts) : null), [allPosts, week]);
       // v37 — la press recuerda lo que armaste por semana (en este navegador)
@@ -8121,7 +8228,7 @@
       const dl = async () => {
         setBusy(true); setErr(null);
         try {
-          await buildPressPptx({ ...d, folDetail, topics: topics.map(t => computeTopic(allPosts, week, t)), boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
+          await buildPressPptx({ ...d, folDetail, kpis: withKpis ? computePressKpis(allPosts, week) : null, topics: topics.map(t => computeTopic(allPosts, week, t)), boxes: boxes.map((b, i) => (b && boxData[i]) ? { title: b.title, data: boxData[i] } : null) });
         } catch (e) { setErr(e?.message || 'No se pudo generar el archivo.'); }
         finally { setBusy(false); }
       };
@@ -8224,6 +8331,10 @@
                     </div>`;
                 })}
               </div>
+              <label className="flex items-center gap-2.5 rounded-lg bg-onSurface/[0.03] px-3 py-2.5 mb-3 cursor-pointer text-[12px] text-txt2">
+                <input type="checkbox" checked=${withKpis} onChange=${(e) => setWithKpis(e.target.checked)} className="accent-[rgb(var(--c-accent2))]" />
+                <span><span className="text-txt">Incluir slide de KPIs de cuenta</span> · VTR 0–30 s ≥ 25% e IG ER básico ≥ 5% de la semana, con su tendencia</span>
+              </label>
               <div className="flex items-baseline justify-between mb-2 mt-1">
                 <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4">Slides de tema</div>
                 <span className="text-[10px] text-txt4">opcional</span>
