@@ -224,7 +224,7 @@
     import {
       ResponsiveContainer, AreaChart, Area, BarChart, Bar,
       RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
-      LineChart, Line, ComposedChart, Cell, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
+      LineChart, Line, ComposedChart, Cell, ScatterChart, Scatter, ZAxis, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
     } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
@@ -349,11 +349,12 @@
       'ER Básico %': 'basic_er', 'ER Views %': 'er', 'CTR %': 'ctr',
       'T. Prom. Vista': 'avg_watch_time', 'VTR %': 'vtr',
       '¿Influencer?': 'is_influencer', 'Nombre Influencer': 'influencer_name',
+      'Nuevos Seguidores': 'new_followers',
     };
     const NUMERIC_KEYS = new Set([
       'week','year','duration','reach','impressions','reactions','comments','shares',
       'saves','repost','clics','views','basic_interactions','interactions',
-      'basic_er','er','ctr','avg_watch_time','vtr',
+      'basic_er','er','ctr','avg_watch_time','vtr','new_followers',
     ]);
 
     function toNum(v) {
@@ -1357,6 +1358,7 @@
           { id: 'sec-followers',    name: 'Followers y meta' },
           { id: 'sec-mezcla',       name: 'Mezcla' },
           { id: 'sec-perfil',       name: 'Perfil por formato' },
+          { id: 'sec-tiktok',       name: 'TikTok creativo' },
           { id: 'sec-promedios',    name: 'Promedios' },
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
@@ -1425,7 +1427,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-21-v48';
+    const BUILD_VERSION = '2026-10-21-v49';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2031,6 +2033,7 @@
       { id: 'followers',    label: 'Followers y meta',   Icon: UsersIcon,    group: 'resultados' },
       { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
       { id: 'perfil',       label: 'Perfil por formato', Icon: RadarIcon,    group: 'analisis' },
+      { id: 'tiktok',       label: 'TikTok creativo',    Icon: PlayIcon,     group: 'analisis' },
       { id: 'promedios',    label: 'Promedios',          Icon: AvgIcon,      group: 'analisis' },
       { id: 'comparativas', label: 'Comparativas',       Icon: CompareIcon,  group: 'analisis' },
       { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
@@ -5585,6 +5588,245 @@
     }
 
     // ============================================================
+    // v49 — TIKTOK · LABORATORIO CREATIVO
+    // Lectura profunda solo de TikTok para el equipo creativo, con foco en
+    // los contenidos de Tendencia y Stay & Play: ER básico, duración y VTR,
+    // más retención (% del video visto), señales de distribución
+    // (compartidos y guardados), followers ganados y atributos (audio,
+    // subtítulos, IA). Respeta los filtros de periodo, pauta y contenido.
+    // ============================================================
+    const TT_GROUPS = [
+      { k: 'tend', l: 'Tendencia',   color: '#F0B358', test: (p) => /tendencia/i.test(`${p.campaign || ''} ${p.subcampaign || ''}`) },
+      { k: 'stay', l: 'Stay & Play', color: '#5DCAA5', test: (p) => /stay\s*(&|and|y)\s*play/i.test(`${p.campaign || ''} ${p.subcampaign || ''}`) },
+    ];
+    const ttGroupOf = (p) => (TT_GROUPS.find(g => g.test(p)) || { k: 'rest', l: 'Resto de TikTok', color: '#4C6EF5' });
+    const TT_DUR = [[0, 10, '≤10 s'], [10, 15, '11–15 s'], [15, 30, '16–30 s'], [30, 60, '31–60 s'], [60, 1e9, '60+ s']];
+    const ttMean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    function ttStats(list) {
+      const sum = (f) => list.reduce((a, p) => a + (f(p) || 0), 0);
+      const reach = sum(p => p.reach);
+      // ER básico ponderado sin los posts con valores imposibles (ER > 100%)
+      const okEr = list.filter(p => !(p._flags || []).includes('er') && p.reach > 0);
+      const erReach = okEr.reduce((a, p) => a + p.reach, 0);
+      const bi = okEr.reduce((a, p) => a + (p.basic_interactions != null ? p.basic_interactions : (p.basic_er || 0) * p.reach / 100), 0);
+      const vids = list.filter(p => p.vtr != null && p.vtr > 0);
+      const durs = list.filter(p => p.duration > 0);
+      const ret = list.filter(p => p.duration > 0 && p.avg_watch_time > 0).map(p => Math.min(100, p.avg_watch_time / p.duration * 100));
+      return {
+        n: list.length,
+        ber: erReach ? bi / erReach * 100 : null,
+        vtr: ttMean(vids.map(p => p.vtr)),
+        dur: ttMean(durs.map(p => p.duration)),
+        watch: ttMean(list.filter(p => p.avg_watch_time > 0).map(p => p.avg_watch_time)),
+        ret: ttMean(ret),
+        reachPP: list.length ? reach / list.length : null,
+        sharesK: reach ? sum(p => p.shares) / reach * 1000 : null,
+        savesK: reach ? sum(p => p.saves) / reach * 1000 : null,
+        commentsK: reach ? sum(p => p.comments) / reach * 1000 : null,
+        follPP: list.length ? sum(p => p.new_followers) / list.length : null,
+        follTot: sum(p => p.new_followers),
+      };
+    }
+
+    function TikTokLabSection({ D, onPick, chartTheme }) {
+      const ct = chartTheme || CHART_THEME.dark;
+      const [scope, setScope] = useState('org');   // org | paid | all — peras con peras: la pauta infla alcance y baja tasas
+      const ttAll = (D.allPosts || []).filter(p => p.platform === 'TikTok');
+      const tt = ttAll.filter(p => scope === 'all' || (scope === 'paid') === isPaidP(p));
+      const [focus, setFocus] = useState('all');   // all | tend | stay
+      const groups = [...TT_GROUPS, { k: 'rest', l: 'Resto de TikTok', color: '#4C6EF5' }].map(g => {
+        const list = tt.filter(p => ttGroupOf(p).k === g.k);
+        return { ...g, list, s: ttStats(list) };
+      });
+      const base = ttStats(tt);
+      const focusList = tt.filter(p => focus === 'all' ? ttGroupOf(p).k !== 'rest' : ttGroupOf(p).k === focus);
+      // Duración: buckets sobre todos los videos de TikTok
+      const vids = tt.filter(p => p.duration > 0);
+      const buckets = TT_DUR.map(([a, b, l]) => {
+        const list = vids.filter(p => p.duration > a && p.duration <= b);
+        const s = ttStats(list);
+        const fl = list.filter(p => ttGroupOf(p).k !== 'rest').length;
+        return { l, ...s, focusN: fl };
+      }).filter(b => b.n > 0);
+      const bestB = buckets.filter(b => b.n >= 5 && b.vtr != null).sort((x, y) => y.vtr - x.vtr)[0];
+      const scatter = (k) => vids.filter(p => ttGroupOf(p).k === k && p.vtr > 0).map(p => ({ x: p.duration, y: p.vtr, z: Math.max(1, p.reach || 1), p }));
+      // Atributos
+      const ATTRS = [['audio', 'Audio'], ['subtitles', 'Subtítulos'], ['ai', 'IA']].map(([f, l]) => {
+        const yes = tt.filter(p => /^s[ií]/i.test(String(p[f] || '').trim())), no = tt.filter(p => /^no/i.test(String(p[f] || '').trim()));
+        return { l, yes: ttStats(yes), no: ttStats(no) };
+      });
+      const pct = (v, d = 2) => v == null ? '—' : `${v.toFixed(d)}%`;
+      const num1 = (v, suf = '') => v == null ? '—' : `${v.toFixed(1)}${suf}`;
+      const vs = (v, b) => (v == null || b == null || !b) ? null : (v / b - 1) * 100;
+      const dTxt = (d) => d >= 100 ? `${(1 + d / 100).toFixed(1)}×` : `${d >= 0 ? '+' : ''}${d.toFixed(0)}%`;
+      const Vs = ({ v, b }) => { const d = vs(v, b); return d == null ? '' : html`<div className=${"text-[10px] " + (d >= 0 ? 'text-success' : 'text-amber')}>${dTxt(d)} vs TikTok</div>`; };
+      const ROWS = [
+        ['Posts', s => fmtFull(s.n), null],
+        ['ER básico ponderado', s => pct(s.ber), 'ber'],
+        ['VTR promedio', s => pct(s.vtr), 'vtr'],
+        ['Duración promedio', s => num1(s.dur, ' s'), null],
+        ['Tiempo promedio de vista', s => num1(s.watch, ' s'), 'watch'],
+        ['Alcance por post', s => fmtFull(s.reachPP), 'reachPP'],
+        ['Compartidos por 1,000 de alcance', s => num1(s.sharesK), 'sharesK'],
+        ['Guardados por 1,000 de alcance', s => num1(s.savesK), 'savesK'],
+        ['Comentarios por 1,000 de alcance', s => num1(s.commentsK), 'commentsK'],
+        ['Nuevos seguidores por post', s => fmtFull(s.follPP), 'follPP'],
+      ];
+      const medBer = (() => { const a = tt.map(p => p.basic_er).filter(v => v != null).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; })();
+      const medVtr = (() => { const a = tt.map(p => p.vtr).filter(v => v > 0).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; })();
+      const reads = [];
+      for (const g of groups.slice(0, 2)) {
+        if (!g.s.n) continue;
+        const dB = vs(g.s.ber, base.ber), dV = vs(g.s.vtr, base.vtr);
+        reads.push(`${g.l} (${g.s.n} posts): ER básico ${pct(g.s.ber)}${dB != null ? ` (${dTxt(dB)} vs TikTok)` : ''}, VTR ${pct(g.s.vtr)}${dV != null ? ` (${dTxt(dV)})` : ''}, duración promedio ${num1(g.s.dur, ' s')}.`);
+      }
+      if (bestB) reads.push(`En TikTok, los videos de ${bestB.l} retienen mejor: VTR promedio ${pct(bestB.vtr)} con ${bestB.n} videos.`);
+
+      return html`
+        <section id="sec-tiktok" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-tiktok" name="TikTok" />
+          <div className="mb-5">
+            <h2 className="text-[18px] font-medium text-txt">TikTok · Laboratorio creativo</h2>
+            <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Solo TikTok. Foco en Tendencia y Stay & Play (según su campaña o subcampaña) contra el resto del contenido de TikTok. Por default compara solo orgánico: la pauta infla el alcance y baja las tasas, y estos contenidos son orgánicos.</p>
+            <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5 mt-3" role="radiogroup" aria-label="Pauta en TikTok">
+              ${[['org', 'Orgánico'], ['paid', 'Pauta'], ['all', 'Todo']].map(([k, l]) => html`
+                <button key=${k} role="radio" aria-checked=${scope === k} onClick=${() => setScope(k)}
+                        className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (scope === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+            </div>
+          </div>
+          ${!tt.length ? html`<div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">No hay posts de TikTok en el filtro actual.</div>` : html`
+            ${reads.length > 0 && html`<div className="rounded-xl bg-surface px-5 py-4 mb-3 space-y-1.5">
+              ${reads.map((r, i) => html`<p key=${i} className="text-[13px] text-txt2 leading-snug">• ${r}</p>`)}
+              ${groups.slice(0, 2).some(g => g.s.n > 0 && g.s.n < 5) && html`<p className="text-[11px] text-txt4">Ojo: grupos con menos de 5 posts dan una lectura direccional, no concluyente.</p>`}
+            </div>`}
+
+            <div className="rounded-xl bg-surface p-5 mb-3 overflow-x-auto">
+              <div className="text-[13px] font-medium text-txt mb-3">Comparativo de grupos</div>
+              <table className="w-full text-[12px] whitespace-nowrap">
+                <thead><tr>
+                  <th className="text-left py-2 px-2">Métrica</th>
+                  ${groups.map(g => html`<th key=${g.k} className="text-right py-2 px-2"><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style=${{ background: g.color }}></span>${g.l}</span></th>`)}
+                  <th className="text-right py-2 px-2">Todo TikTok</th>
+                </tr></thead>
+                <tbody>
+                  ${ROWS.map(([l, f, key]) => html`<tr key=${l}>
+                    <td className="py-2 px-2 text-txt2">${l}</td>
+                    ${groups.map(g => html`<td key=${g.k} className="py-2 px-2 text-right tabular-nums text-txt">${g.s.n ? f(g.s) : '—'}${key && g.k !== 'rest' && g.s.n ? html`<${Vs} v=${g.s[key]} b=${base[key]} />` : ''}</td>`)}
+                    <td className="py-2 px-2 text-right tabular-nums text-txt3">${f(base)}</td>
+                  </tr>`)}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3 mb-3">
+              <div className="rounded-xl bg-surface p-5">
+                <div className="text-[13px] font-medium text-txt">Duración vs. VTR</div>
+                <div className="text-[11px] text-txt4 mb-3">Cada punto es un video; el tamaño es su alcance. Pasa el cursor para ver el post y haz clic para abrirlo.</div>
+                <div style=${{ height: 280 }}>
+                  <${ResponsiveContainer} width="100%" height="100%">
+                    <${ScatterChart} margin=${{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                      <${CartesianGrid} vertical=${false} />
+                      <${XAxis} type="number" dataKey="x" name="Duración" unit=" s" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} />
+                      <${YAxis} type="number" dataKey="y" name="VTR" unit="%" stroke=${ct.axis} fontSize=${10} tickLine=${false} axisLine=${false} width=${44} />
+                      <${ZAxis} type="number" dataKey="z" range=${[30, 400]} />
+                      <${Tooltip} cursor=${{ strokeDasharray: '3 3' }} content=${({ active, payload }) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const p = payload[0].payload.p;
+                        return html`<div style=${{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontSize: 11, color: ct.tooltipText }}>
+                          <div style=${{ color: ct.tooltipLabel }}>${dateShort(p.date)} · ${ttGroupOf(p).l}</div>
+                          <div>${p.campaign || '—'}${p.subcampaign ? ' · ' + p.subcampaign : ''}</div>
+                          <div>Duración ${p.duration} s · VTR ${pct(p.vtr)} · ER básico ${pct(p.basic_er)}</div>
+                          <div>Alcance ${fmtFull(p.reach)}</div></div>`;
+                      }} />
+                      ${medVtr != null && html`<${ReferenceLine} y=${medVtr} stroke="#888" strokeDasharray="4 4" label=${{ value: 'Mediana VTR', position: 'insideTopRight', fontSize: 10, fill: '#888' }} />`}
+                      <${Scatter} name="Resto de TikTok" data=${scatter('rest')} fill="#4C6EF5" fillOpacity=${0.25} onClick=${(d) => onPick && onPick(d.p)} />
+                      ${TT_GROUPS.map(g => html`<${Scatter} key=${g.k} name=${g.l} data=${scatter(g.k)} fill=${g.color} fillOpacity=${0.95} onClick=${(d) => onPick && onPick(d.p)} />`)}
+                    <//>
+                  <//>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                  ${groups.map(g => html`<span key=${g.k} className="inline-flex items-center gap-1.5 text-[11px] text-txt3"><span className="w-2.5 h-2.5 rounded-full" style=${{ background: g.color, opacity: g.k === 'rest' ? 0.4 : 1 }}></span>${g.l}</span>`)}
+                </div>
+              </div>
+              <div className="rounded-xl bg-surface p-5 overflow-x-auto">
+                <div className="text-[13px] font-medium text-txt">Por duración del video</div>
+                <div className="text-[11px] text-txt4 mb-3">Todos los videos de TikTok del filtro. La última columna dice cuántos son de Tendencia o Stay & Play.</div>
+                <table className="w-full text-[12px] whitespace-nowrap">
+                  <thead><tr>
+                    <th className="text-left py-2 px-2">Duración</th><th className="text-right py-2 px-2">Videos</th>
+                    <th className="text-right py-2 px-2">VTR</th><th className="text-right py-2 px-2">Vista prom.</th>
+                    <th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">Tend. + S&P</th>
+                  </tr></thead>
+                  <tbody>
+                    ${buckets.map(b => html`<tr key=${b.l}>
+                      <td className="py-2 px-2 text-txt2">${b.l}${bestB && bestB.l === b.l ? html` <span className="text-[10px] text-success">· mejor VTR</span>` : ''}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${b.n}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${pct(b.vtr)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${num1(b.watch, ' s')}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${pct(b.ber)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-txt3">${b.focusN || '—'}</td>
+                    </tr>`)}
+                  </tbody>
+                </table>
+                <div className="text-[13px] font-medium text-txt mt-5 mb-2">Atributos del video</div>
+                <table className="w-full text-[12px] whitespace-nowrap">
+                  <thead><tr><th className="text-left py-2 px-2">Atributo</th><th className="text-right py-2 px-2">Con · posts</th><th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">VTR</th><th className="text-right py-2 px-2">Sin · posts</th><th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">VTR</th></tr></thead>
+                  <tbody>
+                    ${ATTRS.map(a => html`<tr key=${a.l}>
+                      <td className="py-2 px-2 text-txt2">${a.l}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${a.yes.n}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.yes.ber)}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.yes.vtr)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${a.no.n}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.no.ber)}</td><td className="py-2 px-2 text-right tabular-nums">${pct(a.no.vtr)}</td>
+                    </tr>`)}
+                  </tbody>
+                </table>
+                <div className="text-[11px] text-txt4 mt-2">Con menos de 10 posts en un lado, tómalo como referencia, no como regla.</div>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-surface p-5 overflow-x-auto">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="text-[13px] font-medium text-txt">Posts de Tendencia y Stay & Play</div>
+                <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Grupo">
+                  ${[['all', 'Ambos'], ['tend', 'Tendencia'], ['stay', 'Stay & Play']].map(([k, l]) => html`
+                    <button key=${k} role="radio" aria-checked=${focus === k} onClick=${() => setFocus(k)}
+                            className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (focus === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+                </div>
+              </div>
+              ${!focusList.length ? html`<div className="text-[12px] text-txt4 py-4">No hay posts de este grupo en el filtro actual.</div>` : html`
+              <table className="w-full text-[12px] whitespace-nowrap">
+                <thead><tr>
+                  <th className="text-left py-2 px-2">Fecha</th><th className="text-left py-2 px-2">Grupo</th><th className="text-left py-2 px-2">Campaña · subcampaña</th>
+                  <th className="text-right py-2 px-2">Duración</th><th className="text-right py-2 px-2">VTR</th><th className="text-right py-2 px-2">Vista prom.</th>
+                  <th className="text-right py-2 px-2">ER básico</th><th className="text-right py-2 px-2">Alcance</th><th className="text-right py-2 px-2">Compart.</th>
+                  <th className="text-right py-2 px-2">Guard.</th><th className="text-right py-2 px-2">Seguidores</th><th className="text-right py-2 px-2">Link</th>
+                </tr></thead>
+                <tbody>
+                  ${[...focusList].sort((a, b) => (parseDate(b.date) || 0) - (parseDate(a.date) || 0)).map((p, i) => {
+                    const g = ttGroupOf(p);
+                    const up = (v, m) => v == null || m == null ? '' : v >= m ? 'text-success' : 'text-amber';
+                    return html`<tr key=${i} onClick=${() => onPick && onPick(p)} className="cursor-pointer hover:bg-onSurface/[0.03]">
+                      <td className="py-2 px-2 font-mono text-[11px] text-txt3">${dateShort(p.date)}</td>
+                      <td className="py-2 px-2"><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style=${{ background: g.color }}></span>${g.l}</span></td>
+                      <td className="py-2 px-2 text-txt3 max-w-[220px] truncate" title=${`${p.campaign || ''} · ${p.subcampaign || ''}`}>${p.campaign || '—'}${p.subcampaign ? ' · ' + p.subcampaign : ''}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${p.duration ? p.duration + ' s' : '—'}</td>
+                      <td className=${"py-2 px-2 text-right tabular-nums " + up(p.vtr, medVtr)}>${p.vtr > 0 ? pct(p.vtr) : '—'}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${p.avg_watch_time > 0 ? num1(p.avg_watch_time, ' s') : '—'}</td>
+                      <td className=${"py-2 px-2 text-right tabular-nums " + up(p.basic_er, medBer)}>${pct(p.basic_er)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(p.reach)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(p.shares)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${fmtFull(p.saves)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">${p.new_followers != null ? fmtFull(p.new_followers) : '—'}</td>
+                      <td className="py-2 px-2 text-right"><${PostLink} p=${p} compact /></td>
+                    </tr>`;
+                  })}
+                </tbody>
+              </table>
+              <div className="text-[11px] text-txt4 mt-2">Verde/ámbar: arriba o abajo de la mediana de TikTok del filtro (VTR ${pct(medVtr)} · ER básico ${pct(medBer)}).</div>`}
+            </div>`}
+        </section>`;
+    }
+
+    // ============================================================
     // SimuladorSection — calculadora de metas al revés: en vez de
     // "hice X posts, obtuve Y", parte de la meta que pide el cliente y
     // calcula cuántos posts de cada plataforma/formato hacen falta,
@@ -8194,10 +8436,11 @@
                 <${InfluencersSection} D=${D} onPick=${setSelected}/>
                 <${FollowersSection} filters=${filters} chartTheme=${chartTheme} fetchedAt=${fetchedAt}/>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, promedios, comparativas, catálogo, cadencia, horarios y simulador"
-                  count=${8} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint="Mezcla, perfil por formato, TikTok creativo, promedios, comparativas, catálogo, cadencia, horarios y simulador"
+                  count=${9} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
                   <${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
                   <${FormatProfileSection} D=${D} filters=${filters} chartTheme=${chartTheme}/>
+                  <${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme}/>
                   <${AveragesSection}    D=${D}/>
                   <${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme}/>
                   <${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/>
