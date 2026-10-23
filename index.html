@@ -621,7 +621,8 @@
       //  · CTR > 100%        → más clics que impresiones.
       // VTR > 100% NO se marca: en Shorts/Reels es válido por repeticiones.
       out._flags = [];
-      if (out.basic_er != null && out.basic_er > 100) out._flags.push('er');
+      // v74 — ER Básico > 100% ya no se marca: el equipo confirmó que esos valores son
+      // correctos (en TikTok/YouTube hay posts con más interacciones que alcance).
       if (out.ctr != null && out.ctr > 100) out._flags.push('ctr');
       return out;
     }
@@ -1644,7 +1645,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-23-v73';
+    const BUILD_VERSION = '2026-10-23-v74';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -5919,7 +5920,7 @@
     function ttStats(list) {
       const sum = (f) => list.reduce((a, p) => a + (f(p) || 0), 0);
       const reach = sum(p => p.reach);
-      // ER básico = promedio por post (sin Stories ni valores imposibles), igual que el resto del dashboard
+      // ER básico = promedio por post sin Stories (solo existen en IG y FB), igual que el resto del dashboard
       const okEr = list.filter(p => !(p._flags || []).includes('er') && p.reach > 0 && p.basic_er != null && p.format !== 'Stories');
       const vids = list.filter(p => p.vtr != null && p.vtr > 0);
       const durs = list.filter(p => p.duration > 0);
@@ -7455,7 +7456,7 @@
             <${QualityStat} label="Sin métricas" value=${c.sinMetricas} warn=${c.sinMetricas > 0} hint="Sin alcance, impresiones, interacciones ni views" />
             <${QualityStat} label="Sin Tipo Pauta" value=${c.sinPauta} warn=${c.sinPauta > 0} hint="Quedan fuera del split orgánico / pauta" />
             <${QualityStat} label="Sin clasificar" value=${c.sinClasif} warn=${c.sinClasif > 0} hint="Sin Formato o Tipo Contenido: no tienen benchmark" />
-            <${QualityStat} label="Valores imposibles" value=${c.imposibles} warn=${c.imposibles > 0} hint="ER Básico o CTR > 100%: fuera de las tasas" />
+            <${QualityStat} label="Valores imposibles" value=${c.imposibles} warn=${c.imposibles > 0} hint="CTR > 100% (más clics que impresiones): fuera de las tasas" />
           </div>
 
 
