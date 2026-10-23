@@ -1517,7 +1517,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v65';
+    const BUILD_VERSION = '2026-10-22-v66';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -7218,12 +7218,6 @@
         }
         // 6) Números incoherentes
         if (p.basic_interactions != null && p.interactions != null && p.interactions < p.basic_interactions) add(p, 'Inter. Totales menor que Inter. Básicas');
-        // v65 — Alcance dudoso: reproducciones 10 veces o más por encima del alcance
-        // (ER total de miles de %). Casi siempre es un alcance mal capturado.
-        if (p.reach > 0 && p.views > 0 && p.views / p.reach >= 10) {
-          const x = p.views / p.reach;
-          add(p, `Alcance a revisar: ${x >= 100 ? Math.round(x).toLocaleString('es-MX') : x.toFixed(1)}× más reproducciones que alcance (${fmtFull(p.views)} vs ${fmtFull(p.reach)})`);
-        }
       }
       return out;
     }
@@ -7279,7 +7273,6 @@
         ['metricas', 'Sin métricas', (t) => t === 'Sin métricas'],
         ['clasif', 'Sin clasificar', (t) => /^Sin (Tipo|Formato)/.test(t)],
         ['tyc', 'Tendencia / Stay & Play', (t) => /^Clasificación:/.test(t)],
-        ['alcance', 'Alcance a revisar', (t) => /^Alcance a revisar/.test(t)],
         ['imposibles', 'Valores imposibles', (t) => /^Valor imposible/.test(t)],
       ];
       const kf = (KINDS.find(k => k[0] === kind) || KINDS[0])[2];
@@ -7304,7 +7297,7 @@
 
           <div className="rounded-2xl bg-surface p-6 md:p-7 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-x-8 gap-y-6 mb-4">
             <${QualityStat} label="Links duplicados" value=${c.duplicados} warn=${c.duplicados > 0} hint="El mismo post capturado más de una vez" />
-            <${QualityStat} label="Campos mal llenados" value=${c.campos} warn=${c.campos > 0} hint="Fecha, semana, mes, formato, link, escritura o alcance dudoso" />
+            <${QualityStat} label="Campos mal llenados" value=${c.campos} warn=${c.campos > 0} hint="Fecha, semana, mes, formato, link o escritura" />
             <${QualityStat} label="Sin métricas" value=${c.sinMetricas} warn=${c.sinMetricas > 0} hint="Sin alcance, impresiones, interacciones ni views" />
             <${QualityStat} label="Sin Tipo Pauta" value=${c.sinPauta} warn=${c.sinPauta > 0} hint="Quedan fuera del split orgánico / pauta" />
             <${QualityStat} label="Sin clasificar" value=${c.sinClasif} warn=${c.sinClasif > 0} hint="Sin Formato o Tipo Contenido: no tienen benchmark" />
