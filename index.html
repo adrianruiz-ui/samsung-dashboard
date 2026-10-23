@@ -406,6 +406,9 @@
       });
       return gisPromise;
     }
+    const AUTH_SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+    const AUTH_SCOPE_MSG = 'Falta el permiso para leer la base. Vuelve a dar clic en «Continuar con Google» y, en la ventana de Google, marca la casilla «Ver todas tus hojas de cálculo de Google Sheets».';
+    let authNeedConsent = false;
     async function authSignIn() {
       await loadGis();
       let hint; try { hint = localStorage.getItem('smx-auth-hint') || undefined; } catch {}
@@ -414,6 +417,12 @@
           client_id: AUTH_CLIENT_ID, scope: AUTH_SCOPES, hd: AUTH_DOMAIN, login_hint: hint, include_granted_scopes: true,
           callback: async (resp) => {
             if (!resp || resp.error) { reject(new Error(resp && resp.error === 'access_denied' ? 'No se concedió el acceso.' : 'No se pudo iniciar sesión.')); return; }
+            // Google deja desmarcar permisos: sin el de Sheets el dashboard no puede leer la base
+            if (!google.accounts.oauth2.hasGrantedAllScopes(resp, AUTH_SHEETS_SCOPE)) {
+              authNeedConsent = true;
+              try { google.accounts.oauth2.revoke(resp.access_token, () => {}); } catch {}
+              reject(new Error(AUTH_SCOPE_MSG)); return;
+            }
             try {
               const u = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${resp.access_token}` } }).then(r => r.json());
               const email = String(u.email || '').toLowerCase();
@@ -429,10 +438,12 @@
           error_callback: (e) => reject(new Error(e && e.type === 'popup_closed' ? 'Se cerró la ventana de Google antes de terminar.'
             : e && e.type === 'popup_failed_to_open' ? 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio e intenta de nuevo.' : 'No se pudo iniciar sesión.')),
         });
-        client.requestAccessToken({ prompt: '' });
+        client.requestAccessToken({ prompt: authNeedConsent ? 'consent' : '' });
       });
     }
-    function authSignOut() {
+    let authOutMsg = null;
+    function authSignOut(msg) {
+      authOutMsg = typeof msg === 'string' ? msg : null;
       const tk = authState.token; authClear();
       try { localStorage.removeItem(CACHE_KEY); sessionStorage.removeItem(CACHE_KEY); } catch {}
       try { tk && google.accounts.oauth2.revoke(tk, () => {}); } catch {}
@@ -443,7 +454,13 @@
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${authState.token}` }, cache: 'no-store' });
       if (res.status === 401) { authEmit('expired'); throw new Error('Tu sesión expiró. Vuelve a entrar con tu cuenta de Ganem.'); }
-      if (res.status === 403 || res.status === 404) { const e = new Error(`Tu cuenta (${authState.email}) no tiene acceso al Sheet de Samsung. Pide acceso a quien administra la base.`); e.noAccess = true; throw e; }
+      if (res.status === 403 || res.status === 404) {
+        let reason = '', msg = '';
+        try { const j = await res.json(); reason = ((j.error && j.error.details) || []).map(d => d.reason).filter(Boolean).join(' ') || (j.error && j.error.status) || ''; msg = (j.error && j.error.message) || ''; } catch {}
+        if (/SCOPE_INSUFFICIENT/.test(reason) || /insufficient authentication scopes/i.test(msg)) { authNeedConsent = true; authSignOut(AUTH_SCOPE_MSG); throw new Error(AUTH_SCOPE_MSG); }
+        if (/SERVICE_DISABLED|API_DISABLED/.test(reason) || /has not been used|is disabled/i.test(msg)) throw new Error('La Google Sheets API no está activada en el proyecto de Google Cloud del dashboard (o se acaba de activar y tarda unos minutos). Intenta de nuevo en un momento.');
+        const e = new Error(`Tu cuenta (${authState.email}) no tiene acceso al Sheet de Samsung. Pide acceso a quien administra la base.`); e.noAccess = true; throw e;
+      }
       if (!res.ok) throw new Error(`No se pudo leer «${range.split('!')[0].replace(/'/g, '')}» (HTTP ${res.status}).`);
       const j = await res.json();
       const rows = (j.values || []).map(r => r.map(c => c == null ? '' : String(c)));
@@ -1623,7 +1640,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v69';
+    const BUILD_VERSION = '2026-10-22-v70';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -10430,7 +10447,7 @@
       const [err, setErr] = useState(null);
       const [busy, setBusy] = useState(false);
       useEffect(() => {
-        const f = (ev) => { if (ev === 'out') { setSt('out'); setErr(null); } else if (ev === 'expired') setSt(s => s === 'in' ? 'expired' : s); else if (ev === 'in') setSt('in'); };
+        const f = (ev) => { if (ev === 'out') { setSt('out'); setErr(authOutMsg); authOutMsg = null; } else if (ev === 'expired') setSt(s => s === 'in' ? 'expired' : s); else if (ev === 'in') setSt('in'); };
         authListeners.add(f); return () => authListeners.delete(f);
       }, []);
       // Aviso 2 min antes de que venza el token (dura ~1 h)
