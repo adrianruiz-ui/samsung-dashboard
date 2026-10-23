@@ -285,6 +285,8 @@
     ::view-transition-group(root) { animation-duration: 560ms; }
     @keyframes vtReveal { from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 0px)); } to { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0px)); } }
     /* (5) grupos plegables */
+    .login-in { animation: riseIn 520ms var(--ease-out, ease-out) both; }
+    @media (prefers-reduced-motion: reduce) { .login-in { animation: none; } }
     .ask-panel { animation: askIn 220ms var(--ease-out, ease-out) both; }
     @keyframes askIn { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
     html.motion .ask-panel .pop-in { animation-delay: 0ms; }
@@ -366,6 +368,89 @@
     };
     const sheetRowUrl = (platform, row) => SHEET_GIDS[platform] && row
       ? `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=${SHEET_GIDS[platform]}&range=A${row}` : null;
+
+    // ============================================================
+    // v68 — ACCESO SOLO CON CUENTAS DE GANEM (@ganem.mx)
+    // Con AUTH_CLIENT_ID vacío el dashboard funciona como antes (Sheet
+    // público). Con Client ID: inicio de sesión con Google, se verifica que
+    // el correo sea @ganem.mx y los datos se leen con el token del propio
+    // usuario vía Google Sheets API. La seguridad real la pone Google: el
+    // Sheet deja de ser público y solo lo leen cuentas con acceso a él.
+    // El código de esta página no contiene datos.
+    // ============================================================
+    const AUTH_CLIENT_ID = '';
+    const AUTH_DOMAIN = 'ganem.mx';
+    const AUTH_SCOPES = 'openid email profile https://www.googleapis.com/auth/spreadsheets.readonly';
+    const AUTH_ON = !!AUTH_CLIENT_ID;
+    const AUTH_KEY = 'smx-auth';
+    const authState = { token: null, exp: 0, email: null, name: null, picture: null };
+    const authValid = () => !AUTH_ON || (!!authState.token && authState.exp > Date.now() + 30e3);
+    function authLoad() {
+      try {
+        const v = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
+        if (v && v.token && v.exp > Date.now() + 60e3 && String(v.email || '').toLowerCase().endsWith('@' + AUTH_DOMAIN)) { Object.assign(authState, v); return true; }
+      } catch {}
+      return false;
+    }
+    function authSave() { try { sessionStorage.setItem(AUTH_KEY, JSON.stringify(authState)); } catch {} }
+    function authClear() { Object.assign(authState, { token: null, exp: 0, email: null, name: null, picture: null }); try { sessionStorage.removeItem(AUTH_KEY); } catch {} }
+    const authListeners = new Set();
+    const authEmit = (ev) => authListeners.forEach(f => { try { f(ev); } catch {} });
+    let gisPromise = null;
+    function loadGis() {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) return Promise.resolve();
+      if (!gisPromise) gisPromise = new Promise((res, rej) => {
+        const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+        sc.onload = () => res(); sc.onerror = () => { gisPromise = null; rej(new Error('No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.')); };
+        document.head.appendChild(sc);
+      });
+      return gisPromise;
+    }
+    async function authSignIn() {
+      await loadGis();
+      let hint; try { hint = localStorage.getItem('smx-auth-hint') || undefined; } catch {}
+      return new Promise((resolve, reject) => {
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: AUTH_CLIENT_ID, scope: AUTH_SCOPES, hd: AUTH_DOMAIN, login_hint: hint, include_granted_scopes: true,
+          callback: async (resp) => {
+            if (!resp || resp.error) { reject(new Error(resp && resp.error === 'access_denied' ? 'No se concedió el acceso.' : 'No se pudo iniciar sesión.')); return; }
+            try {
+              const u = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${resp.access_token}` } }).then(r => r.json());
+              const email = String(u.email || '').toLowerCase();
+              if (!email.endsWith('@' + AUTH_DOMAIN) || u.email_verified === false) {
+                try { google.accounts.oauth2.revoke(resp.access_token, () => {}); } catch {}
+                reject(new Error(`${u.email || 'Esa cuenta'} no es una cuenta de Ganem. Entra con tu correo @${AUTH_DOMAIN}.`)); return;
+              }
+              Object.assign(authState, { token: resp.access_token, exp: Date.now() + (+resp.expires_in || 3600) * 1000, email, name: u.name || email, picture: u.picture || null });
+              authSave(); try { localStorage.setItem('smx-auth-hint', email); } catch {}
+              authEmit('in'); resolve(authState);
+            } catch { reject(new Error('No se pudo verificar tu cuenta de Google.')); }
+          },
+          error_callback: (e) => reject(new Error(e && e.type === 'popup_closed' ? 'Se cerró la ventana de Google antes de terminar.'
+            : e && e.type === 'popup_failed_to_open' ? 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio e intenta de nuevo.' : 'No se pudo iniciar sesión.')),
+        });
+        client.requestAccessToken({ prompt: '' });
+      });
+    }
+    function authSignOut() {
+      const tk = authState.token; authClear();
+      try { localStorage.removeItem(CACHE_KEY); sessionStorage.removeItem(CACHE_KEY); } catch {}
+      try { tk && google.accounts.oauth2.revoke(tk, () => {}); } catch {}
+      authEmit('out');
+    }
+    async function sheetsValues(range, id = SHEET_ID) {
+      if (!authValid()) { authEmit('expired'); throw new Error('Tu sesión expiró. Vuelve a entrar con tu cuenta de Ganem.'); }
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${authState.token}` }, cache: 'no-store' });
+      if (res.status === 401) { authEmit('expired'); throw new Error('Tu sesión expiró. Vuelve a entrar con tu cuenta de Ganem.'); }
+      if (res.status === 403 || res.status === 404) { const e = new Error(`Tu cuenta (${authState.email}) no tiene acceso al Sheet de Samsung. Pide acceso a quien administra la base.`); e.noAccess = true; throw e; }
+      if (!res.ok) throw new Error(`No se pudo leer «${range.split('!')[0].replace(/'/g, '')}» (HTTP ${res.status}).`);
+      const j = await res.json();
+      const rows = (j.values || []).map(r => r.map(c => c == null ? '' : String(c)));
+      const w = rows.reduce((m, r) => Math.max(m, r.length), 0);
+      return rows.map(r => r.length < w ? [...r, ...Array(w - r.length).fill('')] : r);
+    }
+
     async function fetchRowIndex(platformName) {
       const gid = SHEET_GIDS[platformName];
       if (!gid) return null;
@@ -402,6 +487,19 @@
 
     async function fetchTab(platformName) {
       const tabName = SHEET_TABS[platformName];
+      if (AUTH_ON) {
+        // v68 — con sesión: Sheets API. La fila del Sheet sale directo del índice.
+        const vals = await sheetsValues(`'${tabName}'!A2:AL10000`);
+        const hdr = (vals[0] || []).map(h => String(h).trim());
+        const out = [];
+        for (let i = 1; i < vals.length; i++) {
+          const r = vals[i];
+          if (!r.some(c => String(c).trim())) continue;
+          const o = {}; hdr.forEach((h, j) => { if (h && !(h in o)) o[h] = r[j] ?? ''; });
+          o._platform = platformName; o._row = i + 2; out.push(o);
+        }
+        return out;
+      }
       const rowIndexP = fetchRowIndex(platformName);   // en paralelo; si falla, solo no hay número de fila
       const res = await fetch(buildSheetUrl(tabName), { redirect: 'follow', cache: 'no-store' });
       if (!res.ok) throw new Error(`Error al cargar "${tabName}": HTTP ${res.status}`);
@@ -435,6 +533,7 @@
         if (r.status === 'fulfilled') data[platform] = r.value.rows;
         else { errors.push({ platform, message: r.reason?.message || String(r.reason) }); data[platform] = []; }
       }
+      if (AUTH_ON && errors.length === PLATFORMS.length) throw new Error(errors[0].message);
       return { data, errors, fetchedAt: Date.now() };
     }
 
@@ -516,6 +615,7 @@
     // fusione las filas de título con el encabezado.
     // ============================================================
     async function fetchRawSheet(tabName, range) {
+      if (AUTH_ON) return sheetsValues(`'${tabName}'!${range}`);
       const params = new URLSearchParams({ tqx: 'out:csv', sheet: tabName, range, headers: '0' });
       const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?${params.toString()}`, { redirect: 'follow' });
       if (!res.ok) throw new Error(`Error al cargar "${tabName}": HTTP ${res.status}`);
@@ -1523,7 +1623,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v67';
+    const BUILD_VERSION = '2026-10-22-v68';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -1538,15 +1638,15 @@
 
     function readCache() {
       try {
-        const raw = localStorage.getItem(CACHE_KEY);
+        const raw = (AUTH_ON ? sessionStorage : localStorage).getItem(CACHE_KEY);
         if (!raw) return null;
         const p = JSON.parse(raw);
         if (Date.now() - p.fetchedAt > CACHE_TTL_MS) return null;
         return p;
       } catch { return null; }
     }
-    function writeCache(p) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(p)); } catch {} }
-    function clearCache() { try { localStorage.removeItem(CACHE_KEY); } catch {} }
+    function writeCache(p) { try { (AUTH_ON ? sessionStorage : localStorage).setItem(CACHE_KEY, JSON.stringify(p)); } catch {} }
+    function clearCache() { try { localStorage.removeItem(CACHE_KEY); sessionStorage.removeItem(CACHE_KEY); } catch {} }
 
     function useDashboardData() {
       const [state, setState] = useState({
@@ -1569,6 +1669,7 @@
           }
         }
 
+        if (!authValid()) { authEmit('expired'); return; }   // v68 — sin sesión vigente no se recarga; se conservan los datos en pantalla
         inFlightRef.current = true;
         setState(s => ({ ...s, loading: !s.data, refreshing: !!s.data, error: null }));
 
@@ -1579,7 +1680,8 @@
           window.__smxRefreshAt = Date.now();   // v62 — las cifras que cambien con esta carga pulsan
           setState({ data, loading:false, refreshing:false, error:null, errors, fetchedAt });
         } catch (e) {
-          setState(s => ({ ...s, loading:false, refreshing:false, error: e?.message || 'Error desconocido' }));
+          // v68 — si ya hay datos en pantalla, una recarga fallida no tumba el dashboard
+          setState(s => s.data ? ({ ...s, loading:false, refreshing:false }) : ({ ...s, loading:false, refreshing:false, error: e?.message || 'Error desconocido' }));
         } finally {
           inFlightRef.current = false;
         }
@@ -2071,11 +2173,16 @@
             <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-amber mb-4">Error</div>
             <h1 className="text-3xl text-txt leading-tight mb-3 font-medium">No se pudo cargar la información.</h1>
             <p className="text-txt3 text-sm leading-relaxed mb-6">${message}</p>
+            ${AUTH_ON ? html`
+            <div className="text-txt4 text-xs leading-relaxed mb-8 pt-2">
+              Entraste como <span className="text-txt2">${authState.email || '—'}</span>. Si no es tu cuenta de trabajo,
+              <button onClick=${authSignOut} className="text-accent2 hover:underline">cambia de cuenta</button>.
+            </div>` : html`
             <div className="text-txt4 text-xs leading-relaxed mb-8 border-t border-line pt-6">
               Verifica que tu Google Sheet esté compartido como
               <span className="text-txt2 font-mono"> "Cualquiera con el enlace → Lector"</span> y que
               <span className="text-txt2 font-mono"> SHEET_ID</span> en este archivo sea correcto.
-            </div>
+            </div>`}
             ${onRetry && html`
               <button onClick=${onRetry}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent text-ink text-sm font-medium hover:bg-accent2 hover:text-white transition-colors">
@@ -2771,6 +2878,7 @@
                     title="Actualizar ahora" aria-label="Actualizar ahora">
               <${RefreshIcon} size=${14} className=${refreshing ? 'animate-spin' : ''} />
             </button>
+            <${AccountChip}/>
           </div>
         </header>`;
     }
@@ -7230,6 +7338,23 @@
         }
         // 6) Números incoherentes
         if (p.basic_interactions != null && p.interactions != null && p.interactions < p.basic_interactions) add(p, 'Inter. Totales menor que Inter. Básicas');
+        // 7) v68 — Campos que alimentan KPIs y análisis
+        if (!p.product || !String(p.product).trim()) add(p, 'Sin Producto');
+        if (askYes(p.is_influencer) && !String(p.influencer_name || '').trim()) add(p, '¿Influencer? = Sí pero sin Nombre Influencer');
+      }
+      // 8) v68 — Videos sin VTR o sin duración (el KPI de VTR 0–30 s los necesita).
+      //    Solo en plataformas donde la mayoría de los videos sí trae el dato.
+      {
+        const VID = ['Reels', 'Video', 'Short', 'Live'];
+        const byPlat = new Map();
+        for (const p of all) if (VID.includes(p.format) && p.views > 0) { if (!byPlat.has(p.platform)) byPlat.set(p.platform, []); byPlat.get(p.platform).push(p); }
+        for (const [pl, vids] of byPlat) {
+          const hasV = vids.filter(p => p.vtr > 0).length / vids.length, hasD = vids.filter(p => p.duration > 0).length / vids.length;
+          for (const p of vids) {
+            if (hasV >= 0.6 && !(p.vtr > 0)) add(p, 'Video sin VTR (la mayoría de los videos de ' + pl + ' sí lo tiene)');
+            if (hasD >= 0.6 && !(p.duration > 0)) add(p, 'Video sin Duración (seg)');
+          }
+        }
       }
       return out;
     }
@@ -7285,6 +7410,7 @@
         ['metricas', 'Sin métricas', (t) => t === 'Sin métricas'],
         ['clasif', 'Sin clasificar', (t) => /^Sin (Tipo|Formato)/.test(t)],
         ['tyc', 'Tendencia / Stay & Play', (t) => /^Clasificación:/.test(t)],
+        ['video', 'Videos sin VTR o duración', (t) => /^Video sin/.test(t)],
         ['imposibles', 'Valores imposibles', (t) => /^Valor imposible/.test(t)],
       ];
       const kf = (KINDS.find(k => k[0] === kind) || KINDS[0])[2];
@@ -7309,7 +7435,7 @@
 
           <div className="rounded-2xl bg-surface p-6 md:p-7 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-x-8 gap-y-6 mb-4">
             <${QualityStat} label="Links duplicados" value=${c.duplicados} warn=${c.duplicados > 0} hint="El mismo post capturado más de una vez" />
-            <${QualityStat} label="Campos mal llenados" value=${c.campos} warn=${c.campos > 0} hint="Fecha, semana, mes, formato, link o escritura" />
+            <${QualityStat} label="Campos mal llenados" value=${c.campos} warn=${c.campos > 0} hint="Fecha, semana, formato, link, escritura, producto o datos de video" />
             <${QualityStat} label="Sin métricas" value=${c.sinMetricas} warn=${c.sinMetricas > 0} hint="Sin alcance, impresiones, interacciones ni views" />
             <${QualityStat} label="Sin Tipo Pauta" value=${c.sinPauta} warn=${c.sinPauta > 0} hint="Quedan fuera del split orgánico / pauta" />
             <${QualityStat} label="Sin clasificar" value=${c.sinClasif} warn=${c.sinClasif > 0} hint="Sin Formato o Tipo Contenido: no tienen benchmark" />
@@ -7506,6 +7632,7 @@
       // v33 — la pestaña Followers se lee del export CSV: gviz "adivina" el
       // tipo de cada columna y borra los encabezados "Week N" del newsletter.
       const readFollowers = async () => {
+        if (AUTH_ON) return fetchRawSheet('Followers', 'A1:DZ60');
         try {
           const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${FOLLOWERS_GID}`);
           const txt = res.ok ? await res.text() : '';
@@ -8529,6 +8656,7 @@
       vals(p => p.product).forEach(v => add('products', v, 0));
       vals(p => p.campaign).forEach(v => add('campaigns', v, 1));
       vals(p => p.subcampaign).forEach(v => add('subcampaigns', v, 2));
+      vals(p => askIsInfl(p) && p.influencer_name ? String(p.influencer_name).trim() : null).forEach(v => add('influencers', v, 3));
       entries.sort((a, b) => b.len - a.len || a.pri - b.pri);
       c = { entries,
             campaigns: vals(p => p.campaign), subcampaigns: vals(p => p.subcampaign), products: vals(p => p.product),
@@ -8551,13 +8679,14 @@
       products:     { label: 'Producto',     get: (p) => p.product },
       campaigns:    { label: 'Campaña',      get: (p) => p.campaign },
       subcampaigns: { label: 'Subcampaña',   get: (p) => p.subcampaign },
+      influencers:  { label: 'Influencer',   get: (p) => p.influencer_name ? String(p.influencer_name).trim() : null },
       special:      { label: 'Contenido TikTok', get: (p) => ttGroupOf(p).k, show: (v) => v === 'stay' ? 'Stay & Play' : v === 'tend' ? 'Tendencia' : v },
       flags:        { label: 'Atributo', test: (p, v) => v === 'infl' ? askIsInfl(p) : v === 'noinfl' ? !askIsInfl(p) : v === 'ai' ? askYes(p.ai)
                       : v === 'subs' ? askYes(p.subtitles) : v === 'nosubs' ? !askYes(p.subtitles) : v === 'audio' ? askYes(p.audio) : v === 'noaudio' ? !askYes(p.audio) : true,
                       show: (v) => ({ infl: 'Con influencer', noinfl: 'Sin influencer', ai: 'Hecho con IA', subs: 'Con subtítulos', nosubs: 'Sin subtítulos', audio: 'Con audio', noaudio: 'Sin audio' }[v] || v) },
       dows:         { label: 'Día', test: (p, v) => askD(p).dow === v, show: (v) => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][v] },
     };
-    const ASK_SEGMENT_DIMS = ['formats', 'strategies', 'contentTypes', 'stages', 'objectives', 'products', 'campaigns', 'subcampaigns', 'special', 'flags'];
+    const ASK_SEGMENT_DIMS = ['formats', 'strategies', 'contentTypes', 'stages', 'objectives', 'products', 'campaigns', 'subcampaigns', 'influencers', 'special', 'flags'];
     const askDimTest = (dim, v) => ASK_FDIMS[dim].test ? (p) => ASK_FDIMS[dim].test(p, v) : (p) => ASK_FDIMS[dim].get(p) === v;
     const askShow = (dim, v) => (ASK_FDIMS[dim].show ? ASK_FDIMS[dim].show(v) : v);
 
@@ -8724,6 +8853,57 @@
     ];
     const ASK_POST_NOUN = /\b(?:posts?|publicaci(?:on|ones)|contenidos?|piezas?|videos?|tiktoks?|reels?|stories|story|historias?|shorts?|carrusel(?:es)?|tweets?|tuits?|fotos?|lives?)\b|\btik ?toks\b/;
 
+
+    // ---------- v68 — Glosario (definiciones con las reglas del dashboard) ----------
+    const ASK_TERMS = [
+      ['er', /\ber (?:total|views|de views)\b|\bengagement total\b/],
+      ['ber', /\ber basico\b|\ber\b|\bengagement(?: rate)?\b|\btasa de (?:interaccion|engagement)\b/],
+      ['vtr', /\bvtr\b|\bview ?through\b|\bretencion\b/],
+      ['ctr', /\bctr\b|\bclick ?through\b/],
+      ['watch', /\btiempo (?:promedio )?de (?:vista|visualizacion)\b|\bwatch ?time\b/],
+      ['reach', /\balcance\b|\breach\b/],
+      ['impressions', /\bimpresiones\b/],
+      ['views', /\breproducciones\b|\bviews\b|\bvisualizaciones\b/],
+      ['inter', /\binteracciones\b/],
+      ['stay', /\bstay ?(?:&|and|y|n)? ?play\b/],
+      ['tend', /\btendencias?\b/],
+      ['paid', /\bpauta\b|\bpaid\b|\borganico\b|\btipo pauta\b/],
+      ['kpi', /\bkpis?\b/],
+      ['week', /\bsemanas?\b|\bwow\b/],
+      ['anom', /\banomalias?\b/],
+      ['bench', /\bbenchmarks?\b/],
+      ['fol', /\bseguidores\b|\bfollowers\b|\bmeta\b/],
+      ['dur', /\bduracion\b/],
+    ];
+    const ASK_DEFS = {
+      er: ['ER total', 'Interacciones totales (incluyen reproducciones) entre alcance; es la columna «ER Views %» del Sheet.', 'Como puede pasar de 100 % cuando hay muchas reproducciones, el dashboard usa la mediana por post y no cuenta Stories.'],
+      ber: ['ER básico', 'Interacciones básicas (columna «Inter. Básicas») entre alcance; es la columna «ER Básico %» del Sheet.', 'El dashboard lo promedia por post y no cuenta Stories. KPI de cuenta: mínimo 5 % en el feed de Instagram.'],
+      vtr: ['VTR', 'View Through Rate: qué porcentaje del video ve la gente en promedio; es la columna «VTR %» del Sheet.', 'En el dashboard se pondera por reproducciones (los videos con más views pesan más). El KPI de cuenta usa el promedio simple de videos de 0 a 30 s, con meta de 25 %.'],
+      ctr: ['CTR', 'Clics entre impresiones.', 'Solo cuenta posts con clics registrados, porque en varias plataformas y en pauta el clic no se captura y bajaría el número sin razón.'],
+      watch: ['Tiempo promedio de vista', 'Segundos que la gente ve el video en promedio; es la columna «T. Prom. Vista» del Sheet.', 'Se promedia entre los posts que tienen el dato.'],
+      reach: ['Alcance', 'Personas que vieron el post (columna «Alcance»).', 'Los totales suman el alcance de cada post, así que una misma persona puede contarse en varios posts.'],
+      impressions: ['Impresiones', 'Veces que se mostró el post, incluidas las repeticiones a una misma persona.', 'Por eso suelen ser más que el alcance.'],
+      views: ['Reproducciones', 'Views del video según la plataforma (columna «Views»).', 'Una persona puede sumar varias reproducciones.'],
+      inter: ['Interacciones', '«Inter. Totales» incluye reproducciones en video; «Inter. Básicas» solo reacciones, comentarios, compartidos y similares.', 'El ER total usa las totales y el ER básico las básicas.'],
+      stay: ['Stay & Play', 'Posts marcados como «Stay & Play» en Campaña o Subcampaña del Sheet.', 'El buscador y el laboratorio de TikTok lo detectan aunque esté escrito distinto («stay and play», «Stay&Play»); Calidad de datos marca esas variantes para corregirlas.'],
+      tend: ['Tendencia', 'Posts marcados como «Tendencia» en Campaña o Subcampaña del Sheet.', 'Se detectan aunque estén escritos distinto; Calidad de datos marca las variantes.'],
+      paid: ['Orgánico y pauta', 'Columna «Tipo Pauta» del Sheet: «Orgánico» o «Paid» (con inversión).', 'La pauta infla el alcance y suele bajar las tasas, por eso conviene compararlos por separado.'],
+      kpi: ['KPIs de cuenta', 'VTR mínimo de 25 % en videos de 0 a 30 s en todas las plataformas (incluye Shorts) y ER básico mínimo de 5 % en Instagram, solo feed.', 'Ambos se calculan como promedio simple por post y no cuentan Stories.'],
+      week: ['Semanas', 'Van de domingo a sábado. La semana 1 de 2026 arrancó el 28 de diciembre de 2025.', '«WoW» es el cambio contra la semana anterior.'],
+      anom: ['Anomalías', `Posts cuyo alcance o ER total se aleja mucho de lo típico de su plataforma (desviación robusta de ${ANOMALY_Z_THRESHOLD} o más).`, 'Sirven para encontrar éxitos que conviene replicar o errores de captura.'],
+      bench: ['Benchmark', 'Comparación contra posts de la misma plataforma, formato, tipo de pauta y tipo de contenido.', `Se necesita un mínimo de ${BENCH_MIN_N} posts comparables.`],
+      fol: ['Seguidores y meta', 'Los seguidores salen de la pestaña «Followers» (total semanal por cuenta) y la meta de 2026 de «Status vs Meta 2026».', 'La proyección usa el ritmo de las últimas 4 semanas.'],
+      dur: ['Duración', 'Segundos del video según la columna «Duración (seg)» del Sheet.', 'Los cortes del buscador son ≤10 s, 11–20 s, 21–30 s, 31–60 s y más de 60 s.'],
+    };
+    const ASK_UNSUP = [
+      [/\bhashtags?\b|\bcopys?\b|\btexto del post\b|\bcaptions?\b/, 'La base no registra hashtags ni copys de los posts.'],
+      [/\bsentimiento\b/, 'La base no tiene el sentimiento de los comentarios; eso vive en social listening (Brandwatch).'],
+      [/\binversion\b|\bpresupuesto\b|\bgasto\b|\bcostos?\b|\bcpm\b|\bcpc\b|\bcpv\b|\broi\b|\broas\b|\bcuanto (?:se )?(?:invirtio|gasto|pago|pagamos|invertimos)\b/, 'La base no tiene inversión, así que no se pueden calcular CPM, CPC ni ROI. Sí puedo comparar resultados de orgánico contra pauta.'],
+      [/\bcompetencia\b|\bcompetidor(?:es)?\b|\bapple\b|\biphone\b|\bmotorola\b|\bxiaomi\b|\bhuawei\b|\boppo\b|\bhonor\b/, 'La base solo tiene las cuentas de Samsung; no hay datos de la competencia.'],
+      [/\bedad(?:es)?\b|\bgenero\b|\bhombres\b|\bmujeres\b|\bdemografi\w*|\bde donde (?:son|es) (?:la gente|el publico|la audiencia)\b/, 'La base no tiene datos demográficos de la audiencia (edad, género o ubicación).'],
+      [/\bventas?\b|\bconversiones?\b/, 'La base no tiene ventas ni conversiones; lo más cercano son clics y CTR.'],
+    ];
+
     // ======================================================================
     // PARSER
     // ======================================================================
@@ -8735,6 +8915,8 @@
 
       // 1) texto normalizado (sin acentos, sin signos)
       let raw = ' ' + askFold(q).replace(/[¿?¡!,;:"“”()\[\]{}]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+      // sinónimos que el equipo agrega en el Sheet de registro
+      for (const [a, b] of ASK_SYN) raw = raw.replace(new RegExp('(?<![a-z0-9])' + askEscRx(a) + '(?![a-z0-9])', 'g'), b);
 
       // 2) valores reales de la base: productos, campañas, subcampañas (antes de corregir typos)
       const explicitCamp = /\bcampanas? /.test(raw), explicitSub = /\bsub ?campanas? /.test(raw);
@@ -8765,7 +8947,31 @@
       const preWorst = /\b(?:peor(?:es)?)\b/.test(tNoDur);
       const preN = t.match(/\btop ?(\d{1,3})\b|\b(?:los|las) (\d{1,3}) (?!(?:semanas?|meses?|dias?|anos?|segundos?|s|seg|de|del|al|a)\b)|\b(\d{1,3}) (?:mejores|peores|posts|publicaciones|videos|tiktoks|reels|contenidos|stories|shorts|carruseles|tweets)\b/);
       if (preN) spec.topN = Math.min(200, +(preN[1] || preN[2] || preN[3]));
-      const perfQ = /\b(?:funciona|funcionan|funciono|funcionaron|rinde|rinden|rindio|conviene|jala|jalan|pega|pegan|mejor|peor)\b/.test(t);
+      const perfQ = /\b(?:funciona|funcionan|funciono|funcionaron|rinde|rinden|rindio|conviene|jala|jalan|jalaron|jalo|pega|pegan|pegaron|pego|mejor|peor)\b/.test(t);
+      // v68 — temas que no son métricas de posts
+      if (/\b(?:que es|que son|que significa|que quiere decir|como se calcula|como calculan|como se mide|como se obtiene|de donde sale|definicion de|que mide|a que se refiere|explicame|explica|diferencia entre)\b/.test(t)) {
+        const hits = ASK_TERMS.map(([k, rx]) => { const m = t.match(rx); return m ? { k, pos: m.index } : null; }).filter(Boolean).sort((a, b) => a.pos - b.pos);
+        // "er" suelto también lo atrapa "er total"/"er basico": quita el genérico si hay uno específico
+        const ks = [...new Set(hits.map(h => h.k))];
+        if (ks.length) { spec.intent0 = 'define'; spec.term = ks[0]; spec.terms = ks.slice(0, 3); }
+      }
+      if (/\b(?:que (?:puedo|le puedo|se puede|te puedo) preguntar|que sabes hacer|que puedes hacer|como (?:te )?uso|como se usa|como funciona(?:s)?(?: el buscador| este buscador)?|^ ?ayuda ?$)\b/.test(t)) spec.intent0 = 'caps';
+      if (/\b(?:ultima actualizacion|cuando se actualizo|que tan actualizad[oa]s?|de cuando (?:son|es) (?:los datos|la info|la informacion|el ultimo dato)|hasta (?:que|cuando) (?:fecha |dia )?(?:hay|tenemos|llegan|llega) (?:datos|la base|info)|ultimo dato|ultima fecha (?:con datos|capturada|de la base)|datos al dia)\b/.test(t)) spec.intent0 = 'fresh';
+      for (const [rx, txt] of ASK_UNSUP) if (rx.test(t)) { spec.notices.push({ k: 'unsup', txt }); spec.unsupported = true; t = t.replace(new RegExp(rx.source, 'g'), ' '); }
+      const folWord = /\b(?:seguidores|followers|comunidad|suscriptores|subscribers|subs|fans)\b/.test(t);
+      const goalWord = /\bmetas?\b(?! de (?:la )?cuenta)|\bobjetivo de (?:seguidores|followers|crecimiento)\b|\bllegar(?:emos|amos|ian)? a la meta\b/.test(t);
+      const postLevelFol = /\bpor (?:post|publicacion|video)\b|\b(?:post|posts|publicaciones|videos|contenidos?|reels?|tiktoks?) (?:que|con) (?:mas|menos|mejor)\b|\bgeneraron\b|\btrajeron\b|\bnuevos seguidores por\b/.test(t);
+      if (folWord && postLevelFol) spec.forceFolMetric = true;
+      if ((folWord || goalWord) && !/\bkpis?\b/.test(t) && !postLevelFol && !spec.intent0) {
+        spec.intent0 = 'fol'; spec.folGoal = goalWord || /\b(?:llegar|alcanzar|cumplir)\b/.test(t);
+        spec.folGrowth = /\b(?:ganamos|ganaron|gano|ganado|crecimos|crecio|crecieron|crecimiento|crece|crecen|sumamos|nuevos|aumento|incremento|cuantos mas)\b/.test(t);
+        t = t.replace(/\b(?:seguidores|followers|comunidad|suscriptores|subscribers|subs|fans|metas?|objetivo|llegar(?:emos|amos|ian)?|alcanzar|cumplir|ganamos|ganaron|gano|ganado|crecimos|crecio|crecieron|crecimiento|crece|crecen|sumamos|nuevos|aumento|incremento|tenemos|tiene|tienen|hay|llevamos)\b/g, ' ');
+      }
+      if (/\banomalias?\b|\batipic[oa]s?\b|\bfuera de lo (?:normal|comun)\b|\bse dispar(?:o|aron)\b|\boutliers?\b|\braros?\b|\bextran[oa]s?\b|\bsorpresas?\b|\bse salieron? de lo normal\b/.test(t) && !spec.intent0) { spec.intent0 = 'anoms'; t = t.replace(/\banomalias?\b|\batipic[oa]s?\b|\bfuera de lo (?:normal|comun)\b|\boutliers?\b|\braros?\b|\bextran[oa]s?\b|\bsorpresas?\b/g, ' '); }
+      const qKind = /\bduplicad/.test(t) ? 'dup' : /\bsin metricas\b|\bsin capturar\b|\bfalta(?:n)? (?:por )?capturar\b|\bsin datos\b/.test(t) ? 'met' : /\bimposibles?\b/.test(t) ? 'imp' : /\bmal capturad|\bmal llenad|\bescrit[oa]s? (?:mal|distinto)/.test(t) ? 'campos' : null;
+      if (/\bcalidad de (?:los )?datos\b|\bpendientes?\b|\bfalta(?:n)? (?:por )?capturar\b|\bsin capturar\b|\berror(?:es)? (?:en|de) (?:la base|captura|el sheet)\b|\bdatos (?:incompletos|faltantes|mal capturados)\b|\bque hay que corregir\b|\blinks? duplicados?\b|\bduplicados\b|\b(?:se puede|podemos|esta lista para|lista para) reportar\b|\bmal capturad[oa]s?\b|\bque falta (?:llenar|capturar)\b/.test(t) && !spec.intent0) {
+        spec.intent0 = 'quality'; spec.qKind = qKind; t = t.replace(/\bcalidad de (?:los )?datos\b|\bpendientes?\b|\bduplicados?\b|\bmal capturad[oa]s?\b|\breportar\b|\bcorregir\b|\bcapturar\b/g, ' ');
+      }
       // "vs el resto" / "contra lo demás"
       eat(/\b(?:vs|versus|contra|frente a|comparad[oa]s? con|o) (?:el |lo |todo el )?(?:resto|demas|otros|los demas|todo lo demas)(?: del contenido| de lo que publicamos)?\b/g, () => { spec.vsRest = true; spec.compare = true; });
       // pares que se comparan como grupo
@@ -8779,8 +8985,7 @@
       t = t.replace(/\bun par de\b/g, '2').replace(/\b(un|una|uno)\b(?= (?:semanas?|meses?|dias?|anos?)\b)/g, '1').replace(/\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cincuenta|cien)\b(?= (?:semanas?|meses?|dias?|anos?|posts?|publicaciones|videos?|mejores|peores|primer[oa]s|ultim[oa]s|tiktoks?|reels?|contenidos?|piezas?))/g, (m, w) => String(ASK_NUMW[w]));
 
       // 4) avisos de cosas que la base no tiene
-      if (/\b(?:cuantos|total de|numero de) (?:seguidores|followers) (?:tenemos|hay|tiene|llevamos)\b|\bseguidores (?:totales|actuales)\b|\bcomunidad total\b/.test(t))
-        { spec.notices.push({ k: 'followers', txt: 'Los seguidores totales por cuenta viven en la sección «Followers y meta» (te llevo con el botón). Aquí solo están los nuevos seguidores que se capturan por post.', go: 'sec-followers' }); spec.followersQ = true; }
+
 
       // 5) comparación
       if (/\b(?:vs|versus|contra|comparad[oa]s? (?:con|a|vs)|frente a|comparar|compara|comparativa|comparacion|diferencia entre|en comparacion (?:con|a))\b/.test(t)) spec.compare = true;
@@ -8964,6 +9169,7 @@
       const mpos = [];
       for (const [k, rx] of ASK_METRIC_RX) { rx.lastIndex = 0; t = t.replace(rx, (m, ...a) => { mpos.push({ k, pos: a[a.length - 2] }); return ' '; }); }
       mpos.sort((a, b) => a.pos - b.pos).forEach(({ k }) => { if (!spec.metrics.includes(k)) spec.metrics.push(k); });
+      if (spec.forceFolMetric && !spec.metrics.includes('followers')) spec.metrics.unshift('followers');
       if (/\bpublicamos mas\b|\bmas publicaciones\b|\bmas posts\b|\bmas usamos\b|\bmas usado\b|\bmas frecuente\b|\bmas seguido\b/.test(t) && !spec.metrics.length) spec.metrics.push('posts');
 
       // 11) modo de agregación
@@ -8972,8 +9178,9 @@
       else if (/\btotal(?:es)?\b|\bsuma\b|\ben total\b|\bacumulad[oa]s?\b|\bsumad[oa]s?\b|\btodo junto\b/.test(t)) spec.mode = 'total';
 
       const breakdownDim = Object.keys(spec.dims).find(d => d !== 'dows' && d !== 'flags' && spec.dims[d].length > 1);
-      if (spec.followersQ && !spec.metrics.filter(m => m !== 'posts').length) spec.intent = 'notice';
-      else if (kpiQ) spec.intent = 'kpi';
+      if (kpiQ && spec.intent0 !== 'fol' && spec.intent0 !== 'define') spec.intent = 'kpi';
+      else if (spec.intent0) spec.intent = spec.intent0;
+      else if (spec.unsupported && !spec.metrics.length && !spec.group && !superl) spec.intent = 'notice';
       else if (spec.group) spec.intent = 'group';
       else if (spec.vsRest && (Object.keys(spec.dims).some(d => ASK_SEGMENT_DIMS.includes(d)) || spec.dur)) spec.intent = 'compare';
       else if ((breakdownDim || spec.periods.length > 1) && !postNoun) spec.intent = 'compare';
@@ -9000,7 +9207,7 @@
 
       // 13) lo que no se usó (para mostrar transparencia)
       const left = t.replace(/§p\w*§/g, ' ').split(' ').filter(w => w.length >= 4 && !ASK_STOP.has(w) && !ASK_VSET.has(w) && !/^\d+$/.test(w)
-        && !/^(?:cual|cuanto|cuantos|cuantas|quiero|todos|todas|publicamos|publicaron|tiene|tienen|tuvo|tuvieron|fueron|estuvo|nuestros|nuestras|nuestro|nuestra|samsung|galaxy|redes|sociales|social|sobre|segun|desde|entre|durante|tambien|funciona|funcionan|funciono|funcionaron|mejores|peores|buenos|buenas|malos|mejoro|subio|bajo|rinde|rinden|rindio|generamos|generaron|logramos|lograron|obtuvimos|obtuvo|sacamos|cuantas|veces|hicimos|hicieron|hecho|hechos|publicado|publicados|subidos|subimos|dinos|digame|dime|ensename|muestrame|quisiera|podrias|puedes|favor|ayuda|necesito|traeme|ultimos|ultimas|promedio|semanas|dias|meses|anos|algun|alguna|ningun|ninguna|kpis|kpi|cumplimos|cumple|llevamos|tenemos|tuvimos|deben|debe|total|totales|normal|normalmente|tipico|tipica|suele|suelen|hacemos|publicar|resto|vamos|alcanzan|resultados|subido|subidos|funcionado|subimos|sacamos|metimos|hemos|fueron|cuantos|cuantas|meta|metas)$/.test(w));
+        && !/^(?:cual|cuanto|cuantos|cuantas|quiero|todos|todas|publicamos|publicaron|tiene|tienen|tuvo|tuvieron|fueron|estuvo|nuestros|nuestras|nuestro|nuestra|samsung|galaxy|redes|sociales|social|sobre|segun|desde|entre|durante|tambien|funciona|funcionan|funciono|funcionaron|mejores|peores|buenos|buenas|malos|mejoro|subio|bajo|rinde|rinden|rindio|generamos|generaron|logramos|lograron|obtuvimos|obtuvo|sacamos|cuantas|veces|hicimos|hicieron|hecho|hechos|publicado|publicados|subidos|subimos|dinos|digame|dime|ensename|muestrame|quisiera|podrias|puedes|favor|ayuda|necesito|traeme|ultimos|ultimas|promedio|semanas|dias|meses|anos|algun|alguna|ningun|ninguna|kpis|kpi|cumplimos|cumple|llevamos|tenemos|tuvimos|deben|debe|total|totales|calcula|calculan|calcular|diferencia|puedo|preguntar|actualizo|actualizada|actualizado|base|links|link|audiencia|jalaron|jalo|pegaron|pego|trajeron|generaron|normal|normalmente|tipico|tipica|suele|suelen|hacemos|publicar|resto|vamos|alcanzan|resultados|subido|subidos|funcionado|subimos|sacamos|metimos|hemos|fueron|cuantos|cuantas|meta|metas)$/.test(w));
       spec.unused = [...new Set(left)].slice(0, 6);
       spec._t = t;
       return spec;
@@ -9066,19 +9273,114 @@
       return { vtr, nV: vids.length, ber, nI: ig.length };
     };
 
-    function askRun(spec, allPosts, _noFallback) {
+
+    // ---------- v68 — Seguidores y metas (pestañas Followers y Status vs Meta 2026) ----------
+    const ASK_FOL_YEAR = 2026;
+    function askRunFollowers(spec, base, ctx) {
+      if (!ctx.fol) return { ...base, kind: 'loading', need: 'fol', headline: { label: 'Seguidores', value: 'Leyendo la pestaña Followers…' } };
+      const { press, goals } = ctx.fol;
+      const plats = spec.dims.platforms || null;
+      const pick = (name) => !plats || plats.includes(FOL_PLATFORM(name));
+      if (!press || !press.series || !press.series.length) return { ...base, kind: 'notice', notices: [{ txt: 'No pude leer la pestaña Followers del Sheet. Revisa la sección «Followers y meta».', go: 'sec-followers' }] };
+      const series = press.series.filter(x => pick(x.name));
+      if (!series.length) return { ...base, kind: 'notice', notices: [{ txt: `La pestaña Followers no tiene una cuenta de ${plats.join(' / ')}.` }] };
+      const nW = Math.max(...series.map(x => x.vals.length));
+      const lab = (n) => FOL_LABEL(n);
+      const pct = (a, b) => { if (!b || a == null) return '—'; const v = a / b * 100; const r = Math.abs(v) < 0.1 && v !== 0 ? 2 : 1; return `${v < 0 ? '−' : ''}${Math.abs(v).toLocaleString('es-MX', { maximumFractionDigits: r })}%`; };
+      const sgn = (v) => v == null ? '—' : `${v >= 0 ? '+' : '−'}${fmt(Math.abs(v))}`;
+      // Metas
+      if (spec.folGoal) {
+        const gs = (goals || []).filter(g => pick(g.name));
+        if (!gs.length) return { ...base, kind: 'notice', notices: [{ txt: 'No hay meta de seguidores para esa cuenta en «Status vs Meta 2026».', go: 'sec-followers' }] };
+        const ST = { cumplida: 'Cumplida', en_ruta: 'En ruta', en_riesgo: 'En riesgo' };
+        const rows = gs.map(g => [lab(g.name), `${g.pct.toLocaleString('es-MX', { maximumFractionDigits: 1 })}%`, `${sgn(g.gained)} de ${fmt(g.goal)}`, `${sgn(Math.round(g.pace))}/sem`, g.gap > 0 ? `${fmt(Math.ceil(g.required))}/sem` : '—', `${g.projectedPct.toLocaleString('es-MX', { maximumFractionDigits: 0 })}%`, ST[g.status] || g.status]);
+        const ok = gs.filter(g => g.status !== 'en_riesgo').length;
+        const one = gs.length === 1 ? gs[0] : null;
+        return { ...base, kind: 'table', headline: one
+            ? { label: `Meta de seguidores 2026 · ${lab(one.name)}`, value: `${one.pct.toLocaleString('es-MX', { maximumFractionDigits: 1 })}%`, sub: `${sgn(one.gained)} de ${fmt(one.goal)}. ${one.status === 'cumplida' ? 'Meta cumplida.' : one.status === 'en_ruta' ? `Al ritmo actual (${sgn(Math.round(one.pace))} por semana) llega al ${one.projectedPct.toFixed(0)}%.` : `Al ritmo actual (${sgn(Math.round(one.pace))} por semana) llegaría al ${one.projectedPct.toFixed(0)}%; necesita ${fmt(Math.ceil(one.required))} por semana.`}` }
+            : { label: 'Metas de seguidores 2026', value: `${ok} de ${gs.length}`, sub: 'cuentas cumplidas o en ruta, proyectando con el ritmo de las últimas 4 semanas.' },
+          table: { cols: ['Cuenta', 'Avance', 'Ganados / meta', 'Ritmo actual', 'Necesario', 'Proyección', 'Estado'], align: ['l', 'r', 'r', 'r', 'r', 'r', 'l'], rows, statusCol: 6 } };
+      }
+      // Semanas del periodo pedido (la pestaña Followers va por semana de 2026)
+      const wkMid = (k) => { const [a] = askWkRange(ASK_FOL_YEAR * 100 + k); return new Date(a.getFullYear(), a.getMonth(), a.getDate() + 3); };
+      const wkEnd = (k) => askWkRange(ASK_FOL_YEAR * 100 + k)[1];
+      let wks = null;
+      if (spec.periods.length) {
+        wks = [];
+        for (let k = 1; k <= nW; k++) { const fake = { date: wkMid(k), wk: ASK_FOL_YEAR * 100 + k, week: k, year: ASK_FOL_YEAR, _wy: ASK_FOL_YEAR }; if (spec.periods.some(pp => pp.test(fake))) wks.push(k); }
+        if (!wks.length) return { ...base, kind: 'notice', notices: [{ txt: `La pestaña Followers tiene datos de la semana 1 a la ${nW} de ${ASK_FOL_YEAR}; el periodo que pediste queda fuera.` }] };
+      }
+      const valAt = (x, k) => (k >= 1 && k <= x.vals.length ? x.vals[k - 1] : null);
+      const gainedIn = (x, k1, k2) => { const end = valAt(x, k2), start = k1 > 1 ? valAt(x, k1 - 1) : (press.goals && press.goals[x.name] && press.goals[x.name].base); return end != null && start != null ? end - start : null; };
+      // Por semana / por mes
+      if (spec.group === 'week' || spec.group === 'month') {
+        const ks = wks || Array.from({ length: nW }, (_, i) => i + 1);
+        const buckets = new Map();
+        for (const k of ks) { const key = spec.group === 'week' ? k : wkEnd(k).getMonth() + 1; if (!buckets.has(key)) buckets.set(key, []); buckets.get(key).push(k); }
+        const rows = [...buckets].map(([key, kk]) => {
+          const g = series.reduce((sm, x) => { const v = gainedIn(x, kk[0], kk[kk.length - 1]); return v == null ? sm : sm + v; }, 0);
+          const tot = series.reduce((sm, x) => sm + (valAt(x, kk[kk.length - 1]) || 0), 0);
+          return [spec.group === 'week' ? `S${key}` : MONTH_NAMES[key - 1], sgn(g), fmt(tot)];
+        });
+        return { ...base, kind: 'table', headline: { label: `Seguidores ganados por ${spec.group === 'week' ? 'semana' : 'mes'}`, value: series.length === 1 ? lab(series[0].name) : `${series.length} cuentas`, sub: 'Total de las cuentas elegidas; el «total» es el cierre de cada periodo.' },
+                 table: { cols: [spec.group === 'week' ? 'Semana' : 'Mes', 'Ganados', 'Total al cierre'], align: ['l', 'r', 'r'], rows } };
+      }
+      // Crecimiento en un periodo (o en el año si pregunta "cuántos ganamos")
+      if (wks || spec.folGrowth || spec.group === 'platform') {
+        const k1 = wks ? wks[0] : 1, k2 = wks ? wks[wks.length - 1] : nW;
+        const rows = series.map(x => { const g = gainedIn(x, k1, k2), end = valAt(x, k2); const start = end != null && g != null ? end - g : null; return { x, g, end, start }; })
+          .sort((a, b) => (b.g ?? -1e18) - (a.g ?? -1e18));
+        const tot = rows.reduce((sm, r) => sm + (r.g || 0), 0);
+        const per = wks ? spec.periods.map(pp => pp.label).join(' / ') : `${ASK_FOL_YEAR} (semanas 1 a ${nW})`;
+        return { ...base, kind: 'table', headline: { label: `Seguidores ganados · ${per}`, value: sgn(rows.length === 1 ? rows[0].g : tot), sub: `${rows.length === 1 ? lab(rows[0].x.name) : `${rows.length} cuentas`} · ${k1 === k2 ? `semana ${k1}` : `semanas ${k1} a ${k2}`} de la pestaña Followers.${rows.length > 1 && rows[0].g != null ? ` Mayor crecimiento: ${lab(rows[0].x.name)}.` : ''}` },
+                 table: { cols: ['Cuenta', 'Ganados', 'Crecimiento', `Total S${k2}`], align: ['l', 'r', 'r', 'r'], rows: rows.map(r => [lab(r.x.name), sgn(r.g), r.start ? pct(r.g, r.start) : '—', fmt(r.end)]) } };
+      }
+      // Nivel actual
+      const rows = series.map(x => { const n = x.vals.length, v = x.vals[n - 1], prev = n > 1 ? x.vals[n - 2] : null; const b = press.goals && press.goals[x.name] && press.goals[x.name].base;
+        return [lab(x.name), fmt(v), prev != null ? sgn(v - prev) : '—', b != null ? sgn(v - b) : '—', v]; }).sort((a, b) => b[4] - a[4]);
+      const total = rows.reduce((sm, r) => sm + r[4], 0);
+      return { ...base, kind: 'table', headline: { label: `Seguidores · semana ${nW} de ${ASK_FOL_YEAR}`, value: fmt(rows.length === 1 ? rows[0][4] : total), sub: rows.length === 1 ? `${rows[0][0]} · ${rows[0][2]} contra la semana anterior.` : `Suma de ${rows.length} cuentas.` },
+               table: { cols: ['Cuenta', 'Seguidores', 'vs semana anterior', 'Ganados en el año'], align: ['l', 'r', 'r', 'r'], rows: rows.map(r => r.slice(0, 4)) } };
+    }
+
+    function askRun(spec, allPosts, opts = {}) {
+      const _noFallback = !!opts.noFallback, ctx = opts.ctx || {};
       const all = allPosts || [];
+
+      // ---------- v68 — temas fuera de los posts ----------
+      const base = { spec, chips: askChipsOf(spec), scopeText: askScopeText(spec), n: 0, posts: [], notices: spec.notices || [] };
+      if (spec.intent === 'define') {
+        const terms = (spec.terms || [spec.term]).filter(k => ASK_DEFS[k]);
+        if (terms.length > 1) {
+          return { ...base, chips: [], kind: 'define', headline: { label: 'Diferencia', value: terms.map(k => ASK_DEFS[k][0]).join(' vs '), sub: '' },
+                   defs: terms.map(k => ASK_DEFS[k]) };
+        }
+        const [name, what, how] = ASK_DEFS[terms[0]] || ['—', '', ''];
+        return { ...base, chips: [], kind: 'define', headline: { label: 'Qué es', value: name, sub: what }, notes: how ? [how] : [] };
+      }
+      if (spec.intent === 'caps') return { ...base, chips: [], kind: 'caps' };
+      if (spec.intent === 'notice') return { ...base, kind: 'notice' };
+      if (spec.intent === 'fresh') {
+        const last = new Map();
+        for (const p of all) { const n = askD(p).n; if (n == null) continue; if (!last.has(p.platform) || n > last.get(p.platform)) last.set(p.platform, n); }
+        const maxN = Math.max(...last.values());
+        const toD = (n) => new Date(n * 864e5 + 432e5);
+        const rows = [...last].sort((a, b) => b[1] - a[1]).map(([pl, n]) => [pl, askDL(toD(n)), fmt(all.filter(p => p.platform === pl && askD(p).n != null && askD(p).n > maxN - 7).length)]);
+        return { ...base, chips: [], kind: 'table', headline: { label: 'Último post capturado en la base', value: askDL(toD(maxN)), sub: ctx.fetchedAt ? `El dashboard leyó el Sheet ${timeAgo(ctx.fetchedAt)}.` : '' },
+                 table: { cols: ['Plataforma', 'Último post', 'Posts en los 7 días previos'], align: ['l', 'r', 'r'], rows } };
+      }
+      if (spec.intent === 'fol') return askRunFollowers(spec, base, ctx);
       // Nada reconocible → ayuda en vez de un resumen de todo
       if (!Object.keys(spec.dims).length && !spec.periods.length && !spec.metrics.length && !spec.group && !spec.dur && !spec.vsRest && spec.intent !== 'kpi'
-          && spec.intent !== 'notice' && (spec.unused || []).length) {
+          && !['notice', 'define', 'caps', 'fresh', 'fol', 'anoms', 'quality'].includes(spec.intent) && (spec.unused || []).length) {
         return { spec, kind: 'help', chips: [], scopeText: '', n: 0, posts: [], notices: [] };
       }
       // Mes sin año que no tiene datos → prueba el mismo mes del año anterior
       if (!_noFallback && spec.periods.some(p => p.inferred)) {
-        const first = askRun(spec, all, true);
+        const first = askRun(spec, all, { ...opts, noFallback: true });
         if (first.kind === 'empty' || (first.n === 0 && spec.intent !== 'compare')) {
           const alt = { ...spec, periods: spec.periods.map(p => p.inferred ? askPMonth(+p.label.slice(-4) - 1, MONTH_NAMES.indexOf(p.label.slice(0, -5)) + 1) : p) };
-          const second = askRun(alt, all, true);
+          const second = askRun(alt, all, { ...opts, noFallback: true });
           if (second.kind !== 'empty') { second.notices = [...(second.notices || []), { txt: `No hay publicaciones en ${spec.periods.filter(p => p.inferred).map(p => p.label).join(', ')}; te muestro el mismo mes del año anterior.` }]; return second; }
         }
         return first;
@@ -9121,6 +9423,43 @@
         return { label, n: posts.length, v: v.v, vn: v.n, s, posts, ...extra };
       };
 
+      if (spec.intent === 'anoms') {
+        const an = computeAnomalies({ allPosts: scope });
+        const up = an.filter(a => a.direction === 'up').length;
+        out.kind = 'anoms'; out.anoms = an; out.posts = an.map(a => a.post);
+        out.headline = { label: 'Anomalías', value: an.length ? fmt(an.length) : 'Ninguna', sub: an.length ? `${up} muy por encima de lo típico y ${an.length - up} muy por debajo, comparando cada post contra su plataforma.` : 'Ningún post se sale de lo típico de su plataforma en este filtro.' };
+        out.list = an.map(a => a.post);
+        out.extraCol = { label: 'Qué pasó', get: (p) => { const a = an.find(x => x.post === p); if (!a) return ''; const r = a.baseline ? a.value / a.baseline : null;
+          return `${a.metric === 'reach' ? 'Alcance' : 'ER total'} ${a.direction === 'up' ? '↑' : '↓'} ${a.metric === 'reach' ? fmt(a.value) : erFmt(a.value)} vs ${a.metric === 'reach' ? fmt(a.baseline) : erFmt(a.baseline)} típico${r && r >= 2 ? ` (${r.toLocaleString('es-MX', { maximumFractionDigits: 1 })}×)` : ''}`; } };
+        return out;
+      }
+      if (spec.intent === 'quality') {
+        const dq = computeDataQuality(scope, all);
+        const c = dq.counts;
+        const QK = { dup: (tg) => /^(Link duplicado|Mismo link)/.test(tg), met: (tg) => tg === 'Sin métricas', imp: (tg) => /^Valor imposible/.test(tg), campos: (tg) => !/^(Link duplicado|Mismo link|Sin |Valor imposible)/.test(tg) };
+        if (spec.qKind) dq.issues = dq.issues.map(i => ({ ...i, tags: i.tags.filter(QK[spec.qKind]) })).filter(i => i.tags.length);
+        out.kind = 'quality'; out.list = dq.issues.map(i => i.post); out.posts = out.list;
+        const tagOf = new Map(dq.issues.map(i => [i.post, i.tags]));
+        out.extraCol = { label: 'Qué corregir', get: (p) => (tagOf.get(p) || []).join(' · ') + (p._row ? ` · fila ${p._row} de ${p.platform}` : '') };
+        const bits = [[c.duplicados, 'links duplicados'], [c.campos, 'con campos mal llenados'], [c.sinMetricas, 'sin métricas'], [c.sinPauta, 'sin Tipo Pauta'], [c.sinClasif, 'sin clasificar'], [c.imposibles, 'con valores imposibles']].filter(([n]) => n > 0);
+        if (spec.qKind) { out.headline = { label: { dup: 'Links duplicados', met: 'Posts sin métricas', imp: 'Valores imposibles', campos: 'Campos mal llenados' }[spec.qKind], value: dq.issues.length ? fmt(dq.issues.length) : 'Ninguno', sub: `De ${fmt(scope.length)} posts del filtro.` }; return out; }
+        out.headline = { label: 'Calidad de datos', value: dq.issues.length ? `${fmt(dq.issues.length)} con pendientes` : 'Todo en orden',
+                         sub: dq.issues.length ? `De ${fmt(scope.length)} posts: ${bits.map(([n, l]) => `${fmt(n)} ${l}`).join(', ')}.` : `Los ${fmt(scope.length)} posts del filtro están completos.` };
+        return out;
+      }
+      if (spec.intent === 'kpi' && (spec.group === 'week' || spec.group === 'month')) {
+        const G = ASK_GROUPS[spec.group];
+        const map = new Map(); for (const p of scope) { const k = G.key(p); if (k == null) continue; if (!map.has(k)) map.set(k, []); map.get(k).push(p); }
+        const rows = [...map].sort((a, b) => a[0] - b[0]).slice(-26).map(([k, ps]) => {
+          const n = ASK_KPI_NOTE(ps);
+          return [G.show(k), n.nV ? `${erFmt(n.vtr)} · ${fmt(n.nV)} videos` : '—', n.nV ? (n.vtr >= KPI_VTR_MIN ? '✓' : '✗') : '', n.nI ? `${erFmt(n.ber)} · ${fmt(n.nI)} posts` : '—', n.nI ? (n.ber >= KPI_IG_ER_MIN ? '✓' : '✗') : ''];
+        });
+        const okV = rows.filter(r => r[2] === '✓').length, totV = rows.filter(r => r[2]).length, okI = rows.filter(r => r[4] === '✓').length, totI = rows.filter(r => r[4]).length;
+        out.kind = 'table';
+        out.headline = { label: `KPIs de cuenta por ${G.label.toLowerCase()}`, value: `${okV} de ${totV}`, sub: `${G.label === 'Mes' ? 'Meses' : 'Semanas'} que cumplen el VTR de 25 % en videos de 0 a 30 s. ER básico de Instagram ≥ 5 %: ${okI} de ${totI}.` };
+        out.table = { cols: [G.label, 'VTR videos 0–30 s', 'Meta 25 %', 'ER básico Instagram', 'Meta 5 %'], align: ['l', 'r', 'c', 'r', 'c'], rows, okCols: [2, 4] };
+        return out;
+      }
       if (spec.intent === 'notice') { out.kind = 'notice'; out.headline = null; return out; }
       if (spec.intent === 'kpi') {
         out.kind = 'kpi';
@@ -9271,6 +9610,7 @@
         if (subs.length && camps.length) skipped.push('Tendencia / Stay & Play (aproximado)');
       }
       if (d.objectives) skipped.push('Objetivo');
+      if (d.influencers) skipped.push('Influencer');
       if (d.flags) skipped.push('Influencer / atributos');
       if (d.dows) skipped.push('Día de la semana');
       if (spec.dur) skipped.push('Duración');
@@ -9289,8 +9629,12 @@
     // Texto para copiar (Slack / WhatsApp)
     function askCopyText(res) {
       const L = [`${res.spec.q.trim()}`, `→ ${res.headline ? `${res.headline.label}: ${res.headline.value}` : ''}${res.headline && res.headline.sub ? ` (${res.headline.sub})` : ''}`];
-      L.push(`Alcance de la consulta: ${res.scopeText}`);
+      if (res.scopeText && res.chips && res.chips.length) L.push(`Alcance de la consulta: ${res.scopeText}`);
       (res.refs || []).forEach(r => L.push(`• ${r.label}: ${r.txt}${r.delta ? ` (${r.delta.txt} ${r.invert ? 'del segmento vs resto' : 'vs periodo previo'})` : ''}`));
+      (res.notes || []).forEach(n => L.push(n));
+      if (res.defs) res.defs.forEach(([n, w, h]) => L.push(`• ${n}: ${w} ${h}`));
+      if (res.table) res.table.rows.slice(0, 15).forEach(r => L.push('• ' + r.filter(x => x !== '').join(' · ')));
+      if (res.kind === 'anoms' || res.kind === 'quality') (res.list || []).slice(0, 10).forEach(p => L.push(`• ${p.platform} · ${dateShort(p.date)} · ${p.campaign || ''} · ${res.extraCol.get(p)}${p._row ? ` · fila ${p._row}` : ''}`));
       if (res.rows) { const M = ASK_METRICS[res.metricK || res.spec.metrics[0]]; res.rows.slice(0, 12).forEach(r => L.push(`• ${r.label}: ${r.v == null ? '—' : M.fmt(r.v)} (${fmt(r.n)} posts)`)); }
       if (res.list && (res.kind === 'rank')) res.list.slice(0, res.topN || 10).forEach((p, i) => L.push(`${i + 1}. ${p.platform} · ${dateShort(p.date)} · ${p.format || ''} · ${p.campaign || ''} · ${ASK_METRICS[res.metricK].fmt(askPV(ASK_METRICS[res.metricK], p))}${p.link ? ' · ' + p.link : ''}`));
       L.push('— Samsung MX Performance Brief');
@@ -9304,7 +9648,42 @@
       const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       return '﻿' + [cols.map(c => c[0]).join(','), ...posts.map(p => cols.map(c => esc(p[c[1]])).join(','))].join('\n');
     }
-    function askAnswer(q, allPosts, now) { return askRun(askParse(q, allPosts, now), allPosts); }
+
+    // ---------- v68 — Registro de preguntas y sinónimos del equipo ----------
+    // Cada pregunta (y cada voto 👍/👎) se manda al Sheet «Samsung MX | Buscador
+    // del dashboard | Registro» vía su Apps Script. La pestaña «Sinonimos» de ese
+    // mismo Sheet le enseña palabras nuevas al buscador sin tocar el código.
+    const ASK_LOG_URL = '';      // URL /exec del Apps Script (vacío = se guarda en el navegador hasta tenerla)
+    const ASK_REG_ID = '17EtWkUEV1Oa_DniA37tcGnRN0lPgVZ2HsrYP-eU5dfc';
+    let ASK_SYN = [];
+    let askSynState = 'idle';
+    async function askLoadSynonyms() {
+      if (askSynState !== 'idle' || !AUTH_ON || !authValid()) return false;
+      askSynState = 'loading';
+      try {
+        const rows = await sheetsValues(`'Sinonimos'!A2:B300`, ASK_REG_ID);
+        ASK_SYN = rows.map(r => [askFold(r[0]).replace(/[^a-z0-9& ]+/g, ' ').replace(/\s+/g, ' ').trim(), askFold(r[1]).replace(/\s+/g, ' ').trim()])
+          .filter(([a, b]) => a.length >= 2 && b && a !== b).sort((x, y) => y[0].length - x[0].length);
+        askSynState = 'done'; return ASK_SYN.length > 0;
+      } catch { askSynState = 'idle'; return false; }
+    }
+    const askEscRx = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const ASK_QUEUE_KEY = 'smx-ask-log-queue';
+    function askLog(ev, data) {
+      const rec = { k: 'smx-buscador', user: authState.email || '', ev, build: BUILD_VERSION, ...data };
+      const send = (r) => fetch(ASK_LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(r), keepalive: true }).catch(() => {});
+      try {
+        const qd = JSON.parse(localStorage.getItem(ASK_QUEUE_KEY) || '[]');
+        if (!ASK_LOG_URL) { qd.push(rec); localStorage.setItem(ASK_QUEUE_KEY, JSON.stringify(qd.slice(-200))); return; }
+        if (qd.length) { localStorage.removeItem(ASK_QUEUE_KEY); qd.forEach(send); }
+      } catch {}
+      if (ASK_LOG_URL) send(rec);
+    }
+    const askEvOf = (res) => res.kind === 'help' ? 'No entendida' : res.kind === 'empty' ? 'Sin datos' : (res.spec.unused || []).length ? 'Entendida en parte' : 'Respondida';
+    const askLogRes = (res, extra = {}) => askLog(extra.ev || askEvOf(res), {
+      q: res.spec.q, kind: res.kind, chips: (res.chips || []).map(c => `${c.kind}: ${c.label}`).join(' · '), unused: (res.spec.unused || []).join(', '), ...extra });
+
+    function askAnswer(q, allPosts, now, ctx) { return askRun(askParse(q, allPosts, now), allPosts, { ctx }); }
 
     // ---------- Interfaz: Pregúntale a la base ----------
     const ASK_EXAMPLES = [
@@ -9322,7 +9701,7 @@
       return html`<span className=${'font-mono text-[11px] tabular-nums ' + (flat || d.neutral ? 'text-txt3' : d.up ? 'text-success' : 'text-amber')}>${flat ? '·' : d.up ? '↑' : '↓'} ${d.txt}</span>`;
     }
 
-    function AskPostTable({ posts, metricK, ranked, limit, onPick }) {
+    function AskPostTable({ posts, metricK, ranked, limit, onPick, extraCol }) {
       const M = metricK ? ASK_METRICS[metricK] : null;
       const showVtr = posts.some(p => p.vtr > 0);
       const extraMetric = M && !['reach', 'ber', 'vtr', 'posts'].includes(metricK);
@@ -9338,6 +9717,7 @@
                 <th className="text-left py-2 px-3 font-medium">Red</th>
                 <th className="text-left py-2 px-3 font-medium">Formato</th>
                 <th className="text-left py-2 px-3 font-medium">Campaña</th>
+                ${extraCol && html`<th className="text-left py-2 px-3 font-medium text-txt2">${extraCol.label}</th>`}
                 ${extraMetric && html`<th className="text-right py-2 px-3 font-medium text-txt2">${M.label}</th>`}
                 <th className="text-right py-2 px-3 font-medium">Alcance</th>
                 <th className="text-right py-2 px-3 font-medium">ER básico</th>
@@ -9353,11 +9733,31 @@
                   <td className=${cell}><span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[p.platform] || '#666' }}>${PLAT_LETTERS[p.platform] || '?'}</span></td>
                   <td className=${cell + ' text-txt3 whitespace-nowrap'}>${p.format || '—'}${p.duration > 0 && metricK !== 'dur' ? html`<span className="text-txt4 font-mono text-[10px]"> · ${askSec(p.duration)}</span>` : ''}</td>
                   <td className=${cell + ' text-txt2 max-w-[240px]'}><div className="truncate">${p.campaign || p.product || '—'}${p.subcampaign && !/^(n\/?a|na)$/i.test(p.subcampaign) ? html`<span className="text-txt4"> / ${p.subcampaign}</span>` : ''}</div></td>
+                  ${extraCol && html`<td className=${cell + ' text-[11.5px] text-txt2 min-w-[220px] max-w-[360px] leading-snug'}>${extraCol.get(p)}</td>`}
                   ${extraMetric && html`<td className=${cell + ' text-right font-mono tabular-nums text-txt font-medium'}>${M.fmt(askPV(M, p))}</td>`}
                   <td className=${cell + ' text-right font-mono tabular-nums' + hi('reach')}>${fmt(p.reach)}</td>
                   <td className=${cell + ' text-right font-mono tabular-nums' + hi('ber')}>${ASK_METRICS.ber.pv(p) != null ? erFmt(p.basic_er) : '—'}</td>
                   ${showVtr && html`<td className=${cell + ' text-right font-mono tabular-nums' + hi('vtr')}>${p.vtr > 0 ? erFmt(p.vtr) : '—'}</td>`}
                 </tr>`)}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function AskTable({ table }) {
+      const al = (i) => ({ l: 'text-left', r: 'text-right', c: 'text-center' }[(table.align || [])[i] || 'l']);
+      const stColor = (v) => /cumplida|en ruta/i.test(v) ? '!text-success' : /riesgo/i.test(v) ? '!text-amber' : '!text-txt2';
+      return html`
+        <div className="rounded-xl border border-line overflow-x-auto">
+          <table className="w-full text-[12px] min-w-[520px]">
+            <thead><tr className="text-[9px] font-mono uppercase tracking-[0.15em] text-txt4 bg-onSurface/[0.025]">
+              ${table.cols.map((c, i) => html`<th key=${i} className=${'py-2 px-3 font-medium ' + al(i)}>${c}</th>`)}
+            </tr></thead>
+            <tbody>
+              ${table.rows.map((r, ri) => html`<tr key=${ri}>
+                ${r.map((v, i) => html`<td key=${i} className=${'py-2.5 px-3 ' + al(i) + (i === 0 ? ' text-txt2' : ' font-mono tabular-nums text-txt3')
+                  + ((table.okCols || []).includes(i) ? (v === '✓' ? ' !text-success' : v === '✗' ? ' !text-amber' : '') : '') + (table.statusCol === i ? ' font-sans ' + stColor(v) : '')}>${v}</td>`)}
+              </tr>`)}
             </tbody>
           </table>
         </div>`;
@@ -9409,17 +9809,22 @@
         ${res.minN > 1 && res.rows.some(r => r.low) && html`<div className="text-[11px] text-txt4 mt-2">En gris: grupos con menos de ${res.minN} posts con dato; no compiten por el primer lugar.</div>`}`;
     }
 
-    function AskPanel({ open, onClose, allPosts, onPick, setFilters, drawerOpen }) {
+    function AskPanel({ open, onClose, allPosts, onPick, setFilters, drawerOpen, fetchedAt }) {
       const [q, setQ] = useState('');
       const [dq, setDq] = useState('');
       const [removed, setRemoved] = useState([]);
       const [limit, setLimit] = useState(12);
       const [copied, setCopied] = useState(false);
       const [recent, setRecent] = useState(askRecentGet);
+      const [synVer, setSynVer] = useState(0);
+      const [ctx, setCtx] = useState({});
+      const [vote, setVote] = useState(null);        // null | 'si' | 'no' | 'enviado'
+      const [note, setNote] = useState('');
+      const loggedRef = useRef(new Set());
       const inputRef = useRef(null);
       useEffect(() => { const t = setTimeout(() => setDq(q), 140); return () => clearTimeout(t); }, [q]);
-      useEffect(() => { setRemoved([]); setLimit(12); }, [dq]);
-      useEffect(() => { if (open) { setRecent(askRecentGet()); setTimeout(() => inputRef.current && inputRef.current.focus(), 30); } }, [open]);
+      useEffect(() => { setRemoved([]); setLimit(12); setVote(null); setNote(''); }, [dq]);
+      useEffect(() => { if (open) { setRecent(askRecentGet()); setTimeout(() => inputRef.current && inputRef.current.focus(), 30); askLoadSynonyms().then(ok => ok && setSynVer(v => v + 1)); } }, [open]);
       useEffect(() => {
         if (!open) return;
         const onKey = (e) => { if (e.key === 'Escape' && !drawerOpen) { e.preventDefault(); onClose(); } };
@@ -9427,10 +9832,25 @@
         return () => document.removeEventListener('keydown', onKey);
       }, [open, drawerOpen, onClose]);
 
-      const spec0 = useMemo(() => (dq.trim().length >= 3 && allPosts && allPosts.length ? askParse(dq, allPosts) : null), [dq, allPosts]);
+      const spec0 = useMemo(() => (dq.trim().length >= 3 && allPosts && allPosts.length ? askParse(dq, allPosts) : null), [dq, allPosts, synVer]);
       const spec = useMemo(() => spec0 ? removed.reduce((s, id) => askRemoveChip(s, id), spec0) : null, [spec0, removed]);
-      const res = useMemo(() => spec ? askRun(spec, allPosts) : null, [spec, allPosts]);
-      const remember = () => { if (dq.trim().length >= 3) { askRecentAdd(dq.trim()); setRecent(askRecentGet()); } };
+      const res = useMemo(() => spec ? askRun(spec, allPosts, { ctx: { ...ctx, fetchedAt } }) : null, [spec, allPosts, ctx, fetchedAt]);
+      // Datos extra que se cargan solo si la pregunta los necesita (followers y metas)
+      useEffect(() => {
+        if (!res || !res.need) return;
+        if (res.need === 'fol' && !ctx.fol && !ctx.folLoading) {
+          setCtx(c => ({ ...c, folLoading: true }));
+          Promise.all([fetchPressFollowers().catch(() => null), fetchFollowerGoals().catch(() => [])])
+            .then(([press, goals]) => setCtx(c => ({ ...c, fol: { press, goals }, folLoading: false })))
+            .catch(() => setCtx(c => ({ ...c, fol: { press: null, goals: [] }, folLoading: false })));
+        }
+      }, [res, ctx]);
+      // Registro: cada pregunta que se queda quieta 2.5 s (o con Enter) se anota una vez
+      const logKey = res ? res.spec.q.trim().toLowerCase() + '|' + removed.join(',') : null;
+      const logNow = () => { if (res && res.kind !== 'loading' && !loggedRef.current.has(logKey)) { loggedRef.current.add(logKey); askLogRes(res); } };
+      useEffect(() => { if (!res || res.kind === 'loading') return; const t = setTimeout(logNow, 2500); return () => clearTimeout(t); }, [logKey, res && res.kind]);
+      const remember = () => { if (dq.trim().length >= 3) { askRecentAdd(dq.trim()); setRecent(askRecentGet()); logNow(); } };
+      const sendVote = (v, n) => { if (!res) return; logNow(); askLogRes(res, { ev: 'Voto', vote: v === 'si' ? 'Útil' : 'No útil', note: n || '' }); };
       const ask = (text) => { setQ(text); setDq(text); askRecentAdd(text); setRecent(askRecentGet()); inputRef.current && inputRef.current.focus(); };
       if (!open) return null;
 
@@ -9509,13 +9929,31 @@
                       <div className="text-[12px] text-txt4 mb-4">Menciona una plataforma, un periodo, una campaña o una métrica. Por ejemplo:</div>
                       <div className="flex flex-wrap gap-2">${['VTR de TikTok este mes', '¿Qué formato funciona mejor en Instagram?', 'Los 10 posts con más alcance de septiembre', '¿Cuánto duran los Stay & Play?'].map(x => html`<button key=${x} onClick=${() => ask(x)} className="text-[12px] text-txt2 px-3 py-1.5 rounded-full bg-onSurface/[0.05] hover:bg-onSurface/[0.09] transition-colors">${x}</button>`)}</div>
                     </div>`}
+                  ${res.kind === 'caps' && html`
+                    <div className="grid md:grid-cols-2 gap-x-8 gap-y-5 text-[13px] text-txt2 leading-relaxed">
+                      ${[['Métricas de posts', 'Alcance, reproducciones, interacciones, ER básico y total, VTR, CTR, comentarios, compartidos, guardados, duración y tiempo de vista. Totales, promedios por post o medianas.'],
+                         ['Filtros en tus palabras', 'Plataforma, formato, campaña, subcampaña, producto, influencer, Stay & Play o Tendencia, orgánico o pauta, etapa, duración («menos de 30 s»), con o sin audio, subtítulos o IA.'],
+                         ['Fechas', '«Octubre 2025», «hace 2 semanas», «semana 41», «del 1 al 15 de octubre», «Q3», «primer semestre», «los lunes», «últimos 30 días», «este año».'],
+                         ['Rankings y comparaciones', 'Mejores y peores posts; mejor formato, duración, día, horario, campaña, producto o influencer; X contra Y; contra el resto; contra el mes pasado.'],
+                         ['Seguidores y metas', 'Cuántos tenemos, cuántos ganamos en un periodo, crecimiento por semana o mes y si llegamos a la meta 2026.'],
+                         ['Control', 'KPIs de cuenta (también por semana o mes), anomalías, pendientes de captura, ritmo de publicación, último dato capturado y definiciones («¿qué es el VTR?»).']]
+                        .map(([t, d]) => html`<div key=${t}><div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-1.5">${t}</div><div>${d}</div></div>`)}
+                    </div>`}
+                  ${res.kind === 'define' && res.defs && html`
+                    <div className="grid md:grid-cols-2 gap-3">${res.defs.map(([n, w, h]) => html`
+                      <div key=${n} className="rounded-xl bg-onSurface/[0.035] px-4 py-3.5">
+                        <div className="text-[14px] text-txt font-medium mb-1.5">${n}</div>
+                        <div className="text-[12.5px] text-txt2 leading-relaxed">${w}</div>
+                        <div className="text-[12px] text-txt4 leading-relaxed mt-2">${h}</div>
+                      </div>`)}</div>`}
+                  ${res.kind === 'loading' && html`<div className="flex items-center gap-2 text-[13px] text-txt3"><${SpinnerIcon} size=${14} className="animate-spin"/> ${res.headline.value}</div>`}
                   ${res.kind === 'empty' && html`
                     <div className="rounded-xl bg-onSurface/[0.03] px-5 py-6">
                       <div className="text-[15px] text-txt mb-1">No hay publicaciones con esos criterios</div>
                       <div className="text-[12px] text-txt4">La base cubre del ${res.coverage}. Quita algún criterio de arriba para ampliar la búsqueda.</div>
                     </div>`}
 
-                  ${res.kind !== 'empty' && res.headline && html`
+                  ${res.kind !== 'empty' && res.kind !== 'loading' && res.headline && html`
                     <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
                       <div className="min-w-0">
                         <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-2">${res.headline.label}</div>
@@ -9570,23 +10008,45 @@
                     </div>`}
 
                   ${(res.kind === 'group' || res.kind === 'compare') && html`<${AskGroupTable} res=${res}/>`}
+                  ${res.kind === 'table' && res.table && html`<${AskTable} table=${res.table}/>`}
                   ${res.notes && res.notes.map((n, i) => html`<div key=${i} className=${/^Ojo/.test(n) ? 'text-[12px] text-amber' : 'text-[11px] text-txt4'}>${n}</div>`)}
 
                   ${listRows.length > 0 && res.kind !== 'group' && res.kind !== 'compare' && res.kind !== 'kpi' && html`
                     <div>
                       <div className="flex items-baseline justify-between mb-2">
                         <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4">
-                          ${res.kind === 'rank' ? `Ranking · ${ASK_METRICS[res.metricK].label}${res.rateFloor ? ` · posts con alcance ≥ ${fmt(res.rateFloor)}` : ''}` : res.kind === 'value' ? `Posts detrás del número · ordenados por ${ASK_METRICS[res.metricK].label.toLowerCase()}` : res.kind === 'summary' ? 'Posts con más alcance' : 'Publicaciones · más recientes primero'}
+                          ${res.kind === 'anoms' ? 'Posts que se salen de lo típico · más extremos primero' : res.kind === 'quality' ? 'Posts con algo que corregir en el Sheet · más recientes primero' : res.kind === 'rank' ? `Ranking · ${ASK_METRICS[res.metricK].label}${res.rateFloor ? ` · posts con alcance ≥ ${fmt(res.rateFloor)}` : ''}` : res.kind === 'value' ? `Posts detrás del número · ordenados por ${ASK_METRICS[res.metricK].label.toLowerCase()}` : res.kind === 'summary' ? 'Posts con más alcance' : 'Publicaciones · más recientes primero'}
                         </div>
                         <div className="text-[10px] font-mono text-txt4">${fmt(Math.min(listLimit, listRows.length))} de ${fmt(res.kind === 'rank' ? res.eligible : listRows.length)}</div>
                       </div>
-                      <${AskPostTable} posts=${listRows} metricK=${listMetric} ranked=${res.kind === 'rank'} limit=${listLimit} onPick=${onPick}/>
+                      <${AskPostTable} posts=${listRows} metricK=${listMetric} ranked=${res.kind === 'rank'} limit=${listLimit} onPick=${onPick} extraCol=${res.extraCol}/>
                       ${listRows.length > listLimit && html`<button onClick=${() => setLimit(listLimit + 50)} className="mt-2.5 text-[12px] text-accent2 hover:underline">Ver ${fmt(Math.min(50, listRows.length - listLimit))} más</button>`}
+                    </div>`}
+
+                  ${!['loading', 'caps'].includes(res.kind) && html`
+                    <div className="pt-1 text-[12px] text-txt4">
+                      ${vote === null && html`<div className="flex flex-wrap items-center gap-2">
+                        <span>¿Te sirvió esta respuesta?</span>
+                        <button onClick=${() => { setVote('si'); sendVote('si'); }} className="h-7 px-3 rounded-full bg-onSurface/[0.05] hover:bg-onSurface/[0.1] text-txt2 transition-colors">Sí</button>
+                        <button onClick=${() => setVote('no')} className="h-7 px-3 rounded-full bg-onSurface/[0.05] hover:bg-onSurface/[0.1] text-txt2 transition-colors">No</button>
+                      </div>`}
+                      ${vote === 'no' && html`<form className="flex flex-wrap items-center gap-2" onSubmit=${(e) => { e.preventDefault(); sendVote('no', note.trim()); setVote('enviado'); }}>
+                        <input value=${note} onChange=${(e) => setNote(e.target.value)} autoFocus placeholder="¿Qué esperabas ver? (opcional)" aria-label="Qué esperabas ver"
+                               className="flex-1 min-w-[220px] h-8 px-3 rounded-lg bg-onSurface/[0.04] border border-line text-[12px] text-txt placeholder:text-txt4 focus:outline-none focus:border-line2"/>
+                        <button type="submit" className="h-8 px-3 rounded-lg bg-accent2 text-white text-[12px] font-medium">Enviar</button>
+                      </form>`}
+                      ${(vote === 'si' || vote === 'enviado') && html`<span>Gracias. Con esto se ajusta el buscador.</span>`}
                     </div>`}
                 </div>`}
             </div>
 
-            ${res && res.kind !== 'empty' && res.kind !== 'notice' && res.kind !== 'help' && html`
+            ${res && ['table', 'define'].includes(res.kind) && html`
+              <div className="flex flex-wrap items-center gap-2 px-5 md:px-6 py-3.5 border-t border-line bg-onSurface/[0.015]">
+                <button onClick=${copy} className="h-8 px-3 rounded-lg border border-line text-[12px] text-txt2 hover:text-txt hover:border-line2 transition-colors inline-flex items-center gap-1.5">
+                  ${copied ? html`<${CheckIcon} size=${13}/> Copiado` : 'Copiar respuesta'}</button>
+                ${res.spec.intent === 'fol' && html`<button onClick=${() => { onClose(); setTimeout(() => { const el = document.getElementById('sec-followers'); el && el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80); }} className="h-8 px-3 rounded-lg border border-line text-[12px] text-txt2 hover:text-txt hover:border-line2 transition-colors">Ver «Followers y meta»</button>`}
+              </div>`}
+            ${res && !['empty', 'notice', 'help', 'caps', 'table', 'define', 'loading'].includes(res.kind) && html`
               <div className="flex flex-wrap items-center gap-2 px-5 md:px-6 py-3.5 border-t border-line bg-onSurface/[0.015]">
                 <button onClick=${applyDash} className="h-8 px-3.5 rounded-lg bg-accent2 text-white text-[12px] font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5">
                   <${FilterIcon} size=${13}/> Ver en el dashboard</button>
@@ -9746,7 +10206,14 @@
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
       }, []);
-      useEffect(() => { window.__smxAsk = (q, now) => askAnswer(q, allPosts || [], now); }, [allPosts]);
+      useEffect(() => {
+        let fol = null;
+        window.__smxAsk = async (q) => {
+          let r = askAnswer(q, allPosts || [], undefined, { fetchedAt });
+          if (r.need === 'fol') { if (!fol) fol = { press: await fetchPressFollowers().catch(() => null), goals: await fetchFollowerGoals().catch(() => []) }; r = askAnswer(q, allPosts || [], undefined, { fol, fetchedAt }); }
+          return r;
+        };
+      }, [allPosts, fetchedAt]);
       if (loading) return html`<${LoadingState}/>`;
       if (error)   return html`<${ErrorState} message=${error} onRetry=${refresh}/>`;
       if (!data || !filteredData) return html`<${ErrorState} message="Sin datos disponibles." onRetry=${refresh}/>`;
@@ -9891,14 +10358,99 @@
           </div>
 
           ${selected && html`<${DetailDrawer} post=${selected} benchmarks=${benchmarks} onClose=${() => setSelected(null)}/>`}
-          <${AskPanel} open=${askOpen} onClose=${closeAsk} allPosts=${allPosts} onPick=${setSelected} setFilters=${setFilters} drawerOpen=${!!selected}/>
+          <${AskPanel} open=${askOpen} onClose=${closeAsk} allPosts=${allPosts} onPick=${setSelected} setFilters=${setFilters} drawerOpen=${!!selected} fetchedAt=${fetchedAt}/>
           ${kpiTrace && html`<${KpiTraceDrawer} trace=${kpiTrace} onClose=${() => setKpiTrace(null)} onPick=${(p) => { setKpiTrace(null); setSelected(p); }}/>`}
           <${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} D=${D} filters=${filters}/>
           <${PressModal} open=${pressOpen} onClose=${() => setPressOpen(false)} allPosts=${allPosts}/>
         </div>`;
     }
 
-    createRoot(document.getElementById('root')).render(html`<${App}/>`);
+
+    // ---------- v68 — Pantalla de acceso, aviso de sesión y raíz ----------
+    function GoogleG({ size = 18 }) {
+      return html`<svg width=${size} height=${size} viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.2l7.8 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.8l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>`;
+    }
+    function LoginScreen({ error, busy, onSignIn }) {
+      return html`
+        <div className="min-h-screen bg-ink text-txt flex items-center justify-center px-6">
+          <div className="w-full max-w-[420px] login-in">
+            <div className="flex items-center gap-4 mb-12">
+              <${SamsungLogo} className="h-[15px] w-auto"/>
+              <span className="w-px h-4 bg-onSurface/20"></span>
+              <${GanemLogo} className="h-[20px] w-auto"/>
+            </div>
+            <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-txt4 mb-3">Samsung MX · Performance Brief</div>
+            <h1 className="text-[30px] leading-[1.1] font-medium tracking-tight mb-3">Entra con tu cuenta de Ganem</h1>
+            <p className="text-[14px] text-txt3 leading-relaxed mb-8">El dashboard lee la base de Samsung en vivo con tus propios permisos de Google. Solo funciona con correos <span className="text-txt2">@${AUTH_DOMAIN}</span>.</p>
+            <button onClick=${onSignIn} disabled=${busy}
+                    className="w-full h-12 rounded-xl bg-white text-[#1f1f1f] text-[14px] font-medium flex items-center justify-center gap-3 hover:bg-white/90 disabled:opacity-60 transition-colors"
+                    style=${{ boxShadow: '0 1px 0 rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.18)' }}>
+              ${busy ? html`<${SpinnerIcon} size=${16} className="animate-spin"/>` : html`<${GoogleG}/>`}
+              ${busy ? 'Conectando con Google…' : 'Continuar con Google'}
+            </button>
+            ${error && html`<div role="alert" className="mt-4 rounded-xl bg-amber/[0.10] px-4 py-3 text-[13px] text-txt2 leading-relaxed">${error}</div>`}
+            <p className="text-[11px] text-txt4 leading-relaxed mt-10">Si tu cuenta de Ganem no tiene acceso, pide a quien administra la base que te comparta el Sheet de Samsung MX.</p>
+          </div>
+        </div>`;
+    }
+    function SessionBar({ onRenew, busy, error }) {
+      return html`
+        <div role="status" className="fixed z-[60] left-1/2 -translate-x-1/2 bottom-5 w-[min(560px,calc(100vw-24px))] rounded-2xl bg-surface border border-line2 px-4 py-3 flex items-center gap-3 fade-in"
+             style=${{ boxShadow: '0 18px 50px rgba(0,0,0,0.35)' }}>
+          <${ShieldIcon} size=${16} className="text-amber shrink-0"/>
+          <div className="flex-1 min-w-0 text-[12.5px] text-txt2 leading-snug">${error || 'Tu sesión de Google venció. Los datos en pantalla siguen visibles, pero no se actualizan.'}</div>
+          <button onClick=${onRenew} disabled=${busy} className="h-8 px-3 rounded-lg bg-accent2 text-white text-[12px] font-medium hover:opacity-90 disabled:opacity-60 whitespace-nowrap">${busy ? 'Renovando…' : 'Renovar sesión'}</button>
+        </div>`;
+    }
+    function AccountChip() {
+      const [open, setOpen] = useState(false);
+      const ref = useRef(null);
+      useEffect(() => {
+        const f = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', f); return () => document.removeEventListener('mousedown', f);
+      }, []);
+      if (!AUTH_ON || !authState.email) return null;
+      const initial = (authState.name || authState.email || '?').trim()[0].toUpperCase();
+      return html`
+        <div ref=${ref} className="relative">
+          <button onClick=${() => setOpen(o => !o)} aria-label=${`Cuenta: ${authState.email}`} aria-expanded=${open}
+                  className="w-8 h-8 rounded-full overflow-hidden border border-line hover:border-line2 transition-colors flex items-center justify-center bg-accent2/20 text-[12px] text-txt font-medium">
+            ${authState.picture ? html`<img src=${authState.picture} alt="" referrerpolicy="no-referrer" className="w-full h-full object-cover"/>` : initial}
+          </button>
+          ${open && html`
+            <div className="absolute right-0 mt-2 w-[260px] rounded-xl border border-line bg-surface shadow-2xl z-50 p-3 fade-in">
+              <div className="text-[13px] text-txt truncate">${authState.name}</div>
+              <div className="text-[11px] text-txt4 truncate mb-3">${authState.email}</div>
+              <button onClick=${() => { setOpen(false); authSignOut(); }} className="w-full h-8 rounded-lg border border-line text-[12px] text-txt2 hover:text-txt hover:border-line2 transition-colors">Cerrar sesión</button>
+            </div>`}
+        </div>`;
+    }
+    function Root() {
+      const [st, setSt] = useState(() => (!AUTH_ON || authLoad()) ? 'in' : 'out');
+      const [err, setErr] = useState(null);
+      const [busy, setBusy] = useState(false);
+      useEffect(() => {
+        const f = (ev) => { if (ev === 'out') { setSt('out'); setErr(null); } else if (ev === 'expired') setSt(s => s === 'in' ? 'expired' : s); else if (ev === 'in') setSt('in'); };
+        authListeners.add(f); return () => authListeners.delete(f);
+      }, []);
+      // Aviso 2 min antes de que venza el token (dura ~1 h)
+      useEffect(() => {
+        if (!AUTH_ON || st !== 'in') return;
+        const ms = authState.exp - Date.now() - 120e3;
+        const id = setTimeout(() => setSt('expired'), Math.max(1000, ms));
+        return () => clearTimeout(id);
+      }, [st]);
+      const signIn = async () => {
+        setBusy(true); setErr(null);
+        try { await authSignIn(); setSt('in'); }
+        catch (e) { setErr(e.message); }
+        finally { setBusy(false); }
+      };
+      if (st === 'out') return html`<${LoginScreen} error=${err} busy=${busy} onSignIn=${signIn}/>`;
+      return html`<${Fragment}><${App}/>${st === 'expired' && html`<${SessionBar} onRenew=${signIn} busy=${busy} error=${err}/>`}<//>`;
+    }
+
+    createRoot(document.getElementById('root')).render(html`<${Root}/>`);
   </script>
 </body>
 </html>
