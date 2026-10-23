@@ -285,6 +285,12 @@
     ::view-transition-group(root) { animation-duration: 560ms; }
     @keyframes vtReveal { from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 0px)); } to { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0px)); } }
     /* (5) grupos plegables */
+    .ask-panel { animation: askIn 220ms var(--ease-out, ease-out) both; }
+    @keyframes askIn { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
+    html.motion .ask-panel .pop-in { animation-delay: 0ms; }
+    html.motion .ask-result .bar-grow { transform-origin: left center; animation: growX 700ms var(--ease-out) both; }
+    .ask-kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 1; padding: 3px 5px; border-radius: 5px; background: rgb(var(--c-txt) / 0.07); color: rgb(var(--c-txt) / 0.55); }
+    @media (prefers-reduced-motion: reduce) { .ask-panel { animation: none; } }
     @keyframes grpOpen { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
     @keyframes grpClose { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-10px); } }
     @media (prefers-reduced-motion: no-preference) {
@@ -1517,7 +1523,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v66';
+    const BUILD_VERSION = '2026-10-22-v67';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2704,7 +2710,7 @@
     // ============================================================
     // COMPONENTES — TopBar
     // ============================================================
-    function TopBar({ fetchedAt, onRefresh, refreshing, autoRefreshMin, allPosts, onPick, onOpenPress, onExpandAll }) {
+    function TopBar({ fetchedAt, onRefresh, refreshing, autoRefreshMin, allPosts, onPick, onOpenPress, onExpandAll, onAsk }) {
       const today = new Date().toLocaleDateString('es-MX', {
         weekday:'long', day:'2-digit', month:'long', year:'numeric',
       });
@@ -2735,6 +2741,12 @@
             <h1 className="text-[22px] font-medium text-txt leading-none tracking-tight">Resumen ejecutivo</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 max-w-full">
+            <button onClick=${onAsk} aria-label="Pregúntale a la base (Ctrl o ⌘ + K)" title="Pregunta en lenguaje natural: «¿cuánto dura un Stay & Play en TikTok?»"
+                    className="h-8 pl-2.5 pr-2 rounded-lg border border-accent2/40 bg-accent2/[0.08] hover:bg-accent2/[0.16] transition-all flex items-center gap-2 text-[11px] text-txt">
+              <${SearchIcon} size=${13} className="text-accent2"/>
+              <span>Pregúntale a la base</span>
+              <span className="ask-kbd hidden md:inline">${/Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘K' : 'Ctrl K'}</span>
+            </button>
             <${PostSearch} allPosts=${allPosts} onPick=${onPick}/>
             ${fetchedAt && html`
               <div className="hidden lg:block text-right mr-2">
@@ -8356,9 +8368,1242 @@
         <path d="M4 7h16M4 12h16M4 17h16"/>
       </svg>`;
 
+    // ============================================================
+    // v67 — PREGÚNTALE A LA BASE
+    // Buscador en lenguaje natural 100 % local (sin IA). Convierte la
+    // pregunta en: filtros + periodo + métrica + forma de respuesta, y
+    // calcula con las MISMAS reglas del dashboard (aggAdd / rateFinal):
+    // ER básico = promedio por post sin Stories, ER total = mediana,
+    // VTR ponderado por reproducciones, CTR solo con clics registrados.
+    // ============================================================
+    const askFold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+    // ---------- Ortografía: corrige typos y escritura "fonética" -----------
+    const ASK_VOCAB = ('tiktok tiktoks instagram facebook youtube linkedin threads twitter reels carrusel carruseles stories historias shorts '
+      + 'video videos organico organicos organica pauta pautado pautados pagado alcance impresiones reproducciones interacciones '
+      + 'comentarios compartidos guardados reacciones duracion promedio mediana semana semanas meses enero febrero marzo abril mayo '
+      + 'junio julio agosto septiembre octubre noviembre diciembre publicaciones publicacion influencer influencers campana campanas '
+      + 'subcampana producto productos formato formatos plataforma plataformas mejores peores cuantos cuantas engagement seguidores '
+      + 'ultimos ultimas pasada pasado anterior comparado versus tendencia tendencias lanzamiento teaser sustain unpacked retencion '
+      + 'segundos minutos domingo lunes martes miercoles jueves viernes sabado sabados domingos global local regional muestrame '
+      + 'ensename publicamos visualizaciones duran duraron trimestre semestre basico totales historico horario horarios carousel durar deben debe').split(' ');
+    const ASK_STOP = new Set(('para pero entre sobre desde hasta cuando donde tiene tienen tuvo tuvieron fueron estan esta este estos estas '
+      + 'quiero quisiera queremos dame todos todas cual cuales cuanto cuanta hace mismo general nuestro nuestra cuenta gente personas tiempo '
+      + 'veces como saber dime menos mayor menor alto alta bajo baja contenido contenidos posts post piezas pieza datos data numero cantidad '
+      + 'volumen solo sin con que los las del por fue han hemos sido salio nos ese esa eso algo cada puedes podrias favor buscar busca '
+      + 'muestra ver lista listado mejor peor mas muy bien mal hay habia publicado publicados subido subimos fecha dias mes ano anos '
+      + 'semana dia hoy ayer primer primera primeros ultimo ultima viral virales record maximo minimo').split(' '));
+    const askCanon = (w) => w.replace(/qu/g, 'k').replace(/c(?=[ei])/g, 's').replace(/z/g, 's').replace(/c/g, 'k')
+      .replace(/v/g, 'b').replace(/h/g, '').replace(/ll/g, 'y').replace(/(.)\1+/g, '$1');
+    const ASK_VSET = new Set(ASK_VOCAB);
+    const ASK_CANON = new Map(ASK_VOCAB.map(w => [askCanon(w), w]));
+    function askLev(a, b, max) {
+      if (Math.abs(a.length - b.length) > max) return max + 1;
+      let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+      for (let i = 1; i <= a.length; i++) {
+        const cur = [i]; let rowMin = i;
+        for (let j = 1; j <= b.length; j++) {
+          cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+          if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) cur[j] = Math.min(cur[j], prev[j - 2] + 1);
+          rowMin = Math.min(rowMin, cur[j]);
+        }
+        if (rowMin > max) return max + 1;
+        prev = cur;
+      }
+      return prev[b.length];
+    }
+    function askFix(tok) {
+      if (tok.length < 4 || /[\d§]/.test(tok) || ASK_VSET.has(tok) || ASK_STOP.has(tok)) return tok;
+      const c = ASK_CANON.get(askCanon(tok)); if (c) return c;
+      if (tok.length < 5) return tok;
+      const max = tok.length >= 8 ? 2 : 1; let best = null, bd = max + 1;
+      for (const w of ASK_VOCAB) { const d = askLev(tok, w, max); if (d < bd) { bd = d; best = w; } }
+      return bd <= max ? best : tok;
+    }
+
+    // ---------- Fechas y semanas (S1 2026 arranca el 28-dic-2025) ----------
+    const askDayN = (d) => Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
+    const askWkStart = (y) => { const j = new Date(y, 0, 1); return new Date(y, 0, 1 - j.getDay()); };
+    function askWkOf(d) {
+      let y = d.getFullYear();
+      if (askDayN(d) >= askDayN(askWkStart(y + 1))) y++;
+      return y * 100 + Math.floor((askDayN(d) - askDayN(askWkStart(y))) / 7) + 1;
+    }
+    function askWkRange(k) {
+      const y = Math.floor(k / 100), w = k % 100, s = askWkStart(y);
+      const a = new Date(s.getFullYear(), s.getMonth(), s.getDate() + (w - 1) * 7);
+      return [a, new Date(a.getFullYear(), a.getMonth(), a.getDate() + 6)];
+    }
+    const askWkAdd = (k, n) => { const a = askWkRange(k)[0]; return askWkOf(new Date(a.getFullYear(), a.getMonth(), a.getDate() + n * 7 + 1)); };
+    const askD = (() => {
+      const cache = new WeakMap();
+      return (p) => {
+        let o = cache.get(p);
+        if (!o) {
+          const d = parseDate(p.date);
+          o = d ? { d, n: askDayN(d), y: d.getFullYear(), m: d.getMonth() + 1, dow: d.getDay(), wk: p.wk || askWkOf(d) }
+                : { d: null, n: null, y: calYear(p), m: postMonth(p), dow: null, wk: p.wk || null };
+          cache.set(p, o);
+        }
+        return o;
+      };
+    })();
+    const ASK_MES = { enero: 1, ene: 1, febrero: 2, feb: 2, marzo: 3, mar: 3, abril: 4, abr: 4, mayo: 5, may: 5, junio: 6, jun: 6,
+      julio: 7, jul: 7, agosto: 8, ago: 8, septiembre: 9, setiembre: 9, sept: 9, sep: 9, octubre: 10, oct: 10, noviembre: 11, nov: 11,
+      diciembre: 12, dic: 12 };
+    const ASK_MES_RX = '(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sept|sep|oct|nov|dic)';
+    const ASK_MES_C = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const askDS = (d) => `${d.getDate()} ${ASK_MES_C[d.getMonth() + 1]}`;
+    const askDL = (d) => `${d.getDate()} ${ASK_MES_C[d.getMonth() + 1]} ${d.getFullYear()}`;
+
+    function askPWeek(k) {
+      const [a, b] = askWkRange(k);
+      return { kind: 'week', current: k === askWkOf(new Date()), label: `Semana ${k % 100} de ${Math.floor(k / 100)}`, short: `S${k % 100}`, sub: `${askDS(a)} – ${askDL(b)}`,
+               test: (p) => askD(p).wk === k, prev: () => askPWeek(askWkAdd(k, -1)), dash: { year: Math.floor(k / 100), weeks: [k] } };
+    }
+    function askPWeeks(k1, k2) {
+      if (k1 > k2) [k1, k2] = [k2, k1];
+      if (k1 === k2) return askPWeek(k1);
+      const ks = []; for (let k = k1; k <= k2 && ks.length < 120; k = askWkAdd(k, 1)) ks.push(k);
+      const [a] = askWkRange(k1), [, b] = askWkRange(k2), y1 = Math.floor(k1 / 100), y2 = Math.floor(k2 / 100);
+      return { kind: 'weeks', label: `Semanas ${k1 % 100}${y1 !== y2 ? ` de ${y1}` : ''} a ${k2 % 100} de ${y2}`, short: `S${k1 % 100}–S${k2 % 100}`,
+               sub: `${askDS(a)} – ${askDL(b)}`, test: (p) => { const w = askD(p).wk; return w != null && w >= k1 && w <= k2; },
+               prev: () => askPWeeks(askWkAdd(k1, -ks.length), askWkAdd(k1, -1)), dash: { year: y1 === y2 ? y1 : 'all', weeks: ks } };
+    }
+    function askPMonth(y, m) {
+      return { kind: 'month', current: y === new Date().getFullYear() && m === new Date().getMonth() + 1, label: `${MONTH_NAMES[m - 1]} ${y}`, short: `${ASK_MES_C[m]} ${String(y).slice(2)}`,
+               test: (p) => { const o = askD(p); return o.y === y && o.m === m; },
+               prev: () => m === 1 ? askPMonth(y - 1, 12) : askPMonth(y, m - 1), dash: { year: y, months: [m] } };
+    }
+    function askPMonths(y1, m1, y2, m2) {
+      let i1 = y1 * 12 + m1 - 1, i2 = y2 * 12 + m2 - 1; if (i1 > i2) [i1, i2] = [i2, i1];
+      if (i1 === i2) return askPMonth(Math.floor(i1 / 12), i1 % 12 + 1);
+      const Y1 = Math.floor(i1 / 12), M1 = i1 % 12 + 1, Y2 = Math.floor(i2 / 12), M2 = i2 % 12 + 1, len = i2 - i1 + 1;
+      const months = []; for (let i = i1; i <= i2; i++) months.push(i % 12 + 1);
+      return { kind: 'months', label: `${MONTH_NAMES[M1 - 1]}${Y1 !== Y2 ? ' ' + Y1 : ''} a ${MONTH_NAMES[M2 - 1].toLowerCase()} ${Y2}`,
+               short: `${ASK_MES_C[M1]}–${ASK_MES_C[M2]} ${String(Y2).slice(2)}`,
+               test: (p) => { const o = askD(p); if (!o.y || !o.m) return false; const i = o.y * 12 + o.m - 1; return i >= i1 && i <= i2; },
+               prev: () => { const j2 = i1 - 1, j1 = i1 - len; return askPMonths(Math.floor(j1 / 12), j1 % 12 + 1, Math.floor(j2 / 12), j2 % 12 + 1); },
+               dash: Y1 === Y2 ? { year: Y1, months } : null };
+    }
+    function askPYear(y) {
+      return { kind: 'year', current: y === new Date().getFullYear(), label: `${y}`, short: `${y}`, test: (p) => postYear(p) === y, prev: () => askPYear(y - 1), dash: { year: y } };
+    }
+    function askPDays(a, b, label) {
+      const na = askDayN(a), nb = askDayN(b), len = nb - na + 1;
+      return { kind: 'days', label: label || (na === nb ? askDL(a) : `${askDS(a)} – ${askDL(b)}`), short: na === nb ? askDS(a) : `${askDS(a)}–${askDS(b)}`,
+               test: (p) => { const n = askD(p).n; return n != null && n >= na && n <= nb; },
+               prev: () => askPDays(new Date(a.getFullYear(), a.getMonth(), a.getDate() - len), new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1)),
+               dash: null };
+    }
+
+    // ---------- Catálogo de valores reales de la base (campañas, productos…) ----------
+    const ASK_SKIP_VALUES = new Set(['n a', 'na', 'sin', 'otro', 'otros', 'general', 'unpacked', 'invitacion', 'awareness', 'ninguno', 'none',
+      'tbd', 'ugc', 'cta', 'pre order', 'teaser', 'launch', 'sustain', 'video', 'videos', 'reels', 'stories', 'live', 'post', 'posts']);
+    const ASK_COMMON = new Set(('lunes martes miercoles jueves viernes sabado domingo influencer influencers creadores creador evento eventos tips promo '
+      + 'promocion contenido contenidos dinamica dinamicas oferta ofertas registro post posts video videos reel tiktok instagram facebook youtube '
+      + 'organico paid pauta always alcance verano invierno primavera otono semana mes ano historia').split(' '));
+    const askCatalogCache = new WeakMap();
+    function askCatalog(allPosts) {
+      let c = askCatalogCache.get(allPosts);
+      if (c) return c;
+      const entries = [];
+      const seen = new Set();
+      const add = (dim, v, pri) => {
+        if (!v) return;
+        let k = askFold(v).replace(/[^a-z0-9&]+/g, ' ').replace(/\s+/g, ' ').trim();
+        let pre = '';
+        if (dim === 'products') {
+          if (/^galaxy /.test(k)) { const rest = k.slice(7); if (rest.length >= 3) { k = rest; pre = '(?:galaxy\\s*)?'; } else { k = rest; pre = 'galaxy\\s*'; } }
+          if (/^z /.test(k)) { k = k.slice(2); pre += '(?:z\\s*)?'; }
+        }
+        if (k.length < 2 || (!pre && k.length < 3) || ASK_SKIP_VALUES.has(k)) return;
+        if (RX_STAY.test(k) || RX_TEND.test(k)) return;
+        if (k.split(' ').every(w => ASK_VSET.has(w) || ASK_MES[w] || ASK_STOP.has(w) || ASK_COMMON.has(w) || /^\d+$/.test(w))) return;
+        const sk = dim + '|' + k; if (seen.has(sk)) return; seen.add(sk);
+        const tok = (w) => w.replace(/&/g, '\\s*(?:&|and|y)?\\s*').replace(/([a-z])(?=\d)/g, '$1\\s*').replace(/(\d)(?=[a-z])/g, '$1\\s*');
+        const src = pre + k.split(' ').map(tok).join('[\\s\\-]*');
+        entries.push({ dim, value: v, len: k.replace(/ /g, '').length, pri, rx: new RegExp('(?<![a-z0-9])' + src + '(?![a-z0-9])', 'g') });
+      };
+      const vals = (f) => [...new Set(allPosts.map(f).filter(Boolean))];
+      vals(p => p.product).forEach(v => add('products', v, 0));
+      vals(p => p.campaign).forEach(v => add('campaigns', v, 1));
+      vals(p => p.subcampaign).forEach(v => add('subcampaigns', v, 2));
+      entries.sort((a, b) => b.len - a.len || a.pri - b.pri);
+      c = { entries,
+            campaigns: vals(p => p.campaign), subcampaigns: vals(p => p.subcampaign), products: vals(p => p.product),
+            stages: vals(p => p.stage), objectives: vals(p => p.objective), influencers: vals(p => p.influencer_name) };
+      askCatalogCache.set(allPosts, c);
+      return c;
+    }
+
+    // ---------- Dimensiones de filtro ----------
+    const ASK_VIDEO_FORMATS = ['Reels', 'Video', 'Short', 'Live'];
+    const askYes = (v) => /^s[ií]/i.test(String(v || '').trim());
+    const askIsInfl = (p) => askYes(p.is_influencer) || !!(p.influencer_name && !/^(n\/?a|no|-)$/i.test(String(p.influencer_name).trim()));
+    const ASK_FDIMS = {
+      platforms:    { label: 'Plataforma',   get: (p) => p.platform },
+      formats:      { label: 'Formato',      get: (p) => p.format },
+      strategies:   { label: 'Pauta',        get: (p) => p.strategy, show: (v) => v === 'Paid' ? 'Pauta' : v },
+      contentTypes: { label: 'Contenido',    get: (p) => p.content_type },
+      stages:       { label: 'Etapa',        get: (p) => p.stage, show: (v) => String(v).replace(/^\d+\.\s*/, '') },
+      objectives:   { label: 'Objetivo',     get: (p) => p.objective },
+      products:     { label: 'Producto',     get: (p) => p.product },
+      campaigns:    { label: 'Campaña',      get: (p) => p.campaign },
+      subcampaigns: { label: 'Subcampaña',   get: (p) => p.subcampaign },
+      special:      { label: 'Contenido TikTok', get: (p) => ttGroupOf(p).k, show: (v) => v === 'stay' ? 'Stay & Play' : v === 'tend' ? 'Tendencia' : v },
+      flags:        { label: 'Atributo', test: (p, v) => v === 'infl' ? askIsInfl(p) : v === 'noinfl' ? !askIsInfl(p) : v === 'ai' ? askYes(p.ai)
+                      : v === 'subs' ? askYes(p.subtitles) : v === 'nosubs' ? !askYes(p.subtitles) : v === 'audio' ? askYes(p.audio) : v === 'noaudio' ? !askYes(p.audio) : true,
+                      show: (v) => ({ infl: 'Con influencer', noinfl: 'Sin influencer', ai: 'Hecho con IA', subs: 'Con subtítulos', nosubs: 'Sin subtítulos', audio: 'Con audio', noaudio: 'Sin audio' }[v] || v) },
+      dows:         { label: 'Día', test: (p, v) => askD(p).dow === v, show: (v) => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][v] },
+    };
+    const ASK_SEGMENT_DIMS = ['formats', 'strategies', 'contentTypes', 'stages', 'objectives', 'products', 'campaigns', 'subcampaigns', 'special', 'flags'];
+    const askDimTest = (dim, v) => ASK_FDIMS[dim].test ? (p) => ASK_FDIMS[dim].test(p, v) : (p) => ASK_FDIMS[dim].get(p) === v;
+    const askShow = (dim, v) => (ASK_FDIMS[dim].show ? ASK_FDIMS[dim].show(v) : v);
+
+    // ---------- Métricas ----------
+    const askPct = (v) => erFmt(v);
+    const askSec = (v) => v == null ? '—' : `${(+v).toLocaleString('es-MX', { maximumFractionDigits: v < 10 ? 1 : 0 })} s`;
+    const askOkRate = (p) => p.reach > 0 && !(p._flags || []).includes('er') && p.format !== 'Stories';
+    const ASK_METRICS = {
+      posts:       { label: 'Publicaciones',     kind: 'count', fmt: fmt },
+      reach:       { label: 'Alcance',           kind: 'sum', field: 'reach', fmt: fmt },
+      impressions: { label: 'Impresiones',       kind: 'sum', field: 'impressions', fmt: fmt },
+      views:       { label: 'Reproducciones',    kind: 'sum', field: 'views', fmt: fmt },
+      inter:       { label: 'Interacciones',     kind: 'sum', field: 'interactions', fmt: fmt },
+      binter:      { label: 'Interacciones básicas', kind: 'sum', field: 'basic_interactions', fmt: fmt },
+      comments:    { label: 'Comentarios',       kind: 'sum', field: 'comments', fmt: fmt },
+      shares:      { label: 'Compartidos',       kind: 'sum', field: 'shares', fmt: fmt },
+      saves:       { label: 'Guardados',         kind: 'sum', field: 'saves', fmt: fmt },
+      reactions:   { label: 'Reacciones',        kind: 'sum', field: 'reactions', fmt: fmt },
+      clics:       { label: 'Clics',             kind: 'sum', field: 'clics', fmt: fmt },
+      followers:   { label: 'Nuevos seguidores', kind: 'sum', field: 'new_followers', fmt: fmt },
+      ber:         { label: 'ER básico',         kind: 'rate', pct: true, fmt: askPct, agg: 'basic_er_avg', how: 'promedio por post, sin Stories',
+                     pv: (p) => askOkRate(p) && p.basic_er != null ? p.basic_er : null },
+      er:          { label: 'ER total',          kind: 'rate', pct: true, fmt: askPct, agg: 'er_avg', how: 'mediana por post, sin Stories',
+                     pv: (p) => askOkRate(p) && p.er != null ? p.er : null },
+      vtr:         { label: 'VTR',               kind: 'rate', pct: true, fmt: askPct, agg: 'vtr_avg', how: 'ponderado por reproducciones',
+                     pv: (p) => p.vtr > 0 && p.views > 0 ? p.vtr : null },
+      ctr:         { label: 'CTR',               kind: 'rate', pct: true, fmt: askPct, agg: 'ctr_avg', how: 'solo posts con clics registrados',
+                     pv: (p) => p.ctr > 0 && p.impressions > 0 && !(p._flags || []).includes('ctr') ? p.ctr : null },
+      dur:         { label: 'Duración',          kind: 'avg', field: 'duration', fmt: askSec, how: 'videos con duración capturada' },
+      watch:       { label: 'Tiempo promedio de vista', kind: 'avg', field: 'avg_watch_time', fmt: askSec, how: 'posts con el dato capturado' },
+    };
+    const askPV = (M, p) => M.pv ? M.pv(p) : M.field ? (M.kind === 'avg' ? (p[M.field] > 0 ? p[M.field] : null) : (p[M.field] != null ? p[M.field] : null)) : 1;
+    const askMedian = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+    function askStats(posts) {
+      const a = emptyAgg(); for (const p of posts) aggAdd(a, p);
+      const f = aggFinalize(a);
+      const avgOf = (fd) => { let s = 0, n = 0; for (const p of posts) if (p[fd] > 0) { s += p[fd]; n++; } return n ? s / n : null; };
+      const nf = posts.reduce((s, p) => s + (p.new_followers || 0), 0);
+      return { n: posts.length, reach: f.reach, impressions: f.impressions, views: f.views, inter: f.inter, binter: f.basic_inter,
+               comments: f.comments, shares: f.shares, saves: f.saves, reactions: f.reactions, clics: f.clics, followers: nf,
+               ber: f.basic_er_avg, er: f.er_avg, vtr: f.vtr_avg, ctr: f.ctr_avg, dur: avgOf('duration'), watch: avgOf('avg_watch_time'),
+               nBer: posts.filter(p => ASK_METRICS.ber.pv(p) != null).length, nVtr: posts.filter(p => ASK_METRICS.vtr.pv(p) != null).length,
+               nDur: posts.filter(p => p.duration > 0).length };
+    }
+    // Valor de una métrica sobre un set de posts, con el modo pedido
+    function askValue(posts, mk, mode, st) {
+      const M = ASK_METRICS[mk];
+      if (M.kind === 'count') return { v: posts.length, n: posts.length };
+      const vals = []; for (const p of posts) { const v = askPV(M, p); if (v != null) vals.push(v); }
+      const n = vals.length;
+      if (!n && M.kind !== 'sum') return { v: null, n: 0 };
+      if (mode === 'median') return { v: askMedian(vals), n, mode: 'median' };
+      if (mode === 'max') return { v: Math.max(...vals), n, mode: 'max' };
+      if (mode === 'min') return { v: Math.min(...vals), n, mode: 'min' };
+      if (M.kind === 'sum') {
+        const tot = vals.reduce((s, v) => s + v, 0);
+        return mode === 'avg' ? { v: posts.length ? tot / posts.length : null, n: posts.length, mode: 'avg' } : { v: tot, n: posts.length, mode: 'total' };
+      }
+      if (M.kind === 'avg') return { v: vals.reduce((s, v) => s + v, 0) / n, n, mode: 'avg', med: askMedian(vals), lo: Math.min(...vals), hi: Math.max(...vals) };
+      const s = st || askStats(posts);
+      return { v: s[mk], n, mode: 'rate' };
+    }
+    const askModeLabel = (mk, mode) => {
+      const M = ASK_METRICS[mk];
+      if (mode === 'avg') return M.kind === 'avg' ? (/promedio/i.test(M.label) ? M.label : `${M.label} promedio`) : `${M.label} promedio por post`;
+      if (mode === 'median') return `${M.label} · mediana por post`;
+      if (mode === 'max') return `${M.label} máximo`;
+      if (mode === 'min') return `${M.label} mínimo`;
+      if (mode === 'total' && M.kind === 'sum') return `${M.label} total`;
+      return M.label;
+    };
+    const askDelta = (mk, a, b) => {
+      if (a == null || b == null) return null;
+      const M = ASK_METRICS[mk];
+      if (M.pct) { const d = a - b; return { neutral: false, txt: `${d >= 0 ? '+' : '−'}${Math.abs(d).toLocaleString('es-MX', { maximumFractionDigits: 2 })} pp`, up: d >= 0, d }; }
+      if (!b) return null;
+      const d = (a - b) / Math.abs(b) * 100;
+      return { neutral: mk === 'dur' || mk === 'posts', txt: `${d >= 0 ? '+' : '−'}${Math.abs(d).toLocaleString('es-MX', { maximumFractionDigits: Math.abs(d) < 10 ? 1 : 0 })}%`, up: d >= 0, d };
+    };
+
+    // ---------- Agrupaciones ----------
+    const ASK_DUR_BUCKETS = [[0, 10, '≤10 s'], [10, 20, '11–20 s'], [20, 30, '21–30 s'], [30, 60, '31–60 s'], [60, 1e9, 'Más de 60 s']];
+    const ASK_GROUPS = {
+      platform: { label: 'Plataforma', key: (p) => p.platform },
+      format:   { label: 'Formato', key: (p) => p.format },
+      campaign: { label: 'Campaña', key: (p) => p.campaign },
+      subcampaign: { label: 'Subcampaña', key: (p) => p.subcampaign && !/^(n\/?a|na)$/i.test(p.subcampaign) ? p.subcampaign : null },
+      product:  { label: 'Producto', key: (p) => p.product },
+      stage:    { label: 'Etapa', key: (p) => p.stage && p.stage !== 'NA' ? p.stage : null, show: (v) => String(v).replace(/^\d+\.\s*/, ''), order: (v) => v },
+      strategy: { label: 'Pauta', key: (p) => p.strategy, show: (v) => v === 'Paid' ? 'Pauta' : v },
+      content:  { label: 'Tipo de contenido', key: (p) => p.content_type },
+      objective:{ label: 'Objetivo', key: (p) => p.objective && askFold(p.objective).trim() },
+      influencer: { label: 'Influencer', key: (p) => askIsInfl(p) && p.influencer_name ? String(p.influencer_name).trim() : null },
+      month:    { label: 'Mes', key: (p) => { const o = askD(p); return o.y && o.m ? o.y * 100 + o.m : null; }, show: (v) => `${MONTH_NAMES[v % 100 - 1]} ${Math.floor(v / 100)}`, order: (v) => v, chrono: true },
+      week:     { label: 'Semana', key: (p) => askD(p).wk, show: (v) => { const [a] = askWkRange(v); return `S${v % 100} '${String(Math.floor(v / 100)).slice(2)} · ${askDS(a)}`; }, order: (v) => v, chrono: true },
+      year:     { label: 'Año', key: (p) => postYear(p), order: (v) => v, chrono: true },
+      dow:      { label: 'Día de la semana', key: (p) => askD(p).dow, show: (v) => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][v], order: (v) => (v + 6) % 7 },
+      hour:     { label: 'Horario', key: (p) => { if (!POSTTIME_PLATS.includes(p.platform)) return null; const ms = postTimestamp(p.link); if (ms == null) return null; const b = bandOf(mxDayHour(ms).h); return b >= 0 ? b : null; },
+                  show: (v) => bandLabel(v), order: (v) => v },
+      durb:     { label: 'Duración', key: (p) => { if (!(p.duration > 0)) return null; const i = ASK_DUR_BUCKETS.findIndex(([a, b]) => p.duration > a && p.duration <= b); return i < 0 ? 0 : i; },
+                  show: (v) => ASK_DUR_BUCKETS[v][2], order: (v) => v },
+      ttgroup:  { label: 'Contenido TikTok', key: (p) => ttGroupOf(p).l },
+      daytype:  { label: 'Días', key: (p) => { const d = askD(p).dow; return d == null ? null : d === 0 || d === 6 ? 'Fin de semana' : 'Entre semana'; } },
+      inflyn:   { label: 'Influencer', key: (p) => askIsInfl(p) ? 'Con influencer' : 'Sin influencer' },
+      audioyn:  { label: 'Audio', key: (p) => askYes(p.audio) ? 'Con audio' : 'Sin audio' },
+      subsyn:   { label: 'Subtítulos', key: (p) => askYes(p.subtitles) ? 'Con subtítulos' : 'Sin subtítulos' },
+    };
+
+    // ---------- Patrones de lenguaje ----------
+    const ASK_NUMW = { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11,
+      doce: 12, quince: 15, veinte: 20, treinta: 30, cincuenta: 50, cien: 100 };
+    const ASK_PLAT_RX = [
+      ['TikTok', /\b(?:tik ?toks?|tiktoker|tt)\b/g],
+      ['Instagram', /\b(?:instagram|instas?|ig)\b/g],
+      ['Facebook', /\b(?:facebook|face|fb)\b/g],
+      ['YouTube', /\b(?:youtube|you tube|yt)\b/g],
+      ['X', /\b(?:twitter|tweets?|tuits?|tw)\b|(?<=\b(?:en|de|y|e|o|vs|contra|a) )x\b(?! \d)|^x\b(?= )/g],
+      ['LinkedIn', /\b(?:linked ?in|linkedin|lkdn)\b/g],
+      ['Threads', /\bthreads\b/g],
+    ];
+    const ASK_FORMAT_RX = [
+      ['Reels', /\breels?\b/g], ['Short', /\bshorts?\b/g], ['Stories', /\b(?:stories|story|historias?|storys)\b/g],
+      ['Carrusel', /\b(?:carrusel(?:es)?|carousels?|carrousel)\b/g], ['Foto', /\b(?:fotos?|imagen(?:es)?|estatic[oa]s?|post estatico)\b/g],
+      ['Texto', /\b(?:textos?|solo texto)\b/g], ['Live', /\b(?:lives?|en vivo|transmisi(?:on|ones))\b/g],
+      ['__videos', /\bvideos?\b/g],
+    ];
+    const ASK_METRIC_RX = [
+      ['watch', /\btiempo (?:promedio )?(?:de )?(?:vista|visualizacion|reproduccion|visionado)\b|\bwatch ?time\b|\bcuanto tiempo (?:lo |los |la |las )?(?:ven|vieron|miran)\b|\btiempo promedio de vista\b/g],
+      ['er', /\b(?:er|engagement(?: rate)?|tasa de (?:interaccion|engagement)) (?:total|views|de views|de reproducciones|con views)\b|\bengagement total\b/g],
+      ['ber', /\b(?:er|engagement(?: rate)?|tasa de (?:interaccion|engagement)) basico\b|\ber b\b|\bengagement rate\b|\btasa de (?:interaccion|engagement)\b|\bengagement\b|\ber\b|\b(?:mas|mejor) engagement\b/g],
+      ['vtr', /\bvtr\b|\bview ?through(?: rate)?\b|\b(?:lo |los |la |las )?(?:ven|vieron|miran) complet[oa]s?\b|\btasa de (?:visualizacion|reproduccion) completa\b|\bretencion\b/g],
+      ['ctr', /\bctr\b|\bclick ?through(?: rate)?\b|\btasa de clics?\b/g],
+      ['clics', /\bclic?ks?\b|\bclics\b|\bclicks\b/g],
+      ['binter', /\binteracciones basicas\b/g],
+      ['inter', /\binteracciones(?: totales)?\b|\binteraccion\b|\binteractuaron\b/g],
+      ['reach', /\balcances?\b|\balcanzamos\b|\balcanzaron\b|\balcanzan?\b|\balcanzo\b|\breach\b|\bpersonas (?:alcanzadas|unicas)\b|\bcuanta gente\b|\bcuantas personas\b/g],
+      ['impressions', /\bimpresiones\b|\bimpressions\b|\bimpactos\b/g],
+      ['views', /\breproducciones\b|\bviews\b|\bvistas\b|\bvisualizaciones\b|\bplays\b|\bmas vist[oa]s?\b|\bviral(?:es)?\b/g],
+      ['comments', /\bcomentarios?\b|\bcomentaron\b|\bcomentado\b/g],
+      ['shares', /\bcompartid[oa]s?\b|\bshares?\b|\bcompartieron\b|\bcompartidas\b/g],
+      ['saves', /\bguardad[oa]s?\b|\bsaves?\b|\bguardaron\b/g],
+      ['reactions', /\breacciones\b|\blikes?\b|\bme gusta\b|\bcorazones\b|\blikearon\b/g],
+      ['followers', /\b(?:nuevos )?(?:seguidores|followers) (?:ganados|nuevos|que ganamos|generados)\b|\bnuevos (?:seguidores|followers)\b|\bganamos (?:seguidores|followers)\b/g],
+      ['dur', /\bduracion(?:es)?\b|\bduran?\b|\bduraron\b|\bdurar\b|\bdure\b|\bcuanto (?:tiempo )?(?:duran?|miden)\b|\bcuantos segundos\b|\blength\b/g],
+    ];
+    const ASK_GROUP_RX = [
+      ['hour', /\b(?:a que|en que|que|cual|mejor(?:es)?|por|cada) (?:hora|horas|horario|horarios)\b|\b(?:hora|horario)s? (?:con|que) (?:mas|mejor|menos)\b|\bmejor(?:es)? horas?\b|\bhorarios?\b/g],
+      ['dow', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|en que) dias?(?: de la semana)?\b|\bdias? de la semana\b|\bdia (?:con|que) (?:mas|mejor|menos)\b/g],
+      ['durb', /\bduracion (?:ideal|optima|perfecta)\b|\bpor duracion\b|\b(?:que|cual) duracion\b|\bcuanto (?:deben|debe|tienen que|tiene que|deberian|deberia|debemos) durar\b|\b(?:largo|duracion) (?:optim[oa]|ideal|perfect[oa])\b|\bmejor duracion\b|\bduracion (?:que|con) (?:mas|mejor)\b|\bque tan largos?\b/g],
+      ['month', /\bpor mes(?:es)?\b|\bmes a mes\b|\bmensual(?:es|mente)?\b|\bcada mes\b|\b(?:que|cual|mejor|peor|en que) mes\b|\bmes (?:con|que) (?:mas|mejor|menos)\b/g],
+      ['week', /\bpor semanas?\b|\bsemana a semana\b|\bsemanal(?:es|mente)?\b|\bcada semana\b|\b(?:que|cual|mejor|peor|en que) semana\b|\bsemana (?:con|que) (?:mas|mejor|menos)\b|\btendencia (?:de|del)\b(?= (?:la |el |los |las )?(?:alcance|vtr|er|engagement|interacciones|reproducciones|views|vistas|comentarios|seguidores|posts|publicaciones|impresiones))|\bevolucion\b|\bcomo ha (?:evolucionado|cambiado|ido)\b/g],
+      ['year', /\bpor anos?\b|\bano (?:contra|vs) ano\b|\bcada ano\b|\banual(?:es|mente)?\b/g],
+      ['platform', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|en que|de que|en cual) (?:red|redes|plataformas?)(?: sociales?)?\b|\b(?:red|plataforma) (?:con|que) (?:mas|mejor|menos)\b|\bpor red social\b/g],
+      ['format', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|en que|de que|tipo de) formatos?\b|\bformatos? (?:con|que) (?:mas|mejor|menos)\b|\bpor tipo de (?:post|publicacion)\b/g],
+      ['subcampaign', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|en que|de que) subcampanas?\b|\bsubcampanas? (?:con|que) (?:mas|mejor|menos)\b/g],
+      ['campaign', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|en que|de que) campanas?\b|\bcampanas? (?:con|que) (?:mas|mejor|menos)\b/g],
+      ['product', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|de que) (?:productos?|equipos?|dispositivos?|celulares?|modelos?|telefonos?)\b|\b(?:producto|equipo|modelo|celular)s? (?:con|que) (?:mas|mejor|menos)\b/g],
+      ['stage', /\b(?:por|cada|que|cual|en que|mejor) etapas?\b|\betapas? (?:con|que) (?:mas|mejor)\b/g],
+      ['content', /\b(?:por|que|cual) tipo de contenido\b|\blocal (?:vs|o|contra) global\b/g],
+      ['influencer', /\b(?:que|cual|cuales|mejor(?:es)?|peor(?:es)?|por|top|ranking de) (?:influencers?|creadores?|creators?|talentos?)\b|\b(?:influencers?|creadores?) (?:con|que) (?:mas|mejor|menos)\b/g],
+      ['objective', /\b(?:por|que|cual) objetivos?\b/g],
+      ['strategy', /\bpor tipo de pauta\b/g],
+    ];
+    const ASK_POST_NOUN = /\b(?:posts?|publicaci(?:on|ones)|contenidos?|piezas?|videos?|tiktoks?|reels?|stories|story|historias?|shorts?|carrusel(?:es)?|tweets?|tuits?|fotos?|lives?)\b|\btik ?toks\b/;
+
+    // ======================================================================
+    // PARSER
+    // ======================================================================
+    function askParse(q, allPosts, now = new Date()) {
+      const cat = askCatalog(allPosts || []);
+      const spec = { q, dims: {}, periods: [], metrics: [], mode: null, group: null, intent: null, topN: null, order: 'desc',
+                     compare: false, dur: null, notices: [], chips: [], sortDate: null };
+      const addDim = (dim, v, src) => { const a = spec.dims[dim] || (spec.dims[dim] = []); if (!a.includes(v)) a.push(v); };
+
+      // 1) texto normalizado (sin acentos, sin signos)
+      let raw = ' ' + askFold(q).replace(/[¿?¡!,;:"“”()\[\]{}]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+
+      // 2) valores reales de la base: productos, campañas, subcampañas (antes de corregir typos)
+      const explicitCamp = /\bcampanas? /.test(raw), explicitSub = /\bsub ?campanas? /.test(raw);
+      for (const e of cat.entries) {
+        e.rx.lastIndex = 0;
+        if (!e.rx.test(raw)) continue;
+        e.rx.lastIndex = 0;
+        let dim = e.dim;
+        if (explicitSub && dim !== 'subcampaigns' && cat.subcampaigns.includes(e.value)) dim = 'subcampaigns';
+        else if (explicitCamp && !explicitSub && dim === 'products' && cat.campaigns.some(c => askFold(c) === askFold(e.value))) dim = 'campaigns';
+        raw = raw.replace(e.rx, ` §p${Object.keys(spec.dims).length}§ `);
+        addDim(dim, dim === 'campaigns' && e.dim !== 'campaigns' ? cat.campaigns.find(c => askFold(c) === askFold(e.value)) || e.value : e.value);
+      }
+      // "campaña X" escrita a medias → busca la campaña más parecida
+      raw = raw.replace(/\b(sub ?)?campanas? (?:de |del |de la )?([a-z0-9][a-z0-9 &]{1,40}?)(?= (?:en|de|del|por|vs|contra|y|o|con|durante|el|la|los|las)\b| $)/g, (m, sub, name) => {
+        const pool = sub ? cat.subcampaigns : cat.campaigns, dim = sub ? 'subcampaigns' : 'campaigns';
+        const nm = name.trim(); if (nm.length < 3 || /^(mas|con|que|cual|mejor)/.test(nm)) return m;
+        const hit = pool.find(c => askFold(c) === nm) || pool.find(c => askFold(c).startsWith(nm)) || pool.find(c => askFold(c).includes(nm));
+        if (!hit) return m;
+        addDim(dim, hit); return ` §p9§ `;
+      });
+
+      // 3) corrección de typos token a token
+      let t = ' ' + raw.trim().split(' ').map(askFix).join(' ') + ' ';
+      const eat = (rx, fn) => { t = t.replace(rx, (...a) => { const r = fn(...a); return r === false ? a[0] : ' '; }); };
+      const tNoDur = t.replace(/\b(?:menos|mas) de \d+/g, ' ');
+      const preSuperl = /\b(?:mejor(?:es)?|peor(?:es)?|top|viral(?:es)?|record|ranking|destacad[oa]s?|ganador(?:es)?)\b/.test(tNoDur);
+      const preWorst = /\b(?:peor(?:es)?)\b/.test(tNoDur);
+      const preN = t.match(/\btop ?(\d{1,3})\b|\b(?:los|las) (\d{1,3}) (?!(?:semanas?|meses?|dias?|anos?|segundos?|s|seg|de|del|al|a)\b)|\b(\d{1,3}) (?:mejores|peores|posts|publicaciones|videos|tiktoks|reels|contenidos|stories|shorts|carruseles|tweets)\b/);
+      if (preN) spec.topN = Math.min(200, +(preN[1] || preN[2] || preN[3]));
+      const perfQ = /\b(?:funciona|funcionan|funciono|funcionaron|rinde|rinden|rindio|conviene|jala|jalan|pega|pegan|mejor|peor)\b/.test(t);
+      // "vs el resto" / "contra lo demás"
+      eat(/\b(?:vs|versus|contra|frente a|comparad[oa]s? con|o) (?:el |lo |todo el )?(?:resto|demas|otros|los demas|todo lo demas)(?: del contenido| de lo que publicamos)?\b/g, () => { spec.vsRest = true; spec.compare = true; });
+      // pares que se comparan como grupo
+      if (/\bfin(?:es)? de semana\b|\bfinde/.test(t) && /\bentre semana\b/.test(t)) { spec.group = 'daytype'; t = t.replace(/\b(?:los |en )?(?:fines? de semana|findes?|entre semana)\b/g, ' '); }
+      if (/\bcon influencers?\b/.test(t) && /\bsin influencers?\b/.test(t)) { spec.group = 'inflyn'; t = t.replace(/\b(?:con|sin) influencers?\b/g, ' '); }
+      if (/\bcon (?:audio|musica)\b/.test(t) && /\bsin (?:audio|musica)\b/.test(t)) { spec.group = 'audioyn'; t = t.replace(/\b(?:con|sin) (?:audio|musica)\b/g, ' '); }
+      if (/\bcon subtitulos\b/.test(t) && /\bsin subtitulos\b/.test(t)) { spec.group = 'subsyn'; t = t.replace(/\b(?:con|sin) subtitulos\b/g, ' '); }
+      // ritmo de publicación: "cuántos posts hacemos al mes / por semana"
+      if (/\b(?:cuant[oa]s|cuanto|publicamos|subimos|hacemos|sacamos|ritmo|frecuencia)\b/.test(t)) eat(/\b(?:al|a la|por|cada|en promedio (?:al|por|a la)) (mes|semana|dia)\b/g, (m, u) => { spec.rateUnit = u; });
+      // números en palabra → dígitos
+      t = t.replace(/\bun par de\b/g, '2').replace(/\b(un|una|uno)\b(?= (?:semanas?|meses?|dias?|anos?)\b)/g, '1').replace(/\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cincuenta|cien)\b(?= (?:semanas?|meses?|dias?|anos?|posts?|publicaciones|videos?|mejores|peores|primer[oa]s|ultim[oa]s|tiktoks?|reels?|contenidos?|piezas?))/g, (m, w) => String(ASK_NUMW[w]));
+
+      // 4) avisos de cosas que la base no tiene
+      if (/\b(?:cuantos|total de|numero de) (?:seguidores|followers) (?:tenemos|hay|tiene|llevamos)\b|\bseguidores (?:totales|actuales)\b|\bcomunidad total\b/.test(t))
+        { spec.notices.push({ k: 'followers', txt: 'Los seguidores totales por cuenta viven en la sección «Followers y meta» (te llevo con el botón). Aquí solo están los nuevos seguidores que se capturan por post.', go: 'sec-followers' }); spec.followersQ = true; }
+
+      // 5) comparación
+      if (/\b(?:vs|versus|contra|comparad[oa]s? (?:con|a|vs)|frente a|comparar|compara|comparativa|comparacion|diferencia entre|en comparacion (?:con|a))\b/.test(t)) spec.compare = true;
+
+      // 6) filtros de duración ("videos de menos de 30 segundos")
+      const UNIT = '(?: ?(s|seg|segs|segundos|min|mins|minutos))';
+      const toS = (n, u) => (+n) * (/^m/.test(u || '') ? 60 : 1);
+      eat(new RegExp(`\\b(?:de |con |entre )(\\d+) (?:a|y|-|al) (\\d+)${UNIT}\\b`, 'g'), (m, a, b, u) => { spec.dur = { min: toS(a, u), max: toS(b, u), incl: true }; });
+      eat(new RegExp(`\\b(?:de |con )?(?:menos de|hasta|maximo|max|menores? (?:a|de)|no mas de|<=?) (\\d+)${UNIT}\\b`, 'g'), (m, a, u) => { spec.dur = { ...(spec.dur || {}), max: toS(a, u), strict: /menos|menor|</.test(m) }; });
+      eat(new RegExp(`\\b(\\d+)${UNIT} o menos\\b`, 'g'), (m, a, u) => { spec.dur = { ...(spec.dur || {}), max: toS(a, u) }; });
+      eat(new RegExp(`\\b(?:de |con )?(?:mas de|mayores? (?:a|de)|arriba de|>=?) (\\d+)${UNIT}\\b`, 'g'), (m, a, u) => { spec.dur = { ...(spec.dur || {}), min: toS(a, u) }; });
+
+      // 7) TIEMPO
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const curWk = askWkOf(today), curY = today.getFullYear(), curM = today.getMonth() + 1;
+      const found = [];                      // {pos, p}
+      const push = (pos, p) => found.push({ pos, p });
+      const yOf = (s) => { if (!s) return null; s = s.replace(/^'/, ''); if (s === 'ano pasado') return curY - 1; if (s === 'este ano') return curY; const n = +s; return n < 100 ? (n >= 20 && n <= 39 ? 2000 + n : null) : n; };
+      const inferY = (m) => m > curM ? curY - 1 : curY;
+      const YR = `(?: (?:de |del )?(ano pasado|este ano|20\\d{2}|'?\\d{2})(?![\\d/]))?`;
+      // días de la semana (antes de "semana")
+      eat(/\b(?:los |en |el )?(?:fines? de semana|finde(?:s)?|weekends?)\b/g, () => { addDim('dows', 0); addDim('dows', 6); });
+      eat(/\b(?:entre semana|dias habiles|de lunes a viernes)\b/g, () => { [1, 2, 3, 4, 5].forEach(d => addDim('dows', d)); });
+      eat(/\b(?:dias? de la semana)\b/g, () => { spec.group = spec.group || 'dow'; });
+      const DOWS = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6 };
+      eat(/\b(?:los |el |en |de )?(lunes|martes|miercoles|jueves|viernes|sabado|domingo)s?\b/g, (m, d) => { addDim('dows', DOWS[d]); });
+      // fechas exactas dd/mm(/aaaa)
+      eat(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/g, (m, d, mo, y, off) => {
+        const Y = y ? (+y < 100 ? 2000 + +y : +y) : inferY(+mo); const dt = new Date(Y, +mo - 1, +d); if (isNaN(dt) || +mo > 12) return false;
+        push(off, askPDays(dt, dt));
+      });
+      // "del 1 al 15 de octubre (de 2025)"
+      eat(new RegExp(`\\b(?:del |de |entre el |entre )?(\\d{1,2}) (?:al|a|y|-) (\\d{1,2}) de ${ASK_MES_RX}${YR}`, 'g'), (m, d1, d2, mes, y, off) => {
+        const mo = ASK_MES[mes], Y = yOf(y) || inferY(mo); push(off, askPDays(new Date(Y, mo - 1, +d1), new Date(Y, mo - 1, +d2)));
+      });
+      // "15 de octubre"
+      eat(new RegExp(`\\b(?:el )?(\\d{1,2}) de ${ASK_MES_RX}${YR}`, 'g'), (m, d, mes, y, off) => {
+        if (+d > 31) return false; const mo = ASK_MES[mes], Y = yOf(y) || inferY(mo); const dt = new Date(Y, mo - 1, +d); push(off, askPDays(dt, dt));
+      });
+      // rangos de meses
+      const monthRange = (m, a, ya, b, yb, off) => {
+        const ma = ASK_MES[a], mb = ASK_MES[b];
+        let Yb = yOf(yb), Ya = yOf(ya);
+        if (!Yb) Yb = Ya && ma <= mb ? Ya : (Ya ? Ya + 1 : inferY(mb));
+        if (!Ya) Ya = ma <= mb ? Yb : Yb - 1;
+        push(off, askPMonths(Ya, ma, Yb, mb));
+      };
+      eat(new RegExp(`\\b(?:de|desde) ${ASK_MES_RX}${YR} (?:a|al|hasta|-) ${ASK_MES_RX}${YR}`, 'g'), monthRange);
+      eat(new RegExp(`\\bentre ${ASK_MES_RX}${YR} y ${ASK_MES_RX}${YR}`, 'g'), monthRange);
+      eat(new RegExp(`\\b${ASK_MES_RX}${YR} (?:a|al|hasta|-) ${ASK_MES_RX}${YR}`, 'g'), monthRange);
+      // trimestres y semestres
+      const QW = { primer: 1, '1er': 1, primero: 1, segundo: 2, '2do': 2, tercer: 3, '3er': 3, tercero: 3, cuarto: 4, '4to': 4 };
+      eat(new RegExp(`\\b(?:el )?(?:q ?([1-4])|(primer|primero|1er|segundo|2do|tercer|tercero|3er|cuarto|4to) (?:trimestre|quarter|q))${YR}`, 'g'), (m, n, w, y, off) => {
+        const qn = n ? +n : QW[w], Y = yOf(y) || curY; push(off, askPMonths(Y, qn * 3 - 2, Y, qn * 3));
+      });
+      eat(new RegExp(`\\b(?:el )?(?:(primer|1er|segundo|2do) semestre|h([12]))${YR}`, 'g'), (m, w, h, y, off) => {
+        const s = h ? +h : (/^(primer|1er)$/.test(w) ? 1 : 2), Y = yOf(y) || curY; push(off, askPMonths(Y, s === 1 ? 1 : 7, Y, s === 1 ? 6 : 12));
+      });
+      // relativos
+      eat(/\bhace (\d+) (semanas?|meses?|dias?|anos?)\b/g, (m, n, u, off) => {
+        n = +n;
+        if (/^sem/.test(u)) push(off, askPWeek(askWkAdd(curWk, -n)));
+        else if (/^mes/.test(u)) { const i = curY * 12 + curM - 1 - n; push(off, askPMonth(Math.floor(i / 12), i % 12 + 1)); }
+        else if (/^dia/.test(u)) { const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - n); push(off, askPDays(d, d)); }
+        else push(off, askPYear(curY - n));
+      });
+      eat(/\b(?:en )?(?:las |los |la |el )?(?:ultim[oa]s?|pasad[oa]s) (?:(\d+) )?(semanas?|meses?|dias?|anos?)\b/g, (m, n, u, off) => {
+        n = n ? +n : 1;
+        if (/^sem/.test(u)) push(off, n === 1 ? askPWeek(askWkAdd(curWk, -1)) : askPWeeks(askWkAdd(curWk, -n), askWkAdd(curWk, -1)));
+        else if (/^mes/.test(u)) { const i2 = curY * 12 + curM - 2, i1 = i2 - n + 1; push(off, askPMonths(Math.floor(i1 / 12), i1 % 12 + 1, Math.floor(i2 / 12), i2 % 12 + 1)); }
+        else if (/^dia/.test(u)) push(off, askPDays(new Date(today.getFullYear(), today.getMonth(), today.getDate() - n + 1), today, `Últimos ${n} días`));
+        else push(off, n === 1 ? askPYear(curY - 1) : { ...askPYear(curY - 1), label: `${curY - n} a ${curY - 1}`, test: (p) => { const y = postYear(p); return y >= curY - n && y <= curY - 1; }, prev: null, dash: { year: 'all' } });
+      });
+      eat(/\b(?:vs|versus|contra|comparad[oa]s? con|frente a) (?:el |la )?(mes|semana|ano) (?:pasad[oa]|anterior)\b/g, (m, u, off) => {
+        spec.compare = true;
+        if (u === 'semana') { push(off - 1, askPWeek(curWk)); push(off, askPWeek(askWkAdd(curWk, -1))); }
+        else if (u === 'mes') { const i = curY * 12 + curM - 2; push(off - 1, askPMonth(curY, curM)); push(off, askPMonth(Math.floor(i / 12), i % 12 + 1)); }
+        else { push(off - 1, askPYear(curY)); push(off, askPYear(curY - 1)); }
+      });
+      eat(/\b(?:la )?semana (?:pasada|anterior)\b|\bla pasada semana\b/g, (m, off) => push(off, askPWeek(askWkAdd(curWk, -1))));
+      eat(/\b(?:la )?semana antepasada\b/g, (m, off) => push(off, askPWeek(askWkAdd(curWk, -2))));
+      eat(/\b(?:esta|en esta) semana(?: actual| en curso)?\b(?! \d)|\bsemana actual\b/g, (m, off) => push(off, askPWeek(curWk)));
+      eat(/\b(?:el )?mes (?:pasado|anterior)\b/g, (m, off) => { const i = curY * 12 + curM - 2; push(off, askPMonth(Math.floor(i / 12), i % 12 + 1)); });
+      eat(/\b(?:este|en este) mes(?: actual| en curso)?\b(?! (?:a|con|que|de))|\bmes actual\b/g, (m, off) => push(off, askPMonth(curY, curM)));
+      eat(/\bhoy\b/g, (m, off) => push(off, askPDays(today, today, 'Hoy')));
+      eat(/\bantier\b|\bantes de ayer\b/g, (m, off) => { const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2); push(off, askPDays(d, d)); });
+      eat(/\bayer\b/g, (m, off) => { const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1); push(off, askPDays(d, d, 'Ayer')); });
+      // meses con año explícito
+      eat(new RegExp(`\\b(?:en |de |del |durante )?${ASK_MES_RX} (?:de |del )?(ano pasado|este ano|20\\d{2}|'\\d{2}|[23]\\d)(?![\\d/])`, 'g'), (m, mes, y, off) => {
+        const Y = yOf(y); if (!Y) return false; push(off, askPMonth(Y, ASK_MES[mes]));
+      });
+      // semanas numeradas (con año opcional)
+      const weekY = (y, w) => y || (Math.floor(curWk / 100) * 100 + w > curWk ? Math.floor(curWk / 100) - 1 : Math.floor(curWk / 100));
+      eat(/\b(?:la )?(?:semanas?|sem|wk|w|s) ?(\d{1,2})(?: (?:a|al|hasta|-) (?:la )?(?:semana |s ?)?(\d{1,2}))?(?: (?:de |del )?(20\d{2}))?\b/g, (m, a, b, y, off) => {
+        a = +a; if (a < 1 || a > 53) return false;
+        const Y = y ? +y : null;
+        if (b) { b = +b; push(off, askPWeeks(weekY(Y, a) * 100 + a, weekY(Y, b) * 100 + b)); }
+        else push(off, askPWeek(weekY(Y, a) * 100 + a));
+      });
+      // "semana 40 vs 41": el número suelto tras vs/contra/y
+      if (found.some(f => f.p.kind === 'week')) eat(/\b(?:vs|contra|y|o|versus) (?:la )?(\d{1,2})\b(?! (?:de|s|seg|segundos|posts|dias))/g, (m, a, off) => {
+        a = +a; if (a < 1 || a > 53) return false; push(off, askPWeek(weekY(null, a) * 100 + a));
+      });
+      // años sueltos y "este año"
+      const looseYears = [];
+      eat(/\b(?:en |del |de |durante )?(?:(?:el )?ano )?(20[12]\d)\b/g, (m, y, off) => { looseYears.push({ pos: off, y: +y }); });
+      eat(/\bdel ano\b(?! (?:pasado|anterior|\d))|\b(?:este ano|en el ano|en lo que va del ano|lo que va del ano|ytd|year to date|al dia de hoy|en el ano actual|ano actual)\b/g, (m, off) => { looseYears.push({ pos: off, y: curY }); });
+      eat(/\b(?:el )?ano (?:pasado|anterior)\b/g, (m, off) => { looseYears.push({ pos: off, y: curY - 1 }); });
+      // meses sueltos (sin año): usa el año suelto si lo hay
+      const bare = [];
+      eat(new RegExp(`(\\b(?:en|de|del|durante|vs|contra|y|o|a|mes de|el mes de)? ?)\\b${ASK_MES_RX}\\b`, 'g'), (m, pre, mes, off) => {
+        const full = mes.length > 4 || mes === 'mayo' || mes === 'mar' && false;
+        if (!full && !pre.trim()) return false;
+        bare.push({ pos: off, m: ASK_MES[mes] });
+      });
+      if (bare.length) {
+        const Y = looseYears.length === 1 ? looseYears[0].y : null;
+        bare.forEach(b => { const pm = askPMonth(Y || inferY(b.m), b.m); if (!Y) pm.inferred = true; push(b.pos, pm); });
+        if (Y) looseYears.length = 0;
+      }
+      looseYears.forEach(l => push(l.pos, askPYear(l.y)));
+      found.sort((a, b) => a.pos - b.pos);
+      const seenP = new Set();
+      for (const f of found) { if (seenP.has(f.p.label)) continue; seenP.add(f.p.label); spec.periods.push(f.p); }
+      if (/\b(?:todo el )?historico\b|\bdesde siempre\b|\btodo el tiempo\b|\bde siempre\b/.test(t)) spec.periods = [];
+
+      // top N de grupos ("top 10 influencers", "los 5 mejores formatos")
+      const GW = { influencers: 'influencer', influencer: 'influencer', creadores: 'influencer', campanas: 'campaign', formatos: 'format', productos: 'product',
+                   plataformas: 'platform', redes: 'platform', dias: 'dow', semanas: 'week', meses: 'month', subcampanas: 'subcampaign', etapas: 'stage' };
+      eat(/\b(?:top|ranking de|(?:los|las) (?:mejores|peores)?) ?(\d{1,2})? ?(?:mejores |peores )?(influencers?|creadores|campanas|formatos|productos|plataformas|redes|subcampanas|etapas)\b/g, (m, n, w) => {
+        if (!/\btop|ranking|mejores|peores|\d/.test(m)) return false;
+        spec.group = spec.group || GW[w]; if (n) spec.topN = +n; if (/peores/.test(m)) spec.order = 'asc';
+      });
+      // 9) agrupaciones (antes de métricas: "duración ideal" no es "duración")
+      for (const [g, rx] of ASK_GROUP_RX) { rx.lastIndex = 0; if (rx.test(t)) { if (!spec.group) spec.group = g; rx.lastIndex = 0; t = t.replace(rx, ' '); } }
+      // 8) plataformas, formatos y demás dimensiones
+      eat(/\btodas las (?:redes|plataformas)\b|\ben todas partes\b/g, () => {});
+      for (const [v, rx] of ASK_PLAT_RX) eat(rx, () => { addDim('platforms', v); });
+      eat(/\bstay ?(?:&|and|y|n|\+|-)? ?play\b|\bstay\b|\bstaynplay\b/g, () => { addDim('special', 'stay'); });
+      eat(/\btendencias?\b(?! (?:de|del) (?:la |el |los |las )?(?:alcance|vtr|er|engagement|interacciones|reproducciones|views|vistas|comentarios|seguidores|posts|publicaciones|impresiones))|\btrends?\b|\btrending\b/g, () => { addDim('special', 'tend'); });
+      eat(/\bsin (?:influencers?|creadores?)\b/g, () => { addDim('flags', 'noinfl'); });
+      eat(/\b(?:influencers?|influenciador(?:es|as?)?|creador(?:es|as?)? de contenido|creators?|talentos?)\b/g, () => { addDim('flags', 'infl'); });
+      eat(/\b(?:con|hechos? con|generad[oa]s? con|usando) (?:ia|ai|inteligencia artificial)\b/g, () => { addDim('flags', 'ai'); });
+      eat(/\bcon subtitulos\b/g, () => { addDim('flags', 'subs'); });
+      eat(/\bsin subtitulos\b/g, () => { addDim('flags', 'nosubs'); });
+      eat(/\bcon (?:audio|musica|sonido)\b/g, () => { addDim('flags', 'audio'); });
+      eat(/\bsin (?:audio|musica|sonido)\b/g, () => { addDim('flags', 'noaudio'); });
+      let videoGroup = false;
+      for (const [v, rx] of ASK_FORMAT_RX) {
+        rx.lastIndex = 0;
+        t = t.replace(rx, (m) => { if (v === '__videos') videoGroup = true; else addDim('formats', v); return ` §p${v === '__videos' ? 'v' : 'f'}§ `; });
+      }
+      if (videoGroup && !(spec.dims.formats || []).length) spec.dims.formats = ['__videos'];
+      eat(/\borganic[oa]s?\b|\bsin pauta\b|\borganic\b|\borganicamente\b/g, () => { addDim('strategies', 'Orgánico'); });
+      eat(/\bcon pauta\b|\bpautad[oa]s?\b|\bpauta\b|\bpagad[oa]s?\b|\bpaid\b|\bads\b|\bpromocionad[oa]s?\b|\bpatrocinad[oa]s?\b|\bboosteados?\b|\bpautamos\b|\bpublicidad\b/g, () => { addDim('strategies', 'Paid'); });
+      eat(/(?<!\bnivel )(?<!\ben )\b(?:contenidos? )?(global|local|regional)(?:es)?\b/g, (m, v) => { addDim('contentTypes', v[0].toUpperCase() + v.slice(1)); });
+      const stageOf = (w) => cat.stages.find(s => askFold(s).includes(w));
+      eat(/\b(?:etapa (?:de )?)?(teaser|unpacked|launch|sustain)\b/g, (m, w) => { const s = stageOf(w); if (!s) return false; addDim('stages', s); });
+      eat(/\betapa (?:de )?lanzamiento\b/g, () => { const s = stageOf('launch'); if (!s) return false; addDim('stages', s); });
+      eat(/\b(?:objetivo (?:de )?)(awareness|oferta|pre ?order|registro|dinamica|er|invitacion|ugc|cta)\b|\b(dinamicas?|ugc)\b/g, (m, a, b) => {
+        const w = askFold(a || b).replace(/s$/, '').replace(' ', ''); const o = cat.objectives.find(x => askFold(x).replace(/\s/g, '').startsWith(w)); if (!o) return false; addDim('objectives', o);
+      });
+
+      if (spec.group === 'influencer') addDim('flags', 'infl');
+
+      // 10a) palabras de intención (antes de que las métricas se coman «más»)
+      const superl = preSuperl || /\b(?:viral(?:es)?|mejor(?:es)?|peor(?:es)?|top|mas|menos|mayor(?:es)?|menor(?:es)?|maxim[oa]s?|minim[oa]s?|record|ranking|destacad[oa]s?|ganador(?:es)?|lider(?:es)?)\b/.test(t);
+      const worst = preWorst || (/\b(?:peor(?:es)?|menos|menor(?:es)?|minim[oa]s?|mas bajo|mas baja)\b/.test(t) && !/\bmenos de\b/.test(t));
+      if (worst) spec.order = 'asc';
+      const nm = t.match(/\btop ?(\d{1,3})\b|\b(?:los|las) (\d{1,3}) (?:mejores|peores|primer[oa]s|ultim[oa]s|mas|menos|§p|posts?|publicaciones|videos?|contenidos?)|\b(\d{1,3}) (?:mejores|peores|posts|publicaciones|videos|tiktoks|reels|contenidos)\b/);
+      if (nm && !spec.topN) spec.topN = Math.min(200, +(nm[1] || nm[2] || nm[3]));
+      if (spec.topN) spec.topNExplicit = true;
+      const postNoun = ASK_POST_NOUN.test(raw) || /§p[fv]§/.test(t);
+      const latest = /\b(?:ultim[oa]s?|mas recientes?|recientes|lo nuevo|nuev[oa]s)\b/.test(t) && !/\bultim[oa]s? \d/.test(t);
+      const first = /\bprimer(?:a|o|os|as)?\b(?! (?:trimestre|semestre))/.test(t);
+      const countQ = /\bcuant[oa]s\b|\bnumero de\b|\bcantidad de\b|\bvolumen\b|\bcuantas veces\b/.test(t);
+      const listQ = /\b(?:ver|veo|muestra|muestrame|mostrar|ensena|ensename|lista|listado|enlista|todos|todas|dame|damelos|cuales|busca|buscame|encuentra|quiero|necesito|traeme|saca|sacame)\b/.test(t);
+      const kpiQ = /\bkpis?\b|\bmetas? de (?:la )?cuenta\b|\bcumpl(?:imos|e|en|iendo|io)\b|\bobjetivos? de (?:la )?cuenta\b/.test(t);
+      const summaryQ = /\bcomo (?:le |nos |les )?(?:fue|va|vamos|ha ido|esta yendo|esta|estamos|salio|salieron|funciono|funcionaron|funciona|funcionan|estuvo|estuvieron|anda|andamos|le esta yendo)\b|\bresumen\b|\bdesempeno\b|\bperformance\b|\bresultados\b|\bnumeros de\b|\bque tal\b|\bmetricas\b/.test(t);
+      // 10) métricas
+      const mpos = [];
+      for (const [k, rx] of ASK_METRIC_RX) { rx.lastIndex = 0; t = t.replace(rx, (m, ...a) => { mpos.push({ k, pos: a[a.length - 2] }); return ' '; }); }
+      mpos.sort((a, b) => a.pos - b.pos).forEach(({ k }) => { if (!spec.metrics.includes(k)) spec.metrics.push(k); });
+      if (/\bpublicamos mas\b|\bmas publicaciones\b|\bmas posts\b|\bmas usamos\b|\bmas usado\b|\bmas frecuente\b|\bmas seguido\b/.test(t) && !spec.metrics.length) spec.metrics.push('posts');
+
+      // 11) modo de agregación
+      if (/\bmediana\b/.test(t)) spec.mode = 'median';
+      else if (/\bpromedio\b|\bpromedia\b|\bpromediando\b|\ben promedio\b|\bmedia\b|\bpor (?:post|publicacion|video|pieza|contenido|reel|tiktok)\b|\bnormalmente\b|\bsuele\b|\bsuelen\b|\btipic[oa]\b|\bnormal\b|\bregularmente\b|\bgeneralmente\b|\b(?:un|una|cada) §p|\b(?:un|una|cada) (?:post|publicacion|video|reel|tiktok|story|short|carrusel|contenido|pieza)\b/.test(t)) spec.mode = 'avg';
+      else if (/\btotal(?:es)?\b|\bsuma\b|\ben total\b|\bacumulad[oa]s?\b|\bsumad[oa]s?\b|\btodo junto\b/.test(t)) spec.mode = 'total';
+
+      const breakdownDim = Object.keys(spec.dims).find(d => d !== 'dows' && d !== 'flags' && spec.dims[d].length > 1);
+      if (spec.followersQ && !spec.metrics.filter(m => m !== 'posts').length) spec.intent = 'notice';
+      else if (kpiQ) spec.intent = 'kpi';
+      else if (spec.group) spec.intent = 'group';
+      else if (spec.vsRest && (Object.keys(spec.dims).some(d => ASK_SEGMENT_DIMS.includes(d)) || spec.dur)) spec.intent = 'compare';
+      else if ((breakdownDim || spec.periods.length > 1) && !postNoun) spec.intent = 'compare';
+      else if ((breakdownDim || spec.periods.length > 1) && (spec.compare || /\b(?:o|vs)\b/.test(t))) spec.intent = 'compare';
+      else if (latest && !spec.metrics.length) { spec.intent = 'list'; spec.sortDate = 'desc'; }
+      else if (first && !spec.metrics.length) { spec.intent = 'list'; spec.sortDate = 'asc'; }
+      else if (superl && !countQ && !(spec.mode === 'avg')) spec.intent = 'rank';
+      else if (countQ && (!spec.metrics.length || spec.metrics[0] === 'posts')) { spec.intent = 'value'; spec.metrics = ['posts', ...spec.metrics.filter(m => m !== 'posts')]; }
+      else if (spec.metrics.length) spec.intent = 'value';
+      else if (summaryQ) spec.intent = 'summary';
+      else if (listQ || postNoun) spec.intent = 'list';
+      else spec.intent = 'summary';
+      if (spec.intent === 'compare' && !breakdownDim && spec.periods.length < 2 && !spec.vsRest) spec.intent = spec.metrics.length ? 'value' : 'summary';
+      if (spec.intent === 'compare' && !spec.metrics.length) spec.metrics = [perfQ || spec.vsRest ? 'ber' : 'reach'];
+      if (spec.intent === 'compare' && spec.vsRest && ASK_METRICS[spec.metrics[0]].kind === 'sum' && !spec.mode) spec.mode = 'avg';
+      if (spec.rateUnit && (spec.intent === 'value' || spec.intent === 'summary' || spec.intent === 'list')) { spec.intent = 'value'; spec.metrics = ['posts']; }
+      if (spec.intent === 'group' && !spec.metrics.length) spec.metrics = [['durb', 'hour', 'daytype', 'inflyn', 'audioyn', 'subsyn'].includes(spec.group) ? 'ber'
+        : superl || perfQ ? (['month', 'week', 'year'].includes(spec.group) ? 'reach' : 'ber') : 'posts'];
+      if (spec.intent === 'group' && spec.group === 'durb' && spec.metrics[0] === 'dur') spec.metrics = ['vtr', 'ber'];
+      if (spec.intent === 'rank' && !spec.metrics.length) spec.metrics = ['reach'];
+      if (spec.intent === 'rank' && !spec.topN) spec.topN = /\b(?:el|la) (?:§p|post|publicacion|video|reel|tiktok|contenido|pieza|mejor|peor)/.test(t) && !/\b(?:los|las)\b/.test(t) && !/s\b/.test((t.match(/\b(?:mejor|peor)\b\s+(\S+)/) || ['', ''])[1]) ? 1 : 10;
+      if (spec.intent === 'list' && spec.sortDate && !spec.topN) spec.topN = /\b(?:ultim[oa]|primer[oa]?)\b(?!s)/.test(t) && !/\b(?:los|las) /.test(t) ? 1 : 10;
+      spec.breakdownDim = breakdownDim || null;
+
+      // 13) lo que no se usó (para mostrar transparencia)
+      const left = t.replace(/§p\w*§/g, ' ').split(' ').filter(w => w.length >= 4 && !ASK_STOP.has(w) && !ASK_VSET.has(w) && !/^\d+$/.test(w)
+        && !/^(?:cual|cuanto|cuantos|cuantas|quiero|todos|todas|publicamos|publicaron|tiene|tienen|tuvo|tuvieron|fueron|estuvo|nuestros|nuestras|nuestro|nuestra|samsung|galaxy|redes|sociales|social|sobre|segun|desde|entre|durante|tambien|funciona|funcionan|funciono|funcionaron|mejores|peores|buenos|buenas|malos|mejoro|subio|bajo|rinde|rinden|rindio|generamos|generaron|logramos|lograron|obtuvimos|obtuvo|sacamos|cuantas|veces|hicimos|hicieron|hecho|hechos|publicado|publicados|subidos|subimos|dinos|digame|dime|ensename|muestrame|quisiera|podrias|puedes|favor|ayuda|necesito|traeme|ultimos|ultimas|promedio|semanas|dias|meses|anos|algun|alguna|ningun|ninguna|kpis|kpi|cumplimos|cumple|llevamos|tenemos|tuvimos|deben|debe|total|totales|normal|normalmente|tipico|tipica|suele|suelen|hacemos|publicar|resto|vamos|alcanzan|resultados|subido|subidos|funcionado|subimos|sacamos|metimos|hemos|fueron|cuantos|cuantas|meta|metas)$/.test(w));
+      spec.unused = [...new Set(left)].slice(0, 6);
+      spec._t = t;
+      return spec;
+    }
+
+    // ======================================================================
+    // EJECUCIÓN
+    // ======================================================================
+    function askScopeTests(spec, opts = {}) {
+      const tests = [];
+      for (const [dim, vals] of Object.entries(spec.dims)) {
+        if (opts.skipSegment && ASK_SEGMENT_DIMS.includes(dim)) continue;
+        if (opts.skipDim === dim) continue;
+        if (dim === 'formats' && vals.includes('__videos')) { const allow = [...new Set([...ASK_VIDEO_FORMATS, ...vals.filter(v => v !== '__videos')])]; tests.push((p) => allow.includes(p.format)); continue; }
+        if (dim === 'flags') { for (const v of vals) tests.push(askDimTest('flags', v)); continue; }   // atributos se suman (AND)
+        const fs = vals.map(v => askDimTest(dim, v));
+        tests.push((p) => fs.some(f => f(p)));
+      }
+      if (spec.dur && !opts.skipSegment) {
+        const { min, max, strict, incl } = spec.dur;
+        tests.push((p) => p.duration > 0 && (min == null || (incl ? p.duration >= min : p.duration > min)) && (max == null || (strict ? p.duration < max : p.duration <= max)));
+      }
+      if (!opts.skipPeriod && spec.periods.length) { const ps = opts.periods || spec.periods; tests.push((p) => ps.some(x => x.test(p))); }
+      return (p) => tests.every(f => f(p));
+    }
+    const askChipsOf = (spec) => {
+      const chips = [];
+      for (const [dim, vals] of Object.entries(spec.dims)) for (const v of vals)
+        chips.push({ id: `${dim}:${v}`, label: dim === 'formats' && v === '__videos' ? 'Videos' : askShow(dim, v), kind: ASK_FDIMS[dim].label });
+      if (spec.dur) { const { min, max } = spec.dur; chips.push({ id: 'dur', kind: 'Duración', label: min != null && max != null ? `${min}–${max} s` : max != null ? `≤ ${max} s` : `> ${min} s` }); }
+      spec.periods.forEach((p, i) => chips.push({ id: `period:${i}`, kind: 'Periodo', label: p.label }));
+      if (!spec.periods.length) chips.push({ id: 'period:none', kind: 'Periodo', label: 'Todo el histórico', fixed: true });
+      spec.metrics.forEach((m, i) => chips.push({ id: `metric:${m}`, kind: 'Métrica', label: i === 0 && spec.mode && spec.intent === 'value' ? askModeLabel(m, spec.mode) : ASK_METRICS[m].label }));
+      if (spec.group) chips.push({ id: 'group', kind: 'Agrupar por', label: ASK_GROUPS[spec.group].label });
+      return chips;
+    };
+    function askRemoveChip(spec, id) {
+      const s = { ...spec, dims: { ...spec.dims }, periods: [...spec.periods], metrics: [...spec.metrics] };
+      const [k, v] = id.split(/:(.*)/s);
+      if (k === 'period') s.periods.splice(+v, 1);
+      else if (k === 'metric') s.metrics = s.metrics.filter(m => m !== v);
+      else if (k === 'group') { s.group = null; if (s.intent === 'group') s.intent = s.metrics.length ? 'value' : 'summary'; }
+      else if (k === 'dur') s.dur = null;
+      else if (s.dims[k]) { s.dims[k] = s.dims[k].filter(x => String(x) !== v); if (!s.dims[k].length) delete s.dims[k]; }
+      if (s.intent === 'value' && !s.metrics.length) s.intent = 'summary';
+      if (s.intent === 'rank' && !s.metrics.length) s.metrics = ['reach'];
+      const bd = Object.keys(s.dims).find(d => d !== 'dows' && d !== 'flags' && s.dims[d].length > 1);
+      s.breakdownDim = bd || null;
+      if (s.intent === 'compare' && !bd && s.periods.length < 2) s.intent = s.metrics.length ? 'value' : 'summary';
+      return s;
+    }
+    const askScopeText = (spec) => {
+      const bits = [];
+      for (const [dim, vals] of Object.entries(spec.dims)) bits.push(vals.map(v => dim === 'formats' && v === '__videos' ? 'Videos' : askShow(dim, v)).join(' / '));
+      if (spec.dur) bits.push(askChipsOf({ dims: {}, periods: [1], metrics: [], dur: spec.dur })[0].label);
+      bits.push(spec.periods.length ? spec.periods.map(p => p.label).join(' / ') : 'Todo el histórico');
+      return bits.join(' · ');
+    };
+    const ASK_KPI_NOTE = (posts) => {
+      const vids = posts.filter(kpiIsVid), ig = posts.filter(kpiIsIg);
+      const vtr = vids.length ? vids.reduce((s, p) => s + p.vtr, 0) / vids.length : null;
+      const ber = ig.length ? ig.reduce((s, p) => s + p.basic_er, 0) / ig.length : null;
+      return { vtr, nV: vids.length, ber, nI: ig.length };
+    };
+
+    function askRun(spec, allPosts, _noFallback) {
+      const all = allPosts || [];
+      // Nada reconocible → ayuda en vez de un resumen de todo
+      if (!Object.keys(spec.dims).length && !spec.periods.length && !spec.metrics.length && !spec.group && !spec.dur && !spec.vsRest && spec.intent !== 'kpi'
+          && spec.intent !== 'notice' && (spec.unused || []).length) {
+        return { spec, kind: 'help', chips: [], scopeText: '', n: 0, posts: [], notices: [] };
+      }
+      // Mes sin año que no tiene datos → prueba el mismo mes del año anterior
+      if (!_noFallback && spec.periods.some(p => p.inferred)) {
+        const first = askRun(spec, all, true);
+        if (first.kind === 'empty' || (first.n === 0 && spec.intent !== 'compare')) {
+          const alt = { ...spec, periods: spec.periods.map(p => p.inferred ? askPMonth(+p.label.slice(-4) - 1, MONTH_NAMES.indexOf(p.label.slice(0, -5)) + 1) : p) };
+          const second = askRun(alt, all, true);
+          if (second.kind !== 'empty') { second.notices = [...(second.notices || []), { txt: `No hay publicaciones en ${spec.periods.filter(p => p.inferred).map(p => p.label).join(', ')}; te muestro el mismo mes del año anterior.` }]; return second; }
+        }
+        return first;
+      }
+      const scopeT = askScopeTests(spec);
+      const scope = all.filter(scopeT);
+      const out = { spec, chips: askChipsOf(spec), scopeText: askScopeText(spec), n: scope.length, posts: scope, notices: spec.notices || [] };
+      const mk = spec.metrics[0];
+      const dates = all.map(p => askD(p).n).filter(n => n != null);
+      out.coverage = dates.length ? `${askDL(new Date(Math.min(...dates) * 864e5 + 432e5))} – ${askDL(new Date(Math.max(...dates) * 864e5 + 432e5))}` : '';
+      if (!scope.length && spec.intent !== 'compare') { out.kind = 'empty'; return out; }
+      const st = askStats(scope);
+      out.stats = st;
+
+      // Referencias: periodo anterior y "resto" del segmento
+      const refs = (metricK, mode) => {
+        const r = [];
+        if (spec.periods.length === 1 && spec.periods[0].prev && spec.intent !== 'compare') {
+          const pp = spec.periods[0].prev();
+          const prevPosts = all.filter(askScopeTests(spec, { periods: [pp] }));
+          if (prevPosts.length) { const v = askValue(prevPosts, metricK, mode); r.push({ label: pp.label, sub: `${fmt(prevPosts.length)} posts`, v: v.v, txt: ASK_METRICS[metricK].fmt(v.v), delta: askDelta(metricK, askValue(scope, metricK, mode, st).v, v.v), note: spec.periods[0].short || spec.periods[0].label }); }
+        }
+        const hasSeg = Object.keys(spec.dims).some(d => ASK_SEGMENT_DIMS.includes(d)) || spec.dur;
+        if (hasSeg) {
+          const base = all.filter(askScopeTests(spec, { skipSegment: true }));
+          const segSet = new Set(scope);
+          const rest = base.filter(p => !segSet.has(p));
+          if (rest.length >= 3) {
+            const pl = spec.dims.platforms && spec.dims.platforms.length === 1 ? spec.dims.platforms[0] : null;
+            const v = askValue(rest, metricK, mode);
+            const segNote = Object.entries(spec.dims).filter(([d]) => ASK_SEGMENT_DIMS.includes(d)).map(([d, vs]) => vs.map(x => d === 'formats' && x === '__videos' ? 'Videos' : askShow(d, x)).join(' / ')).join(' · ') || 'Este filtro';
+            if (v.v != null) r.push({ label: pl ? `Resto de ${pl}` : 'Resto del contenido', sub: `${fmt(rest.length)} posts · mismo periodo`, v: v.v, txt: ASK_METRICS[metricK].fmt(v.v), delta: askDelta(metricK, askValue(scope, metricK, mode, st).v, v.v), invert: true, note: segNote });
+          }
+        }
+        return r;
+      };
+      const rowStats = (label, posts, extra = {}, metricK = mk) => {
+        const s = askStats(posts);
+        const v = askValue(posts, metricK, spec.mode, s);
+        return { label, n: posts.length, v: v.v, vn: v.n, s, posts, ...extra };
+      };
+
+      if (spec.intent === 'notice') { out.kind = 'notice'; out.headline = null; return out; }
+      if (spec.intent === 'kpi') {
+        out.kind = 'kpi';
+        out.kpi = ASK_KPI_NOTE(scope);
+        const k = out.kpi, ok = [k.nV ? k.vtr >= KPI_VTR_MIN : null, k.nI ? k.ber >= KPI_IG_ER_MIN : null].filter(x => x != null);
+        out.headline = { label: 'KPIs de cuenta', value: ok.length ? (ok.every(Boolean) ? 'Se cumplen' : ok.some(Boolean) ? `Se cumple ${ok.filter(Boolean).length} de ${ok.length}` : 'No se cumplen') : 'Sin datos',
+                         sub: 'VTR mínimo de 25 % en videos de 0 a 30 s (todas las plataformas) y ER básico mínimo de 5 % en el feed de Instagram.' };
+        return out;
+      }
+      if (spec.intent === 'group') {
+        const G = ASK_GROUPS[spec.group];
+        const map = new Map();
+        for (const p of scope) { const k = G.key(p); if (k == null || k === '') continue; if (!map.has(k)) map.set(k, []); map.get(k).push(p); }
+        const M = ASK_METRICS[mk];
+        let rows = [...map].map(([k, ps]) => rowStats(G.show ? G.show(k) : String(k), ps, { key: k }));
+        const minN = M.kind === 'count' || M.kind === 'sum' && spec.mode !== 'avg' ? 1 : BENCH_MIN_N;
+        rows.forEach(r => { r.low = r.vn < minN || r.v == null; });
+        if (G.chrono || G.order && spec.group !== 'stage' && !/mejor|peor|mas|menos/.test(askFold(spec.q))) rows.sort((a, b) => (G.order || ((x) => x))(a.key) - (G.order || ((x) => x))(b.key));
+        else rows.sort((a, b) => (a.low - b.low) || (spec.order === 'asc' ? (a.v ?? 1e18) - (b.v ?? 1e18) : (b.v ?? -1e18) - (a.v ?? -1e18)));
+        const ranked = rows.filter(r => !r.low).sort((a, b) => spec.order === 'asc' ? a.v - b.v : b.v - a.v);
+        if (spec.topN) rows = ranked.slice(0, spec.topN);
+        out.kind = 'group'; out.rows = rows.slice(0, 60); out.groupLabel = G.label; out.best = ranked[0] || null; out.minN = minN;
+        out.headline = { label: `${askModeLabel(mk, spec.mode)} por ${G.label.toLowerCase()}`, value: out.best ? out.best.label : '—',
+                         sub: out.best ? `${M.fmt(out.best.v)} · ${fmt(out.best.n)} posts` : 'Sin grupos con suficientes posts' };
+        if (spec.group === 'hour') out.notes = ['La hora sale del link del post (solo plataformas que la incluyen), en hora de CDMX.'];
+        return out;
+      }
+      if (spec.intent === 'compare') {
+        const metricK = mk || 'reach';
+        let rows = [];
+        if (spec.vsRest && !spec.breakdownDim) {
+          const base = all.filter(askScopeTests(spec, { skipSegment: true }));
+          const segSet = new Set(scope);
+          const pl = spec.dims.platforms && spec.dims.platforms.length === 1 ? spec.dims.platforms[0] : null;
+          const segLabel = Object.entries(spec.dims).filter(([d]) => ASK_SEGMENT_DIMS.includes(d)).map(([d, vs]) => vs.map(v => d === 'formats' && v === '__videos' ? 'Videos' : askShow(d, v)).join(' / ')).join(' · ') || 'Segmento';
+          rows = [rowStats(segLabel, scope, {}, metricK), rowStats(pl ? `Resto de ${pl}` : 'Resto del contenido', base.filter(p => !segSet.has(p)), {}, metricK)];
+        } else if (spec.breakdownDim) {
+          const dim = spec.breakdownDim;
+          const base = all.filter(askScopeTests(spec, { skipDim: dim }));
+          rows = spec.dims[dim].map(v => rowStats(dim === 'formats' && v === '__videos' ? 'Videos' : askShow(dim, v), base.filter(dim === 'formats' && v === '__videos' ? (p) => ASK_VIDEO_FORMATS.includes(p.format) : askDimTest(dim, v)), {}, metricK));
+        } else {
+          rows = spec.periods.map(pp => rowStats(pp.label + (pp.current ? ' (en curso)' : ''), all.filter(askScopeTests(spec, { periods: [pp] })), {}, metricK));
+        }
+        const M = ASK_METRICS[metricK];
+        const valid = rows.filter(r => r.v != null && r.n);
+        const sorted = [...valid].sort((a, b) => spec.order === 'asc' ? a.v - b.v : b.v - a.v);
+        out.kind = 'compare'; out.rows = rows; out.metricK = metricK;
+        if (sorted.length >= 2) {
+          const d = askDelta(metricK, sorted[0].v, sorted[1].v);
+          out.headline = { label: `${askModeLabel(metricK, spec.mode)}${spec.order === 'asc' ? ' · el más bajo' : ''}`, value: sorted[0].label, sub: `${M.fmt(sorted[0].v)} vs ${M.fmt(sorted[1].v)} de ${sorted[1].label}${d ? ` (${d.txt})` : ''}` };
+        } else out.headline = { label: askModeLabel(metricK, spec.mode), value: sorted[0] ? sorted[0].label : '—', sub: sorted[0] ? M.fmt(sorted[0].v) : 'Sin datos para comparar' };
+        out.n = rows.reduce((s, r) => s + r.n, 0);
+        const zero = rows.filter(r => !r.n).map(r => r.label);
+        if (zero.length) out.notes = [`Sin publicaciones en la base: ${zero.join(', ')}.`];
+        return out;
+      }
+      if (spec.intent === 'rank') {
+        const M = ASK_METRICS[mk];
+        let list = scope.map(p => ({ p, v: M.kind === 'count' ? null : askPV(M, p) })).filter(x => x.v != null);
+        if (M.kind === 'rate') {   // tasas: exige alcance mínimo para que un post diminuto no gane con 40 %
+          const reaches = scope.map(p => p.reach || 0).filter(r => r > 0); const floor = askMedian(reaches) * 0.25 || 0;
+          list = list.filter(x => (x.p.reach || 0) >= floor); out.rateFloor = floor;
+        }
+        list.sort((a, b) => spec.order === 'asc' ? a.v - b.v : b.v - a.v);
+        const top = list.slice(0, Math.max(spec.topN || 10, 10));
+        out.kind = 'rank'; out.list = top.map(x => x.p); out.metricK = mk; out.topN = spec.topNExplicit ? spec.topN : 10; out.eligible = list.length;
+        const w = top[0];
+        out.headline = w ? { label: `${/s$/.test(M.label) ? (spec.order === 'asc' ? 'Menos' : 'Más') : (spec.order === 'asc' ? 'Menor' : 'Mayor')} ${/^[A-Z]{2}/.test(M.label) ? M.label : M.label.toLowerCase()}`, value: M.fmt(w.v),
+                             sub: `${w.p.format || 'Post'} de ${w.p.platform} · ${dateShort(w.p.date)} · ${w.p.campaign || w.p.product || 'Sin campaña'}${w.p.subcampaign && !/^(n\/?a|na)$/i.test(w.p.subcampaign) ? ' / ' + w.p.subcampaign : ''}`, post: w.p }
+                         : { label: M.label, value: '—', sub: 'Ningún post tiene ese dato' };
+        return out;
+      }
+      if (spec.intent === 'value' && spec.rateUnit && mk === 'posts') {
+        const unitKey = spec.rateUnit === 'mes' ? (p) => { const o = askD(p); return o.y * 100 + o.m; } : spec.rateUnit === 'semana' ? (p) => askD(p).wk : (p) => askD(p).n;
+        const units = new Set(scope.map(unitKey).filter(x => x != null));
+        const per = units.size ? scope.length / units.size : null;
+        const word = { mes: ['mes', 'meses'], semana: ['semana', 'semanas'], dia: ['día', 'días'] }[spec.rateUnit];
+        out.kind = 'value'; out.values = [{ m: 'posts', v: per, n: scope.length }]; out.metricK = 'posts';
+        out.headline = { label: `Publicaciones por ${word[0]} (promedio)`, value: per == null ? '—' : per.toLocaleString('es-MX', { maximumFractionDigits: per < 10 ? 1 : 0 }),
+                         sub: `${fmt(scope.length)} publicaciones en ${fmt(units.size)} ${word[1]} con actividad` };
+        const G = ASK_GROUPS[spec.rateUnit === 'mes' ? 'month' : spec.rateUnit === 'semana' ? 'week' : 'dow'];
+        const map = new Map(); for (const p of scope) { const k = G.key(p); if (k == null) continue; if (!map.has(k)) map.set(k, []); map.get(k).push(p); }
+        if (spec.rateUnit !== 'dia') {
+          out.kind = 'group'; out.groupLabel = G.label; out.minN = 1; out.best = null;
+          out.rows = [...map].sort((a, b) => a[0] - b[0]).slice(-24).map(([k, ps]) => rowStats(G.show(k), ps, { key: k }, 'posts'));
+          out.metricK = 'posts';
+        }
+        return out;
+      }
+      if (spec.intent === 'value') {
+        const vals = spec.metrics.map(m => ({ m, ...askValue(scope, m, m === mk ? spec.mode : null, st) }));
+        const v0 = vals[0], M = ASK_METRICS[mk];
+        const subs = [];
+        if (M.kind === 'count') subs.push(spec.periods.length ? spec.periods.map(p => p.sub).filter(Boolean).join(' / ') : '');
+        else if (M.kind === 'sum') subs.push(v0.mode === 'avg' ? `${fmt(scope.length)} posts · total ${fmt(st[mk])}` : `${fmt(scope.length)} posts · ${fmt(scope.length ? st[mk] / scope.length : 0)} por post`);
+        else if (M.kind === 'avg') subs.push(`${fmt(v0.n)} ${v0.n === 1 ? 'post' : 'posts'} con dato${v0.med != null ? ` · mediana ${M.fmt(v0.med)} · de ${M.fmt(v0.lo)} a ${M.fmt(v0.hi)}` : ''}`);
+        else subs.push(`${M.how} · ${fmt(v0.n)} ${v0.n === 1 ? 'post' : 'posts'} con dato`);
+        if (spec.periods.length === 1 && spec.periods[0].sub && M.kind !== 'count') subs.push(spec.periods[0].sub);
+        out.kind = 'value'; out.values = vals; out.metricK = mk;
+        if (M.kind !== 'count' && M.kind !== 'sum' && v0.n > 0 && v0.n < 5) out.notes = [`Ojo: solo ${v0.n === 1 ? '1 post tiene' : `${v0.n} posts tienen`} ${M.label} en este filtro; el número es poco representativo.`];
+        out.headline = { label: askModeLabel(mk, v0.mode === 'total' || v0.mode === 'rate' ? null : v0.mode) , value: v0.v == null ? '—' : M.fmt(v0.v), sub: subs.filter(Boolean).join(' · ') };
+        out.refs = v0.v != null ? refs(mk, spec.mode) : [];
+        if (mk === 'vtr' || (mk === 'ber' && (spec.dims.platforms || []).includes('Instagram'))) out.kpi = ASK_KPI_NOTE(scope);
+        out.list = [...scope].sort((a, b) => (askPV(M, b) ?? -1e18) - (askPV(M, a) ?? -1e18));
+        if (M.kind === 'count') out.list = [...scope].sort((a, b) => (askD(b).n || 0) - (askD(a).n || 0));
+        return out;
+      }
+      // list / summary
+      out.kind = spec.intent === 'list' ? 'list' : 'summary';
+      const lst = [...scope];
+      if (spec.sortDate) lst.sort((a, b) => spec.sortDate === 'asc' ? (askD(a).n || 0) - (askD(b).n || 0) : (askD(b).n || 0) - (askD(a).n || 0));
+      else if (out.kind === 'summary') lst.sort((a, b) => (b.reach || 0) - (a.reach || 0));
+      else lst.sort((a, b) => (askD(b).n || 0) - (askD(a).n || 0));
+      out.list = lst; out.topN = spec.topN;
+      out.byPlat = Object.entries(scope.reduce((m, p) => (m[p.platform] = (m[p.platform] || 0) + 1, m), {})).sort((a, b) => b[1] - a[1]);
+      if (out.kind === 'summary') {
+        const rs = [];
+        for (const m of ['ber', 'vtr']) { if (m === 'vtr' && !st.nVtr) continue; for (const r of refs(m, null)) rs.push({ ...r, label: `${ASK_METRICS[m].label} · ${r.label}` }); }
+        out.refs = rs.slice(0, 4);
+      }
+      out.byFmt = Object.entries(scope.reduce((m, p) => (m[p.format || 'Sin formato'] = (m[p.format || 'Sin formato'] || 0) + 1, m), {})).sort((a, b) => b[1] - a[1]);
+      if (spec.sortDate && spec.topN === 1 && lst[0]) {
+        const p = lst[0];
+        out.headline = { label: spec.sortDate === 'asc' ? 'Primera publicación' : 'Publicación más reciente', value: dateFmt(p.date), sub: `${p.format || 'Post'} de ${p.platform} · ${p.campaign || p.product || 'Sin campaña'}`, post: p };
+      } else out.headline = { label: out.kind === 'list' ? 'Publicaciones' : 'Resumen', value: fmt(scope.length), sub: `${fmt(st.reach)} de alcance · ER básico ${askPct(st.ber)}${st.nVtr ? ` · VTR ${askPct(st.vtr)}` : ''}` };
+      return out;
+    }
+
+    // Filtros del dashboard equivalentes (lo que se pueda traducir)
+    function askToDashFilters(spec, allPosts) {
+      const f = { ...EMPTY_FILTERS, year: 'all' }, skipped = [];
+      const d = spec.dims;
+      if (d.platforms) f.platforms = [...d.platforms];
+      if (d.formats) f.formats = d.formats.includes('__videos') ? [...new Set([...ASK_VIDEO_FORMATS, ...d.formats.filter(x => x !== '__videos')])] : [...d.formats];
+      if (d.strategies) f.strategies = [...d.strategies];
+      if (d.contentTypes) f.contentTypes = [...d.contentTypes];
+      if (d.stages) f.stages = [...d.stages];
+      if (d.products) f.products = [...d.products];
+      if (d.campaigns) f.campaigns = [...d.campaigns];
+      if (d.subcampaigns) f.subcampaigns = [...d.subcampaigns];
+      if (d.special) {
+        const cat = askCatalog(allPosts);
+        const subs = cat.subcampaigns.filter(s => d.special.some(k => (k === 'stay' ? RX_STAY : RX_TEND).test(askFold(s))));
+        const camps = cat.campaigns.filter(s => d.special.some(k => (k === 'stay' ? RX_STAY : RX_TEND).test(askFold(s))));
+        const nS = allPosts.filter(p => subs.includes(p.subcampaign)).length, nC = allPosts.filter(p => camps.includes(p.campaign)).length;
+        if (nS >= nC && subs.length) f.subcampaigns = [...new Set([...(f.subcampaigns || []), ...subs])];
+        else if (camps.length) f.campaigns = [...new Set([...(f.campaigns || []), ...camps])];
+        if (subs.length && camps.length) skipped.push('Tendencia / Stay & Play (aproximado)');
+      }
+      if (d.objectives) skipped.push('Objetivo');
+      if (d.flags) skipped.push('Influencer / atributos');
+      if (d.dows) skipped.push('Día de la semana');
+      if (spec.dur) skipped.push('Duración');
+      if (spec.periods.length === 1) {
+        const p = spec.periods[0];
+        if (p.dash) Object.assign(f, p.dash); else skipped.push('Periodo exacto');
+      } else if (spec.periods.length > 1) {
+        const ds = spec.periods.map(p => p.dash);
+        if (ds.every(x => x && x.months && x.year === ds[0].year)) Object.assign(f, { year: ds[0].year, months: [...new Set(ds.flatMap(x => x.months))] });
+        else if (ds.every(x => x && x.weeks)) Object.assign(f, { year: ds.every(x => x.year === ds[0].year) ? ds[0].year : 'all', weeks: [...new Set(ds.flatMap(x => x.weeks))] });
+        else skipped.push('Periodos');
+      }
+      return { filters: f, skipped };
+    }
+
+    // Texto para copiar (Slack / WhatsApp)
+    function askCopyText(res) {
+      const L = [`${res.spec.q.trim()}`, `→ ${res.headline ? `${res.headline.label}: ${res.headline.value}` : ''}${res.headline && res.headline.sub ? ` (${res.headline.sub})` : ''}`];
+      L.push(`Alcance de la consulta: ${res.scopeText}`);
+      (res.refs || []).forEach(r => L.push(`• ${r.label}: ${r.txt}${r.delta ? ` (${r.delta.txt} ${r.invert ? 'del segmento vs resto' : 'vs periodo previo'})` : ''}`));
+      if (res.rows) { const M = ASK_METRICS[res.metricK || res.spec.metrics[0]]; res.rows.slice(0, 12).forEach(r => L.push(`• ${r.label}: ${r.v == null ? '—' : M.fmt(r.v)} (${fmt(r.n)} posts)`)); }
+      if (res.list && (res.kind === 'rank')) res.list.slice(0, res.topN || 10).forEach((p, i) => L.push(`${i + 1}. ${p.platform} · ${dateShort(p.date)} · ${p.format || ''} · ${p.campaign || ''} · ${ASK_METRICS[res.metricK].fmt(askPV(ASK_METRICS[res.metricK], p))}${p.link ? ' · ' + p.link : ''}`));
+      L.push('— Samsung MX Performance Brief');
+      return L.join('\n');
+    }
+    function askCsv(posts) {
+      const cols = [['Plataforma', 'platform'], ['Fecha', 'date'], ['Semana', 'week'], ['Formato', 'format'], ['Pauta', 'strategy'], ['Campaña', 'campaign'],
+        ['Subcampaña', 'subcampaign'], ['Producto', 'product'], ['Duración (s)', 'duration'], ['Alcance', 'reach'], ['Reproducciones', 'views'],
+        ['Interacciones', 'interactions'], ['Comentarios', 'comments'], ['Compartidos', 'shares'], ['Guardados', 'saves'], ['ER Básico %', 'basic_er'],
+        ['ER Views %', 'er'], ['VTR %', 'vtr'], ['Link', 'link']];
+      const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      return '﻿' + [cols.map(c => c[0]).join(','), ...posts.map(p => cols.map(c => esc(p[c[1]])).join(','))].join('\n');
+    }
+    function askAnswer(q, allPosts, now) { return askRun(askParse(q, allPosts, now), allPosts); }
+
+    // ---------- Interfaz: Pregúntale a la base ----------
+    const ASK_EXAMPLES = [
+      { t: 'Para creativos', q: ['¿Cuánto dura en promedio un Stay & Play en TikTok?', '¿Qué duración funciona mejor en TikTok?', '¿Qué formato funciona mejor en Instagram?', 'Los 5 TikToks con más compartidos de este año'] },
+      { t: 'Resultados', q: ['¿Cuál es el VTR de Instagram de hace 2 semanas?', 'Alcance de TikTok vs Instagram este mes', '¿Cómo le fue al Fold8 en julio?', '¿Cumplimos los KPIs la semana pasada?'] },
+      { t: 'Explorar la base', q: ['Todos los TikToks de octubre 2025', '¿Cuál fue el último post de YouTube?', '¿Qué día de la semana publicamos mejor?', '¿A qué hora publicamos mejor en Instagram?'] },
+    ];
+    const ASK_RECENT_KEY = 'smx-ask-recent';
+    const askRecentGet = () => { try { return JSON.parse(localStorage.getItem(ASK_RECENT_KEY) || '[]').slice(0, 6); } catch { return []; } };
+    const askRecentAdd = (q) => { try { const a = [q, ...askRecentGet().filter(x => x !== q)].slice(0, 6); localStorage.setItem(ASK_RECENT_KEY, JSON.stringify(a)); } catch {} };
+
+    function AskDelta({ d }) {
+      if (!d) return null;
+      const flat = Math.abs(d.d) < 0.05;
+      return html`<span className=${'font-mono text-[11px] tabular-nums ' + (flat || d.neutral ? 'text-txt3' : d.up ? 'text-success' : 'text-amber')}>${flat ? '·' : d.up ? '↑' : '↓'} ${d.txt}</span>`;
+    }
+
+    function AskPostTable({ posts, metricK, ranked, limit, onPick }) {
+      const M = metricK ? ASK_METRICS[metricK] : null;
+      const showVtr = posts.some(p => p.vtr > 0);
+      const extraMetric = M && !['reach', 'ber', 'vtr', 'posts'].includes(metricK);
+      const cell = 'py-2.5 px-3';
+      const hi = (k) => metricK === k ? ' text-txt font-medium' : ' text-txt3';
+      return html`
+        <div className="rounded-xl border border-line overflow-x-auto">
+          <table className="w-full text-[12px] min-w-[640px]">
+            <thead>
+              <tr className="text-[9px] font-mono uppercase tracking-[0.15em] text-txt4 bg-onSurface/[0.025]">
+                ${ranked && html`<th className="text-left py-2 pl-3 pr-1 font-medium w-8">#</th>`}
+                <th className="text-left py-2 px-3 font-medium">Fecha</th>
+                <th className="text-left py-2 px-3 font-medium">Red</th>
+                <th className="text-left py-2 px-3 font-medium">Formato</th>
+                <th className="text-left py-2 px-3 font-medium">Campaña</th>
+                ${extraMetric && html`<th className="text-right py-2 px-3 font-medium text-txt2">${M.label}</th>`}
+                <th className="text-right py-2 px-3 font-medium">Alcance</th>
+                <th className="text-right py-2 px-3 font-medium">ER básico</th>
+                ${showVtr && html`<th className="text-right py-2 px-3 font-medium">VTR</th>`}
+              </tr>
+            </thead>
+            <tbody>
+              ${posts.slice(0, limit).map((p, i) => html`
+                <tr key=${i} onClick=${(e) => { window.__smxPickY = e.clientY; onPick(p); }} ...${kbd(() => onPick(p), `Ver post de ${p.platform}, ${dateShort(p.date)}`)}
+                    className="cursor-pointer hover:bg-onSurface/[0.04] transition-colors">
+                  ${ranked && html`<td className="py-2.5 pl-3 pr-1 font-mono text-[11px] text-txt4 tabular-nums">${i + 1}</td>`}
+                  <td className=${cell + ' font-mono text-[11px] text-txt3 whitespace-nowrap'}>${dateShort(p.date)}${askD(p).y && askD(p).y !== new Date().getFullYear() ? ` '${String(askD(p).y).slice(2)}` : ''}</td>
+                  <td className=${cell}><span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded" style=${{ background: PLAT_COLORS[p.platform] || '#666' }}>${PLAT_LETTERS[p.platform] || '?'}</span></td>
+                  <td className=${cell + ' text-txt3 whitespace-nowrap'}>${p.format || '—'}${p.duration > 0 && metricK !== 'dur' ? html`<span className="text-txt4 font-mono text-[10px]"> · ${askSec(p.duration)}</span>` : ''}</td>
+                  <td className=${cell + ' text-txt2 max-w-[240px]'}><div className="truncate">${p.campaign || p.product || '—'}${p.subcampaign && !/^(n\/?a|na)$/i.test(p.subcampaign) ? html`<span className="text-txt4"> / ${p.subcampaign}</span>` : ''}</div></td>
+                  ${extraMetric && html`<td className=${cell + ' text-right font-mono tabular-nums text-txt font-medium'}>${M.fmt(askPV(M, p))}</td>`}
+                  <td className=${cell + ' text-right font-mono tabular-nums' + hi('reach')}>${fmt(p.reach)}</td>
+                  <td className=${cell + ' text-right font-mono tabular-nums' + hi('ber')}>${ASK_METRICS.ber.pv(p) != null ? erFmt(p.basic_er) : '—'}</td>
+                  ${showVtr && html`<td className=${cell + ' text-right font-mono tabular-nums' + hi('vtr')}>${p.vtr > 0 ? erFmt(p.vtr) : '—'}</td>`}
+                </tr>`)}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function AskGroupTable({ res }) {
+      const mk = res.metricK || res.spec.metrics[0];
+      const M = ASK_METRICS[mk];
+      const vals = res.rows.filter(r => r.v != null && !r.low).map(r => Math.abs(r.v));
+      const max = Math.max(1e-9, ...vals);
+      const bestLabel = res.kind === 'group' ? res.best && res.best.label : res.headline && res.headline.value;
+      return html`
+        <div className="rounded-xl border border-line overflow-x-auto">
+          <table className="w-full text-[12px] min-w-[560px]">
+            <thead>
+              <tr className="text-[9px] font-mono uppercase tracking-[0.15em] text-txt4 bg-onSurface/[0.025]">
+                <th className="text-left py-2 px-3 font-medium">${res.groupLabel || 'Comparación'}</th>
+                <th className="text-right py-2 px-3 font-medium">Posts</th>
+                <th className="text-left py-2 px-3 font-medium w-[34%]">${askModeLabel(mk, res.spec.mode)}</th>
+                ${mk !== 'ber' && html`<th className="text-right py-2 px-3 font-medium">ER básico</th>`}
+                ${mk !== 'vtr' && html`<th className="text-right py-2 px-3 font-medium">VTR</th>`}
+                ${mk !== 'reach' && html`<th className="text-right py-2 px-3 font-medium">Alcance prom.</th>`}
+              </tr>
+            </thead>
+            <tbody>
+              ${res.rows.map((r, i) => {
+                const best = r.label === bestLabel && !r.low;
+                return html`
+                <tr key=${i} className=${r.low ? 'opacity-50' : ''}>
+                  <td className="py-2.5 px-3 text-txt2"><span className="inline-flex items-center gap-2">
+                    ${PLAT_COLORS[r.label] && html`<svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[r.label]} /></svg>`}
+                    <span className=${best ? 'text-txt font-medium' : ''}>${r.label}</span></span></td>
+                  <td className="py-2.5 px-3 text-right font-mono tabular-nums text-txt4">${fmt(r.n)}</td>
+                  <td className="py-2.5 px-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex-1 h-[7px] rounded-full bg-onSurface/[0.05] overflow-hidden min-w-[60px]">
+                        <div className=${'h-full rounded-full bar-grow ' + (best ? 'bg-accent2' : 'bg-accent2/45')} style=${{ width: r.v == null || r.low ? '0%' : `${Math.max(2, Math.abs(r.v) / max * 100).toFixed(1)}%` }}></div>
+                      </div>
+                      <span className=${'font-mono tabular-nums text-[12px] w-[92px] text-right ' + (best ? 'text-txt font-medium' : 'text-txt2')}>${r.v == null ? '—' : M.fmt(r.v)}</span>
+                    </div>
+                  </td>
+                  ${mk !== 'ber' && html`<td className="py-2.5 px-3 text-right font-mono tabular-nums text-txt3">${r.s.nBer ? erFmt(r.s.ber) : '—'}</td>`}
+                  ${mk !== 'vtr' && html`<td className="py-2.5 px-3 text-right font-mono tabular-nums text-txt3">${r.s.nVtr ? erFmt(r.s.vtr) : '—'}</td>`}
+                  ${mk !== 'reach' && html`<td className="py-2.5 px-3 text-right font-mono tabular-nums text-txt3">${fmt(r.n ? r.s.reach / r.n : null)}</td>`}
+                </tr>`; })}
+            </tbody>
+          </table>
+        </div>
+        ${res.minN > 1 && res.rows.some(r => r.low) && html`<div className="text-[11px] text-txt4 mt-2">En gris: grupos con menos de ${res.minN} posts con dato; no compiten por el primer lugar.</div>`}`;
+    }
+
+    function AskPanel({ open, onClose, allPosts, onPick, setFilters, drawerOpen }) {
+      const [q, setQ] = useState('');
+      const [dq, setDq] = useState('');
+      const [removed, setRemoved] = useState([]);
+      const [limit, setLimit] = useState(12);
+      const [copied, setCopied] = useState(false);
+      const [recent, setRecent] = useState(askRecentGet);
+      const inputRef = useRef(null);
+      useEffect(() => { const t = setTimeout(() => setDq(q), 140); return () => clearTimeout(t); }, [q]);
+      useEffect(() => { setRemoved([]); setLimit(12); }, [dq]);
+      useEffect(() => { if (open) { setRecent(askRecentGet()); setTimeout(() => inputRef.current && inputRef.current.focus(), 30); } }, [open]);
+      useEffect(() => {
+        if (!open) return;
+        const onKey = (e) => { if (e.key === 'Escape' && !drawerOpen) { e.preventDefault(); onClose(); } };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+      }, [open, drawerOpen, onClose]);
+
+      const spec0 = useMemo(() => (dq.trim().length >= 3 && allPosts && allPosts.length ? askParse(dq, allPosts) : null), [dq, allPosts]);
+      const spec = useMemo(() => spec0 ? removed.reduce((s, id) => askRemoveChip(s, id), spec0) : null, [spec0, removed]);
+      const res = useMemo(() => spec ? askRun(spec, allPosts) : null, [spec, allPosts]);
+      const remember = () => { if (dq.trim().length >= 3) { askRecentAdd(dq.trim()); setRecent(askRecentGet()); } };
+      const ask = (text) => { setQ(text); setDq(text); askRecentAdd(text); setRecent(askRecentGet()); inputRef.current && inputRef.current.focus(); };
+      if (!open) return null;
+
+      const applyDash = () => {
+        const { filters } = askToDashFilters(spec, allPosts);
+        remember(); setFilters(filters); onClose();
+        setTimeout(() => { const el = document.getElementById('sec-resumen'); el && el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+      };
+      const copy = async () => {
+        try { await navigator.clipboard.writeText(askCopyText(res)); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch {}
+        remember();
+      };
+      const download = () => {
+        const blob = new Blob([askCsv(res.posts)], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `consulta_samsung_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+        remember();
+      };
+      const dashMap = res ? askToDashFilters(spec, allPosts) : null;
+      const listMetric = res && (res.kind === 'rank' || res.kind === 'value') ? res.metricK : null;
+      const listRows = res && res.list ? res.list : [];
+      const listLimit = res && res.kind === 'rank' ? (limit === 12 ? (res.topN || 10) : limit) : limit;
+
+      return html`
+        <div className="fixed inset-0 z-[35] fade-in" style=${{ background: 'rgba(5,5,10,0.55)', backdropFilter: 'blur(3px)' }} onClick=${onClose}>
+          <div role="dialog" aria-modal="true" aria-label="Pregúntale a la base"
+               className="ask-panel mx-auto mt-[6vh] w-[min(940px,calc(100vw-24px))] max-h-[88vh] flex flex-col rounded-2xl bg-surface border border-line2 overflow-hidden"
+               style=${{ boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }} onClick=${(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-5 md:px-6 py-4 border-b border-line">
+              <${SearchIcon} size=${18} className="text-txt4 shrink-0"/>
+              <input ref=${inputRef} value=${q} onChange=${(e) => setQ(e.target.value)}
+                     onKeyDown=${(e) => { if (e.key === 'Enter') { setDq(q); remember(); } }}
+                     placeholder="Pregunta lo que sea: «¿cuánto dura en promedio un Stay & Play en TikTok?»"
+                     aria-label="Escribe tu pregunta"
+                     className="flex-1 min-w-0 bg-transparent text-[16px] md:text-[17px] text-txt placeholder:text-txt4 focus:outline-none" />
+              ${q && html`<button onClick=${() => { setQ(''); setDq(''); inputRef.current && inputRef.current.focus(); }} aria-label="Borrar pregunta" className="text-txt4 hover:text-txt transition-colors"><${XIcon} size=${15}/></button>`}
+              <button onClick=${onClose} className="hidden md:inline-flex font-mono text-[10px] text-txt4 border border-line rounded px-1.5 py-0.5 hover:text-txt hover:border-line2 transition-colors" aria-label="Cerrar">Esc</button>
+            </div>
+
+            <div className="overflow-y-auto px-5 md:px-6 py-5">
+              ${!res && html`
+                <div className="space-y-6">
+                  ${recent.length > 0 && html`
+                    <div>
+                      <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2.5">Recientes</div>
+                      <div className="flex flex-wrap gap-2">${recent.map((r, i) => html`<button key=${i} onClick=${() => ask(r)} className="text-[12px] text-txt2 px-3 py-1.5 rounded-full bg-onSurface/[0.04] hover:bg-onSurface/[0.08] transition-colors text-left">${r}</button>`)}</div>
+                    </div>`}
+                  <div className="grid md:grid-cols-3 gap-5">
+                    ${ASK_EXAMPLES.map(g => html`
+                      <div key=${g.t}>
+                        <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2.5">${g.t}</div>
+                        <div className="space-y-1.5">${g.q.map(x => html`<button key=${x} onClick=${() => ask(x)} className="block w-full text-left text-[13px] leading-snug text-txt2 hover:text-txt px-3 py-2 rounded-lg bg-onSurface/[0.025] hover:bg-onSurface/[0.06] transition-colors">${x}</button>`)}</div>
+                      </div>`)}
+                  </div>
+                  <p className="text-[12px] text-txt4 leading-relaxed max-w-[720px]">Entiende plataformas, formatos, campañas, productos, Stay & Play y Tendencia, influencers, orgánico o pauta, fechas («octubre 2025», «hace 2 semanas», «semana 41», «Q3», «los lunes») y métricas (alcance, VTR, ER, duración, compartidos…). Calcula con las mismas reglas del dashboard y no inventa datos: todo sale del Sheet.</p>
+                </div>`}
+
+              ${res && html`
+                <div className="space-y-5 ask-result" key=${dq + removed.join('|')}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mr-1">Entendí</span>
+                    ${res.chips.map(c => html`
+                      <span key=${c.id} className="inline-flex items-center gap-1 h-7 pl-2.5 pr-1.5 rounded-full bg-accent2/[0.10] text-[12px] text-txt2" title=${c.kind}>
+                        <span className="text-txt4 text-[10px]">${c.kind}:</span> ${c.label}
+                        ${!c.fixed ? html`<button onClick=${() => setRemoved([...removed, c.id])} aria-label=${`Quitar ${c.label}`} className="ml-0.5 w-4 h-4 inline-flex items-center justify-center rounded-full text-txt4 hover:text-txt hover:bg-onSurface/[0.08]"><${XIcon} size=${10}/></button>` : html`<span className="w-1"></span>`}
+                      </span>`)}
+                  </div>
+                  ${res.spec.unused && res.spec.unused.length > 0 && html`<div className="text-[11px] text-txt4 -mt-3">No usé: ${res.spec.unused.map(w => `«${w}»`).join(', ')}. Si era importante, prueba con otra palabra.</div>`}
+                  ${res.notices.map((n, i) => html`<div key=${i} className="rounded-lg bg-amber/[0.08] px-3.5 py-2.5 text-[12px] text-txt2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="flex-1 min-w-[240px]">${n.txt}</span>
+                    ${n.go && html`<button onClick=${() => { onClose(); setTimeout(() => { const el = document.getElementById(n.go); el && el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80); }} className="text-[12px] text-accent2 hover:underline whitespace-nowrap">Ir a la sección →</button>`}</div>`)}
+
+                  ${res.kind === 'help' && html`
+                    <div className="rounded-xl bg-onSurface/[0.03] px-5 py-5">
+                      <div className="text-[15px] text-txt mb-1">No identifiqué qué buscar en «${res.spec.q.trim()}»</div>
+                      <div className="text-[12px] text-txt4 mb-4">Menciona una plataforma, un periodo, una campaña o una métrica. Por ejemplo:</div>
+                      <div className="flex flex-wrap gap-2">${['VTR de TikTok este mes', '¿Qué formato funciona mejor en Instagram?', 'Los 10 posts con más alcance de septiembre', '¿Cuánto duran los Stay & Play?'].map(x => html`<button key=${x} onClick=${() => ask(x)} className="text-[12px] text-txt2 px-3 py-1.5 rounded-full bg-onSurface/[0.05] hover:bg-onSurface/[0.09] transition-colors">${x}</button>`)}</div>
+                    </div>`}
+                  ${res.kind === 'empty' && html`
+                    <div className="rounded-xl bg-onSurface/[0.03] px-5 py-6">
+                      <div className="text-[15px] text-txt mb-1">No hay publicaciones con esos criterios</div>
+                      <div className="text-[12px] text-txt4">La base cubre del ${res.coverage}. Quita algún criterio de arriba para ampliar la búsqueda.</div>
+                    </div>`}
+
+                  ${res.kind !== 'empty' && res.headline && html`
+                    <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-2">${res.headline.label}</div>
+                        <div className="font-medium text-txt tabular-nums leading-none tracking-tight pop-in" style=${{ fontSize: 'clamp(30px, 4.6vw, 52px)' }}>${res.headline.value}</div>
+                        ${res.headline.sub && html`<div className="text-[12.5px] text-txt3 mt-2.5 leading-relaxed max-w-[620px]">${res.headline.sub}</div>`}
+                        <div className="text-[11px] text-txt4 mt-1">${res.scopeText}</div>
+                        ${res.headline.post && html`<button onClick=${() => onPick(res.headline.post)} className="mt-3 text-[12px] text-accent2 hover:underline">Ver el post completo →</button>`}
+                      </div>
+                      ${res.refs && res.refs.length > 0 && html`
+                        <div className="flex flex-wrap gap-2.5">
+                          ${res.refs.map((r, i) => html`
+                            <div key=${i} className="rounded-xl bg-onSurface/[0.035] px-4 py-3 min-w-[170px]">
+                              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4 mb-1.5">${r.label}</div>
+                              <div className="text-[18px] text-txt tabular-nums leading-none">${r.txt}</div>
+                              ${r.delta && html`<div className="mt-1.5 flex items-center gap-1.5 text-[11px]"><span className="text-txt3 truncate max-w-[150px]">${r.note}:</span><${AskDelta} d=${r.delta}/></div>`}
+                              <div className="text-[10px] text-txt4 mt-1">${r.sub}</div>
+                            </div>`)}
+                        </div>`}
+                    </div>`}
+
+                  ${res.kpi && html`
+                    <div className="flex flex-wrap gap-2.5">
+                      ${res.kpi.nV > 0 && html`<div className="rounded-xl bg-onSurface/[0.035] px-4 py-3">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4 mb-1">KPI · VTR videos 0–30 s</div>
+                        <div className="flex items-baseline gap-2.5"><span className="text-[20px] text-txt tabular-nums">${erFmt(res.kpi.vtr)}</span>
+                          <span className=${'text-[11px] font-mono ' + (res.kpi.vtr >= KPI_VTR_MIN ? 'text-success' : 'text-amber')}>${res.kpi.vtr >= KPI_VTR_MIN ? 'Cumple' : 'No cumple'} · meta ${KPI_VTR_MIN}%</span></div>
+                        <div className="text-[10px] text-txt4 mt-1">${fmt(res.kpi.nV)} ${res.kpi.nV === 1 ? 'video' : 'videos'} · promedio simple por video</div></div>`}
+                      ${res.kpi.nI > 0 && html`<div className="rounded-xl bg-onSurface/[0.035] px-4 py-3">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4 mb-1">KPI · ER básico Instagram</div>
+                        <div className="flex items-baseline gap-2.5"><span className="text-[20px] text-txt tabular-nums">${erFmt(res.kpi.ber)}</span>
+                          <span className=${'text-[11px] font-mono ' + (res.kpi.ber >= KPI_IG_ER_MIN ? 'text-success' : 'text-amber')}>${res.kpi.ber >= KPI_IG_ER_MIN ? 'Cumple' : 'No cumple'} · meta ${KPI_IG_ER_MIN}%</span></div>
+                        <div className="text-[10px] text-txt4 mt-1">${fmt(res.kpi.nI)} ${res.kpi.nI === 1 ? 'post' : 'posts'} de feed · sin Stories</div></div>`}
+                      ${res.kind === 'kpi' && !res.kpi.nV && !res.kpi.nI && html`<div className="text-[12px] text-txt4">No hay videos de 0 a 30 s ni posts de Instagram en este filtro.</div>`}
+                    </div>`}
+
+                  ${res.kind === 'value' && res.values && res.values.length > 1 && html`
+                    <div className="flex flex-wrap gap-2.5">${res.values.slice(1).map(v => html`
+                      <div key=${v.m} className="rounded-xl bg-onSurface/[0.035] px-4 py-3 min-w-[150px]">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-txt4 mb-1">${ASK_METRICS[v.m].label}</div>
+                        <div className="text-[18px] text-txt tabular-nums">${v.v == null ? '—' : ASK_METRICS[v.m].fmt(v.v)}</div></div>`)}</div>`}
+
+                  ${(res.kind === 'list' || res.kind === 'summary') && res.stats && html`
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+                      ${[['Alcance', fmt(res.stats.reach)], ['Interacciones', fmt(res.stats.inter)], ['Reproducciones', fmt(res.stats.views)],
+                         ['ER básico', res.stats.nBer ? erFmt(res.stats.ber) : '—'], ['VTR', res.stats.nVtr ? erFmt(res.stats.vtr) : '—'], ['Duración prom.', res.stats.nDur ? askSec(res.stats.dur) : '—']].map(([l, v]) => html`
+                        <div key=${l} className="rounded-xl bg-onSurface/[0.035] px-3.5 py-3"><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-txt4 mb-1">${l}</div><div className="text-[15px] text-txt tabular-nums">${v}</div></div>`)}
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-txt4">
+                      ${res.byPlat.map(([pl, n]) => html`<span key=${pl} className="inline-flex items-center gap-1.5"><svg width="7" height="7" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[pl] || '#888'} /></svg>${pl} ${fmt(n)}</span>`)}
+                      <span className="text-faint">·</span>
+                      ${res.byFmt.slice(0, 6).map(([f, n]) => html`<span key=${f}>${f} ${fmt(n)}</span>`)}
+                    </div>`}
+
+                  ${(res.kind === 'group' || res.kind === 'compare') && html`<${AskGroupTable} res=${res}/>`}
+                  ${res.notes && res.notes.map((n, i) => html`<div key=${i} className=${/^Ojo/.test(n) ? 'text-[12px] text-amber' : 'text-[11px] text-txt4'}>${n}</div>`)}
+
+                  ${listRows.length > 0 && res.kind !== 'group' && res.kind !== 'compare' && res.kind !== 'kpi' && html`
+                    <div>
+                      <div className="flex items-baseline justify-between mb-2">
+                        <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4">
+                          ${res.kind === 'rank' ? `Ranking · ${ASK_METRICS[res.metricK].label}${res.rateFloor ? ` · posts con alcance ≥ ${fmt(res.rateFloor)}` : ''}` : res.kind === 'value' ? `Posts detrás del número · ordenados por ${ASK_METRICS[res.metricK].label.toLowerCase()}` : res.kind === 'summary' ? 'Posts con más alcance' : 'Publicaciones · más recientes primero'}
+                        </div>
+                        <div className="text-[10px] font-mono text-txt4">${fmt(Math.min(listLimit, listRows.length))} de ${fmt(res.kind === 'rank' ? res.eligible : listRows.length)}</div>
+                      </div>
+                      <${AskPostTable} posts=${listRows} metricK=${listMetric} ranked=${res.kind === 'rank'} limit=${listLimit} onPick=${onPick}/>
+                      ${listRows.length > listLimit && html`<button onClick=${() => setLimit(listLimit + 50)} className="mt-2.5 text-[12px] text-accent2 hover:underline">Ver ${fmt(Math.min(50, listRows.length - listLimit))} más</button>`}
+                    </div>`}
+                </div>`}
+            </div>
+
+            ${res && res.kind !== 'empty' && res.kind !== 'notice' && res.kind !== 'help' && html`
+              <div className="flex flex-wrap items-center gap-2 px-5 md:px-6 py-3.5 border-t border-line bg-onSurface/[0.015]">
+                <button onClick=${applyDash} className="h-8 px-3.5 rounded-lg bg-accent2 text-white text-[12px] font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5">
+                  <${FilterIcon} size=${13}/> Ver en el dashboard</button>
+                <button onClick=${copy} className="h-8 px-3 rounded-lg border border-line text-[12px] text-txt2 hover:text-txt hover:border-line2 transition-colors inline-flex items-center gap-1.5">
+                  ${copied ? html`<${CheckIcon} size=${13}/> Copiado` : 'Copiar respuesta'}</button>
+                <button onClick=${download} className="h-8 px-3 rounded-lg border border-line text-[12px] text-txt2 hover:text-txt hover:border-line2 transition-colors inline-flex items-center gap-1.5">
+                  <${DownloadIcon} size=${13}/> CSV (${fmt(res.posts.length)})</button>
+                ${dashMap && dashMap.skipped.length > 0 && html`<span className="text-[11px] text-txt4 ml-1">El dashboard no filtra por: ${dashMap.skipped.join(', ').toLowerCase()}.</span>`}
+              </div>`}
+          </div>
+        </div>`;
+    }
+
     function App() {
       const { data, loading, refreshing, error, errors, fetchedAt, refresh, autoRefreshMin } = useDashboardData();
       const [selected, setSelected] = useState(null);
+      const [askOpen, setAskOpen] = useState(false);
       const [exportOpen, setExportOpen] = useState(false);
       const [pressOpen, setPressOpen] = useState(false);
       const [mobileNav, setMobileNav] = useState(false);
@@ -8489,6 +9734,19 @@
         const t = setTimeout(() => main.classList.remove('data-swap'), 500);
         return () => clearTimeout(t);
       }, [filteredData]);
+      // v67 — Pregúntale a la base: Ctrl/⌘+K o "/" para abrir
+      const closeAsk = useCallback(() => setAskOpen(false), []);
+      useEffect(() => {
+        const onKey = (e) => {
+          const tag = (e.target && e.target.tagName) || '';
+          const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
+          if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); setAskOpen(o => !o); }
+          else if (e.key === '/' && !typing) { e.preventDefault(); setAskOpen(true); }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+      }, []);
+      useEffect(() => { window.__smxAsk = (q, now) => askAnswer(q, allPosts || [], now); }, [allPosts]);
       if (loading) return html`<${LoadingState}/>`;
       if (error)   return html`<${ErrorState} message=${error} onRetry=${refresh}/>`;
       if (!data || !filteredData) return html`<${ErrorState} message="Sin datos disponibles." onRetry=${refresh}/>`;
@@ -8551,7 +9809,7 @@
               allPosts=${allPosts}
             />
 
-            <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin} allPosts=${allPosts} onPick=${setSelected} onOpenPress=${() => setPressOpen(true)} onExpandAll=${expandAllForPdf}/>
+            <${TopBar} fetchedAt=${fetchedAt} onRefresh=${refresh} refreshing=${refreshing} autoRefreshMin=${autoRefreshMin} allPosts=${allPosts} onPick=${setSelected} onOpenPress=${() => setPressOpen(true)} onExpandAll=${expandAllForPdf} onAsk=${() => setAskOpen(true)}/>
 
             ${errors && errors.length > 0 && html`
               <div className="px-4 md:px-7 mb-3">
@@ -8633,6 +9891,7 @@
           </div>
 
           ${selected && html`<${DetailDrawer} post=${selected} benchmarks=${benchmarks} onClose=${() => setSelected(null)}/>`}
+          <${AskPanel} open=${askOpen} onClose=${closeAsk} allPosts=${allPosts} onPick=${setSelected} setFilters=${setFilters} drawerOpen=${!!selected}/>
           ${kpiTrace && html`<${KpiTraceDrawer} trace=${kpiTrace} onClose=${() => setKpiTrace(null)} onPick=${(p) => { setKpiTrace(null); setSelected(p); }}/>`}
           <${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} D=${D} filters=${filters}/>
           <${PressModal} open=${pressOpen} onClose=${() => setPressOpen(false)} allPosts=${allPosts}/>
