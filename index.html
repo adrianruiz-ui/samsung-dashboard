@@ -777,7 +777,7 @@
     //   ER Views %  = Σ Inter. Totales ÷ Σ Alcance
     //   ER Básico % = Σ Inter. Básicas ÷ Σ Alcance
     //   CTR %       = Σ Clics ÷ Σ Impresiones
-    //   VTR %       = promedio simple por video, sin Stories (v72: igual que la BDD)
+    //   VTR %       = promedio simple de la columna VTR %, como la BDD (v73)
     // Así cada post pesa según su tamaño: un post de 200 de alcance ya no
     // mueve el KPI igual que uno de 2M (sesgo del promedio simple v19).
     // ============================================================
@@ -818,10 +818,11 @@
         r.ctr_num += p.clics != null ? p.clics : p.ctr * p.impressions / 100;
         r.ctr_den += p.impressions;
       }
-      // v72 — VTR = promedio simple por video, sin Stories (como la columna de la
-      // BDD y el KPI de cuenta). Ponderado por views, la pauta (≈99 % de las
-      // reproducciones en TikTok) aplastaba al orgánico.
-      if (p.vtr != null && p.vtr > 0 && p.format !== 'Stories') {
+      // v73 — VTR = promedio simple de todos los valores capturados en la columna
+      // «VTR %» (incluye 0 %), exactamente como el promedio de la BDD. Ponderado
+      // por views, la pauta (≈99 % de las reproducciones en TikTok) aplastaba al
+      // orgánico. El KPI de cuenta (videos de 0 a 30 s, sin Stories) va aparte.
+      if (p.vtr != null && isFinite(p.vtr)) {
         r.vtr_num += p.vtr;
         r.vtr_den += 1;
       }
@@ -1643,7 +1644,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-23-v72';
+    const BUILD_VERSION = '2026-10-23-v73';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -4089,10 +4090,7 @@
     function computeVtrStats(posts) {
       // Un post es "video" si tiene VTR registrado y no es Story.
       // (Stories no se cuentan en VTR — definido en la base de datos.)
-      const videos = posts.filter(p =>
-        p.vtr != null && p.vtr > 0 &&
-        p.format !== 'Stories'
-      );
+      const videos = posts.filter(p => p.vtr != null && isFinite(p.vtr));   // v73: todo valor capturado, como la BDD
 
       // v72: VTR = promedio simple por video (igual que la BDD). La v20 lo
       // ponderaba por views y la pauta dominaba el resultado.
@@ -4182,7 +4180,7 @@
                 ${sub && html`<div className="text-[12px] text-txt4 mt-2">${sub}</div>`}
               </div>`)}
             </div>
-            <p className="text-[12px] text-txt4 mt-6">El VTR es el promedio simple por video, sin Stories, igual que en la base de datos: cada video pesa lo mismo, sin importar sus reproducciones. La meta de cuenta de 25% (videos de 0 a 30 s) está en "KPIs de cuenta".</p>
+            <p className="text-[12px] text-txt4 mt-6">El VTR es el promedio simple de la columna «VTR %», igual que en la base de datos: cada video pesa lo mismo, sin importar sus reproducciones. La meta de cuenta de 25% (videos de 0 a 30 s) está en "KPIs de cuenta".</p>
           </div>
 
           <!-- Por plataforma -->
@@ -7586,7 +7584,7 @@
       const vtrOf = (list) => {
         const by = {};
         for (const p of list) {
-          if (p.vtr == null || !(p.vtr > 0) || p.format === 'Stories') continue;
+          if (p.vtr == null || !isFinite(p.vtr)) continue;
           (by[p.platform] = by[p.platform] || []).push(p.vtr);
         }
         const plats = {};
@@ -7631,7 +7629,7 @@
       const list = pressWeekPosts(allPosts, week).filter(p =>
         p.campaign === camp && (!subs || subs.includes(p.subcampaign || '(sin subcampaña)')));
       if (!list.length) return null;
-      const vt = list.filter(p => p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
+      const vt = list.filter(p => p.vtr != null && isFinite(p.vtr)).map(p => p.vtr);
       const top = [...list].sort((a, b) => (b.interactions || 0) - (a.interactions || 0))[0];
       return {
         posts: list.length,
@@ -7804,7 +7802,7 @@
     const topicDim = (k) => TOPIC_DIMS.find(d => d.k === k);
     function pressStats(list) {
       if (!list.length) return null;
-      const vt = list.filter(p => p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
+      const vt = list.filter(p => p.vtr != null && isFinite(p.vtr)).map(p => p.vtr);
       const top = [...list].sort((a, b) => (b.interactions || 0) - (a.interactions || 0))[0];
       return {
         posts: list.length,
@@ -7835,7 +7833,7 @@
     }
     function organicVtrRef(allPosts, week) {
       const v = (allPosts || []).filter(p => postYear(p) === PRESS_YEAR && p.week && p.week <= week && !isPaidP(p) &&
-        p.vtr != null && p.vtr > 0 && p.format !== 'Stories').map(p => p.vtr);
+        p.vtr != null && isFinite(p.vtr)).map(p => p.vtr);
       return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
     }
     function computeTopic(allPosts, week, t) {
@@ -8519,7 +8517,7 @@
     // pregunta en: filtros + periodo + métrica + forma de respuesta, y
     // calcula con las MISMAS reglas del dashboard (aggAdd / rateFinal):
     // ER básico = promedio por post sin Stories, ER total = mediana,
-    // VTR promedio por video sin Stories, CTR solo con clics registrados.
+    // VTR promedio simple de la columna (como la BDD), CTR solo con clics registrados.
     // ============================================================
     const askFold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -8729,8 +8727,8 @@
                      pv: (p) => askOkRate(p) && p.basic_er != null ? p.basic_er : null },
       er:          { label: 'ER total',          kind: 'rate', pct: true, fmt: askPct, agg: 'er_avg', how: 'mediana por post, sin Stories',
                      pv: (p) => askOkRate(p) && p.er != null ? p.er : null },
-      vtr:         { label: 'VTR',               kind: 'rate', pct: true, fmt: askPct, agg: 'vtr_avg', how: 'promedio por video, sin Stories',
-                     pv: (p) => p.vtr > 0 && p.format !== 'Stories' ? p.vtr : null },
+      vtr:         { label: 'VTR',               kind: 'rate', pct: true, fmt: askPct, agg: 'vtr_avg', how: 'promedio por video, como la BDD',
+                     pv: (p) => p.vtr != null && isFinite(p.vtr) ? p.vtr : null },
       ctr:         { label: 'CTR',               kind: 'rate', pct: true, fmt: askPct, agg: 'ctr_avg', how: 'solo posts con clics registrados',
                      pv: (p) => p.ctr > 0 && p.impressions > 0 && !(p._flags || []).includes('ctr') ? p.ctr : null },
       dur:         { label: 'Duración',          kind: 'avg', field: 'duration', fmt: askSec, how: 'videos con duración capturada' },
@@ -8896,7 +8894,7 @@
     const ASK_DEFS = {
       er: ['ER total', 'Interacciones totales (incluyen reproducciones) entre alcance; es la columna «ER Views %» del Sheet.', 'Como puede pasar de 100 % cuando hay muchas reproducciones, el dashboard usa la mediana por post y no cuenta Stories.'],
       ber: ['ER básico', 'Interacciones básicas (columna «Inter. Básicas») entre alcance; es la columna «ER Básico %» del Sheet.', 'El dashboard lo promedia por post y no cuenta Stories. KPI de cuenta: mínimo 5 % en el feed de Instagram.'],
-      vtr: ['VTR', 'View Through Rate: qué porcentaje del video ve la gente en promedio; es la columna «VTR %» del Sheet.', 'El dashboard lo calcula como promedio simple por video, sin Stories (igual que la BDD): cada video pesa lo mismo. El KPI de cuenta usa ese mismo promedio en videos de 0 a 30 s, con meta de 25 %.'],
+      vtr: ['VTR', 'View Through Rate: qué porcentaje del video ve la gente en promedio; es la columna «VTR %» del Sheet.', 'El dashboard lo calcula como el promedio simple de la columna (igual que la BDD): cada video pesa lo mismo. El KPI de cuenta usa ese mismo promedio en videos de 0 a 30 s, con meta de 25 %.'],
       ctr: ['CTR', 'Clics entre impresiones.', 'Solo cuenta posts con clics registrados, porque en varias plataformas y en pauta el clic no se captura y bajaría el número sin razón.'],
       watch: ['Tiempo promedio de vista', 'Segundos que la gente ve el video en promedio; es la columna «T. Prom. Vista» del Sheet.', 'Se promedia entre los posts que tienen el dato.'],
       reach: ['Alcance', 'Personas que vieron el post (columna «Alcance»).', 'Los totales suman el alcance de cada post, así que una misma persona puede contarse en varios posts.'],
