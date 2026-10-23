@@ -1640,7 +1640,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-22-v70';
+    const BUILD_VERSION = '2026-10-22-v71';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -9670,7 +9670,7 @@
     // Cada pregunta (y cada voto 👍/👎) se manda al Sheet «Samsung MX | Buscador
     // del dashboard | Registro» vía su Apps Script. La pestaña «Sinonimos» de ese
     // mismo Sheet le enseña palabras nuevas al buscador sin tocar el código.
-    const ASK_LOG_URL = '';      // URL /exec del Apps Script (vacío = se guarda en el navegador hasta tenerla)
+    const ASK_LOG_URL = 'https://script.google.com/macros/s/AKfycbxZ8Klb9cBUGWOIxasqPZtSLkM-w9n40eSPZD7A9OOi-U7WDdtJmbqMHoATb0aC9dQMBA/exec';      // URL /exec del Apps Script (vacío = se guarda en el navegador hasta tenerla)
     const ASK_REG_ID = '17EtWkUEV1Oa_DniA37tcGnRN0lPgVZ2HsrYP-eU5dfc';
     let ASK_SYN = [];
     let askSynState = 'idle';
