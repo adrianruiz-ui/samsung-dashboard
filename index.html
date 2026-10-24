@@ -1646,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-24-v75';
+    const BUILD_VERSION = '2026-10-24-v76';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6303,12 +6303,14 @@
     }
 
     // ============================================================
-    // v75 — MAPA DE CONTENIDO (estilo simulación de agentes)
-    // Red de campañas · conceptos · productos · influencers · piezas,
-    // enjambre de posts (duración × índice) y recetas en vivo.
-    // Índice = ER básico del post ÷ ER básico mediano de su plataforma
-    // en la vista actual (1× = post típico de esa plataforma). Así las
-    // plataformas se comparan entre sí sin que TikTok aplaste a X.
+    // v76 — MAPA DE CONTENIDO + MODELO PREDICTIVO
+    // Índice ajustado: ER básico del post ÷ ER esperado para su
+    // plataforma Y su alcance (ajuste log-log por plataforma). Un post
+    // que llegó a mucha gente ya no se castiga por tener ER bajo.
+    // Modelo: regresión ridge sobre log(ER básico) con pieza,
+    // duración, día, tipo de contenido, objetivo, etapa, influencer y
+    // familia de producto (sin etapa: el simulador no la pide); se
+    // valida con las últimas 8 semanas.
     // ============================================================
     const MAP_TYPES = {
       campaign:   { label: 'Campaña',    color: '#5B7CFA' },
@@ -6332,28 +6334,168 @@
     const mapMean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : null);
     const mapRateOk = (p) => p.basic_er != null && p.basic_er > 0 && p.reach > 0 &&
       !((p.platform === 'Instagram' || p.platform === 'Facebook') && p.format === 'Stories');
-    const mapX = (v) => (v == null ? '—' : (v >= 9.95 ? v.toFixed(0) : v.toFixed(1)) + '×');
-    const mapPct = (v) => (v == null ? '—' : v.toFixed(1) + '%');
+    const mapX = (v) => (v == null || !isFinite(v) ? '—' : (v >= 9.95 ? v.toFixed(0) : v.toFixed(1)) + '×');
+    const mapPct = (v) => (v == null || !isFinite(v) ? '—' : v.toFixed(v >= 10 ? 1 : 2) + '%');
     const mapTrunc = (s, n = 16) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+    const mapIdxColor = (v) => (v == null ? 'rgb(var(--c-faint))' : v >= 1.15 ? MAP_GOOD : v <= 0.85 ? MAP_BAD : 'rgb(var(--c-txt4))');
     function mapHash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; }
     function mapRng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
     const mapReduced = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function mapFam(p) {
+      p = String(p || '');
+      if (/fold|flip/i.test(p)) return 'Plegables';
+      if (/\bFE\b/.test(p)) return 'Serie S FE';
+      if (/^Galaxy S/i.test(p)) return 'Serie S';
+      if (/^Galaxy A/i.test(p)) return 'Serie A';
+      if (/watch|buds|ring/i.test(p)) return 'Wearables';
+      if (/\btab\b/i.test(p)) return 'Tablets';
+      if (/^galaxy ai$/i.test(p.trim())) return 'Galaxy AI';
+      if (/^(eco|smartthings)$/i.test(p.trim())) return 'Ecosistema';
+      if (/members/i.test(p)) return 'Samsung Members';
+      return 'Otro';
+    }
 
+    // ---------- Modelo (ridge, sin librerías) ----------
+    // Variables de una receta. `r` = {pl, format, dur, day, ct, ob, st, inf, fam}
+    function mapFeats(r) {
+      const b = mapDurB(r.dur);
+      return [
+        'pf:' + r.pl + '|' + (r.format || '-'),
+        b ? 'pd:' + r.pl + '|' + b.k : null,
+        r.day != null ? 'dy:' + r.day : null,
+        r.ct ? 'ct:' + r.ct : null,
+        r.ob ? 'ob:' + r.ob : null,
+        'in:' + (r.inf ? 1 : 0),
+        r.fam ? 'fa:' + r.fam : null,
+      ].filter(Boolean);
+    }
+    const mapRecipeOf = (it) => ({ pl: it.p.platform, format: it.p.format || null, dur: it.dur, day: it.day,
+      ct: it.p.content_type ? String(it.p.content_type).trim() : null, ob: it.p.objective ? String(it.p.objective).trim() : null,
+      st: it.p.stage ? String(it.p.stage).trim() : null, inf: isInfluencer(it.p), fam: mapFam(it.p.product) });
+
+    function ridgeSolve(A, b, P) {
+      // Eliminación gaussiana con pivoteo parcial sobre A (P×P, se modifica)
+      const x = new Float64Array(P);
+      for (let c = 0; c < P; c++) {
+        let piv = c, mx = Math.abs(A[c * P + c]);
+        for (let r = c + 1; r < P; r++) { const v = Math.abs(A[r * P + c]); if (v > mx) { mx = v; piv = r; } }
+        if (mx < 1e-12) continue;
+        if (piv !== c) { for (let k = 0; k < P; k++) { const t = A[c * P + k]; A[c * P + k] = A[piv * P + k]; A[piv * P + k] = t; } const t = b[c]; b[c] = b[piv]; b[piv] = t; }
+        for (let r = c + 1; r < P; r++) {
+          const f = A[r * P + c] / A[c * P + c]; if (!f) continue;
+          for (let k = c; k < P; k++) A[r * P + k] -= f * A[c * P + k];
+          b[r] -= f * b[c];
+        }
+      }
+      for (let c = P - 1; c >= 0; c--) {
+        let s = b[c]; for (let k = c + 1; k < P; k++) s -= A[c * P + k] * x[k];
+        x[c] = Math.abs(A[c * P + c]) < 1e-12 ? 0 : s / A[c * P + c];
+      }
+      return x;
+    }
+    // y(it) = valor a modelar; extra = covariable de alcance (o null)
+    function fitRidge(items, yOf, lam = 8, useReach = true) {
+      const plats = [...new Set(items.map(it => it.p.platform))];
+      const xm = {};
+      for (const pl of plats) xm[pl] = mapMean(items.filter(it => it.p.platform === pl).map(it => Math.log(it.p.reach)));
+      const cnt = new Map();
+      const F = items.map(it => mapFeats(mapRecipeOf(it)));
+      for (const fs of F) for (const f of fs) cnt.set(f, (cnt.get(f) || 0) + 1);
+      const cols = [...plats.map(p => 'pi:' + p), ...(useReach ? plats.map(p => 'ps:' + p) : []), ...[...cnt.entries()].filter(([, c]) => c >= 3).map(([f]) => f)];
+      const ix = new Map(cols.map((c, i) => [c, i])); const P = cols.length;
+      const A = new Float64Array(P * P), b = new Float64Array(P);
+      items.forEach((it, n) => {
+        const pl = it.p.platform; const y = yOf(it);
+        const idx = [ix.get('pi:' + pl)], val = [1];
+        if (useReach) { idx.push(ix.get('ps:' + pl)); val.push(Math.log(it.p.reach) - xm[pl]); }
+        for (const f of F[n]) if (ix.has(f)) { idx.push(ix.get(f)); val.push(1); }
+        for (let i = 0; i < idx.length; i++) { b[idx[i]] += val[i] * y; for (let j = 0; j < idx.length; j++) A[idx[i] * P + idx[j]] += val[i] * val[j]; }
+      });
+      cols.forEach((c, i) => { A[i * P + i] += c.startsWith('pi:') ? 1e-3 : c.startsWith('ps:') ? 0.1 : lam; });
+      const beta = ridgeSolve(A, b, P);
+      const coef = new Map(cols.map((c, i) => [c, beta[i]]));
+      const predict = (r, lx) => {
+        if (!coef.has('pi:' + r.pl)) return null;
+        let s = coef.get('pi:' + r.pl);
+        if (useReach && lx != null) s += (coef.get('ps:' + r.pl) || 0) * (lx - xm[r.pl]);
+        for (const f of mapFeats(r)) if (coef.has(f)) s += coef.get(f);
+        return s;
+      };
+      // dispersión de residuos por plataforma (para el rango probable)
+      const res = {};
+      items.forEach(it => { const pr = predict(mapRecipeOf(it), Math.log(it.p.reach)); (res[it.p.platform] = res[it.p.platform] || []).push(yOf(it) - pr); });
+      const sd = {};
+      for (const [pl, r] of Object.entries(res)) { const m = mapMean(r); sd[pl] = Math.sqrt(mapMean(r.map(v => (v - m) * (v - m))) || 0); }
+      return { predict, sd, coef, xm, cnt };
+    }
+    const mapCorr = (a, b) => {
+      const n = a.length; if (n < 3) return null; const ma = mapMean(a), mb = mapMean(b);
+      let sab = 0, sa = 0, sb = 0; for (let i = 0; i < n; i++) { const x = a[i] - ma, y = b[i] - mb; sab += x * y; sa += x * x; sb += y * y; }
+      return sa && sb ? sab / Math.sqrt(sa * sb) : null;
+    };
+    function buildModel(items) {
+      if (items.length < 60) return null;
+      const ly = (it) => Math.log(it.p.basic_er);
+      const full = fitRidge(items, ly, 8, true);
+      // VTR (videos con VTR)
+      const vids = items.filter(it => it.vtr != null && it.dur != null);
+      const vtrM = vids.length >= 40 ? fitRidge(vids, it => it.vtr, 6, false) : null;
+      // validación: entrenar sin las últimas 8 semanas, predecir sin conocer el alcance
+      const keys = [...new Set(items.map(it => it.wk))].sort((a, b) => a - b);
+      const cut = keys.length > 12 ? keys[keys.length - 8] : null;
+      const val = { byPlat: {}, n: 0, err: null, errBase: null };
+      if (cut != null) {
+        const tr = items.filter(it => it.wk < cut), te = items.filter(it => it.wk >= cut);
+        if (tr.length >= 60 && te.length >= 30) {
+          const m = fitRidge(tr, ly, 8, true);
+          const base = {}; for (const pl of new Set(tr.map(it => it.p.platform))) base[pl] = Math.log(mapMed(tr.filter(it => it.p.platform === pl).map(it => it.p.basic_er)));
+          const rows = te.map(it => ({ pl: it.p.platform, y: ly(it), p: m.predict(mapRecipeOf(it), null), b: base[it.p.platform] })).filter(r => r.p != null && r.b != null);
+          val.n = rows.length;
+          val.err = Math.exp(mapMed(rows.map(r => Math.abs(r.y - r.p)))) - 1;
+          val.errBase = Math.exp(mapMed(rows.map(r => Math.abs(r.y - r.b)))) - 1;
+          for (const pl of new Set(rows.map(r => r.pl))) {
+            const rr = rows.filter(r => r.pl === pl);
+            if (rr.length < 12) { val.byPlat[pl] = { n: rr.length, corr: null, conf: 'sin prueba' }; continue; }
+            const c = mapCorr(rr.map(r => r.p), rr.map(r => r.y));
+            const medP = mapMed(rr.map(r => r.p));
+            const hi = rr.filter(r => r.p > medP).map(r => Math.exp(r.y)), lo = rr.filter(r => r.p <= medP).map(r => Math.exp(r.y));
+            val.byPlat[pl] = { n: rr.length, corr: c, lift: hi.length && lo.length ? mapMed(hi) / mapMed(lo) : null,
+              conf: c == null ? 'sin prueba' : c >= 0.5 ? 'alta' : c >= 0.25 ? 'media' : 'baja' };
+          }
+        }
+      }
+      return { full, vtrM, val };
+    }
+
+    // ---------- Datos del mapa ----------
     function computeContentMap(posts) {
       const rated = posts.filter(mapRateOk);
-      const byPlat = {};
-      for (const p of rated) (byPlat[p.platform] = byPlat[p.platform] || []).push(p.basic_er);
-      const platMed = {};
-      for (const [k, v] of Object.entries(byPlat)) platMed[k] = mapMed(v);
+      // ajuste por alcance: log(ER) = a + b·log(alcance), por plataforma
+      const fit = {}, platMed = {};
+      for (const pl of new Set(rated.map(p => p.platform))) {
+        const xs = rated.filter(p => p.platform === pl);
+        platMed[pl] = mapMed(xs.map(p => p.basic_er));
+        const lx = xs.map(p => Math.log(p.reach)), ly = xs.map(p => Math.log(p.basic_er));
+        const mx = mapMean(lx), my = mapMean(ly);
+        let bb = 0;
+        if (xs.length >= 15) { let sxy = 0, sxx = 0; for (let i = 0; i < xs.length; i++) { sxy += (lx[i] - mx) * (ly[i] - my); sxx += (lx[i] - mx) ** 2; } bb = sxx ? Math.max(-1, Math.min(0.3, sxy / sxx)) : 0; }
+        fit[pl] = { a: my - bb * mx, b: bb, medReach: mapMed(xs.map(p => p.reach)) };
+        const raw = xs.map(p => p.basic_er / Math.exp(fit[pl].a + bb * Math.log(p.reach)));
+        fit[pl].norm = mapMed(raw) || 1;
+      }
       const items = rated.map((p, i) => {
-        const d = parseDate(p.date);
+        const d = parseDate(p.date); const f = fit[p.platform];
         return {
-          p, i, idx: p.basic_er / platMed[p.platform],
-          dur: p.duration > 0 ? p.duration : null,
-          week: p.week, vtr: p.vtr != null && isFinite(p.vtr) ? p.vtr : null,
-          day: d ? d.getDay() : null, j: mapHash(String(p.link || '') + i), nodes: [],
+          p, i, idx: p.basic_er / Math.exp(f.a + f.b * Math.log(p.reach)) / f.norm,
+          dur: p.duration > 0 ? p.duration : null, week: p.week, wk: (p.year || (d ? d.getFullYear() : 0)) * 100 + (p.week || 0),
+          vtr: p.vtr != null && isFinite(p.vtr) ? p.vtr : null,
+          day: d ? d.getDay() : null, j: mapHash(String(p.link || '') + i), nodes: [], rank: 0,
         };
       });
+      // orden temporal (para la reproducción)
+      const frames = [...new Set(items.map(it => it.wk))].sort((a, b) => a - b);
+      const fr = new Map(frames.map((k, i) => [k, i]));
+      for (const it of items) it.rank = fr.get(it.wk);
       // ---- nodos
       const raw = new Map();
       const keyOf = (type, name) => {
@@ -6384,32 +6526,31 @@
           const name = [...r.names.entries()].sort((a, b) => b[1] - a[1])[0][0];
           const vt = r.items.map(x => x.vtr).filter(v => v != null);
           nodes.push({ id: r.id, type, name, n: r.items.length, idx: mapMed(r.items.map(x => x.idx)),
-            er: mapMed(r.items.map(x => x.p.basic_er)), vtr: vt.length >= 3 ? mapMean(vt) : null, items: r.items,
+            vtr: vt.length >= 3 ? mapMean(vt) : null, items: r.items,
             r: Math.min(19, 3.5 + Math.sqrt(r.items.length) * 0.95) });
         }
       }
-      // ---- conexiones (co-ocurrencia en el mismo post)
+      // ---- combinaciones (dos nodos en el mismo post) con su rendimiento
       const em = new Map();
       for (const it of items) {
         const ids = it.nodes.filter(id => kept.has(id));
         for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
           const k = ids[a] < ids[b] ? ids[a] + '~' + ids[b] : ids[b] + '~' + ids[a];
-          em.set(k, (em.get(k) || 0) + 1);
+          if (!em.has(k)) em.set(k, []); em.get(k).push(it);
         }
       }
       const minW = items.length > 400 ? 2 : 1;
-      const edges = [...em.entries()].filter(([, w]) => w >= minW).sort((a, b) => b[1] - a[1]).slice(0, 300)
-        .map(([k, w]) => { const [a, b] = k.split('~'); return { a, b, w }; });
+      const edges = [...em.entries()].filter(([, xs]) => xs.length >= minW).sort((a, b) => b[1].length - a[1].length).slice(0, 300)
+        .map(([k, xs]) => { const [a, b] = k.split('~'); return { a, b, w: xs.length, items: xs, idx: mapMed(xs.map(x => x.idx)) }; });
       const linked = new Set(edges.flatMap(e => [e.a, e.b]));
       const finalNodes = nodes.filter(n => linked.has(n.id));
-      // ---- zona de duración con mejor índice (todas las plataformas, videos)
       const durStats = MAP_DUR.map(b => {
         const xs = items.filter(x => x.dur != null && x.dur > b.lo && x.dur <= b.hi);
         return { ...b, n: xs.length, idx: mapMed(xs.map(x => x.idx)) };
       });
       const bestDur = durStats.filter(b => b.n >= 15).sort((a, b) => b.idx - a.idx)[0] || null;
       const weeks = posts.map(p => p.week).filter(w => w != null);
-      return { items, nodes: finalNodes, edges, platMed, bestDur, durStats,
+      return { items, nodes: finalNodes, edges, fit, platMed, bestDur, durStats, frames,
         lastWeek: weeks.length ? Math.max(...weeks) : null, total: posts.length };
     }
 
@@ -6434,28 +6575,26 @@
       }).sort((a, b) => b.n - a.n);
     }
 
-    function useCountUp(target, dur = 900) {
+    function useCountUp(target, dur = 900, instant = false) {
       const [v, setV] = useState(0);
       useEffect(() => {
-        if (target == null || !isFinite(target)) { setV(target); return; }
-        if (mapReduced()) { setV(target); return; }
-        let raf; const t0 = performance.now();
-        const tick = (t) => { const k = Math.min(1, (t - t0) / dur); setV(target * (1 - Math.pow(1 - k, 3))); if (k < 1) raf = requestAnimationFrame(tick); };
+        if (target == null || !isFinite(target) || instant || mapReduced()) { setV(target); return; }
+        let raf; const t0 = performance.now(); const from = 0;
+        const tick = (t) => { const k = Math.min(1, (t - t0) / dur); setV(from + (target - from) * (1 - Math.pow(1 - k, 3))); if (k < 1) raf = requestAnimationFrame(tick); };
         raf = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(raf);
-      }, [target]);
+      }, [target, instant]);
       return v;
     }
-
-    function MapCounter({ label, value, fmtFn, tone }) {
-      const v = useCountUp(value);
+    function MapCounter({ label, value, fmtFn, tone, instant }) {
+      const v = useCountUp(value, 900, instant);
       return html`<div className="min-w-0">
         <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1">${label}</div>
         <div className=${"font-mono tabular-nums text-[22px] leading-none " + (tone || 'text-txt')}>${v == null ? '—' : fmtFn(v)}</div>
       </div>`;
     }
 
-    // ---------- Red (fuerzas propias, sin librerías) ----------
+    // ---------- Red ----------
     const NET_W = 760, NET_H = 540;
     function useForceLayout(nodes, edges) {
       const [pos, setPos] = useState({});
@@ -6483,7 +6622,7 @@
           for (const p of P) {
             p.vx += (NET_W / 2 - p.x) * 0.0022 * alpha; p.vy += (NET_H / 2 - p.y) * 0.0042 * alpha;
             p.vx *= 0.62; p.vy *= 0.62; p.x += p.vx; p.y += p.vy;
-            p.x = Math.max(p.r + 6, Math.min(NET_W - p.r - 70, p.x)); p.y = Math.max(p.r + 10, Math.min(NET_H - p.r - 12, p.y));
+            p.x = Math.max(p.r + 6, Math.min(NET_W - p.r - 6, p.x)); p.y = Math.max(p.r + 10, Math.min(NET_H - p.r - 12, p.y));
           }
           alpha *= 0.986;
         };
@@ -6497,26 +6636,38 @@
       return pos;
     }
 
-    function MapNetwork({ M, sel, setSel, hover, setHover, colorMode }) {
+    const edgeColor = (e) => (e.w >= 3 && e.idx >= 1.15 ? MAP_GOOD : e.w >= 3 && e.idx <= 0.85 ? MAP_BAD : null);
+
+    function MapNetwork({ M, focus, focusEdge, setSel, setHover, sel, colorMode, frame, hl }) {
       const pos = useForceLayout(M.nodes, M.edges);
-      const focus = sel || hover;
+      // durante la reproducción: solo lo publicado hasta la semana actual
+      const live = useMemo(() => {
+        if (frame == null) return null;
+        const nodeN = new Map(), edgeN = new Map();
+        for (const n of M.nodes) nodeN.set(n.id, n.items.reduce((s, it) => s + (it.rank <= frame ? 1 : 0), 0));
+        for (const e of M.edges) edgeN.set(e.a + '~' + e.b, e.items.reduce((s, it) => s + (it.rank <= frame ? 1 : 0), 0));
+        return { nodeN, edgeN };
+      }, [M, frame]);
       const nbr = useMemo(() => {
-        if (!focus) return null;
+        if (focusEdge) return new Set([focusEdge.a, focusEdge.b]);
+        if (!focus) return hl || null;
         const s = new Set([focus]);
         for (const e of M.edges) { if (e.a === focus) s.add(e.b); if (e.b === focus) s.add(e.a); }
         return s;
-      }, [focus, M.edges]);
+      }, [focus, focusEdge, M.edges, hl]);
       const maxW = Math.max(1, ...M.edges.map(e => e.w));
       const fillOf = (n) => {
         if (colorMode === 'type') return MAP_TYPES[n.type].color;
-        if (n.idx == null) return 'rgb(var(--c-faint))';
-        return n.idx >= 1.15 ? MAP_GOOD : n.idx <= 0.85 ? MAP_BAD : 'rgb(var(--c-txt4))';
+        return n.idx == null ? 'rgb(var(--c-faint))' : n.idx >= 1.15 ? MAP_GOOD : n.idx <= 0.85 ? MAP_BAD : 'rgb(var(--c-txt4))';
       };
+      const isOn = (e) => focusEdge ? (e === focusEdge) : focus ? (e.a === focus || e.b === focus) : false;
+      const ordered = [...M.edges.filter(e => !isOn(e)), ...M.edges.filter(isOn)];
       const showLabel = useMemo(() => {
         const out = new Map(); const boxes = [];
         const pri = (n) => (n.id === focus ? 1e6 : nbr && nbr.has(n.id) ? 1e5 + n.n : n.n);
         for (const n of [...M.nodes].sort((a, b) => pri(b) - pri(a))) {
           const p = pos[n.id]; if (!p) continue;
+          if (live && !live.nodeN.get(n.id)) continue;
           const len = Math.min(n.id === focus ? 28 : 16, n.name.length);
           const wl = len * 5.7 + 6; const left = p.x + n.r + wl > NET_W - 2;
           const bx = left ? { x0: p.x - n.r - wl, x1: p.x - n.r - 2, y0: p.y - 7, y1: p.y + 7 } : { x0: p.x + n.r + 2, x1: p.x + n.r + wl, y0: p.y - 7, y1: p.y + 7 };
@@ -6524,125 +6675,186 @@
           if (!hit || n.id === focus) { out.set(n.id, left); boxes.push(bx); }
         }
         return out;
-      }, [pos, M.nodes, focus, nbr]);
-      const ordered = focus ? [...M.edges.filter(e => e.a !== focus && e.b !== focus), ...M.edges.filter(e => e.a === focus || e.b === focus)] : M.edges;
+      }, [pos, M.nodes, focus, nbr, live]);
       return html`<svg viewBox=${`0 0 ${NET_W} ${NET_H}`} className="w-full h-auto block select-none" role="img"
-          aria-label="Red de campañas, conceptos, productos, influencers y piezas conectados por los posts que comparten"
+          aria-label="Red de campañas, conceptos, productos, influencers y piezas; cada línea es una combinación coloreada por cómo rinde"
           onClick=${(e) => { if (e.target.tagName === 'svg') setSel(null); }}>
         <g>
           ${ordered.map(e => {
             const a = pos[e.a], b = pos[e.b]; if (!a || !b) return null;
-            const on = focus && (e.a === focus || e.b === focus);
-            const w = 0.6 + 2.6 * Math.sqrt(e.w / maxW);
+            const wNow = live ? live.edgeN.get(e.a + '~' + e.b) : e.w; if (!wNow) return null;
+            const on = isOn(e); const c = edgeColor(e);
+            const w = 0.6 + 2.6 * Math.sqrt(wNow / maxW);
+            const dimAll = (focus || focusEdge || hl) && !on;
             return html`<line key=${e.a + e.b} x1=${a.x} y1=${a.y} x2=${b.x} y2=${b.y}
-              stroke=${on ? MAP_HOT : 'rgb(var(--c-txt))'} strokeWidth=${on ? Math.max(2, w * 1.4) : w}
-              strokeOpacity=${on ? 0.95 : focus ? 0.035 : 0.09} strokeLinecap="round"/>`;
+              stroke=${on ? (c || MAP_HOT) : (c || 'rgb(var(--c-txt))')} strokeWidth=${on ? Math.max(2.2, w * 1.5) : w}
+              strokeOpacity=${on ? 0.95 : dimAll ? 0.03 : c ? 0.32 : 0.07} strokeLinecap="round"/>`;
           })}
         </g>
         <g>
           ${M.nodes.map(n => {
             const p = pos[n.id]; if (!p) return null;
+            const nNow = live ? live.nodeN.get(n.id) : n.n; if (!nNow) return null;
+            const r = live ? Math.min(19, 3.5 + Math.sqrt(nNow) * 0.95) : n.r;
             const dim = nbr && !nbr.has(n.id);
-            const isSel = focus === n.id;
+            const isSel = focus === n.id || (focusEdge && (focusEdge.a === n.id || focusEdge.b === n.id));
             return html`<g key=${n.id} transform=${`translate(${p.x},${p.y})`} style=${{ cursor: 'pointer', transition: 'opacity .25s' }}
                 opacity=${dim ? 0.18 : 1}
                 onMouseEnter=${() => setHover(n.id)} onMouseLeave=${() => setHover(null)}
                 onClick=${(ev) => { ev.stopPropagation(); setSel(sel === n.id ? null : n.id); }}>
               <title>${MAP_TYPES[n.type].label + ': ' + n.name + ' · ' + n.n + ' posts · índice ' + mapX(n.idx)}</title>
-              ${isSel && html`<circle r=${n.r + 6} fill="none" stroke=${MAP_HOT} strokeWidth="2.5"/>`}
-              <circle r=${n.r} fill=${fillOf(n)} stroke="rgb(var(--c-surface))" strokeWidth="2"/>
-              
+              ${isSel && html`<circle r=${r + 6} fill="none" stroke=${MAP_HOT} strokeWidth="2.5"/>`}
+              <circle r=${r} fill=${fillOf(n)} stroke="rgb(var(--c-surface))" strokeWidth="2"/>
             </g>`;
           })}
         </g>
         <g style=${{ pointerEvents: 'none' }}>
           ${M.nodes.map(n => {
             const p = pos[n.id]; if (!p || !showLabel.has(n.id)) return null;
+            const nNow = live ? live.nodeN.get(n.id) : n.n;
+            const r = live ? Math.min(19, 3.5 + Math.sqrt(nNow || 0) * 0.95) : n.r;
             const dim = nbr && !nbr.has(n.id); const isSel = focus === n.id;
-            return html`<g key=${n.id} transform=${`translate(${p.x},${p.y})`} opacity=${dim ? 0.25 : 1}><text x=${showLabel.get(n.id) ? -(n.r + 5) : n.r + 5} y="3.5" textAnchor=${showLabel.get(n.id) ? 'end' : 'start'} fontSize="10.5" fill="rgb(var(--c-txt))"
-                stroke="rgb(var(--c-surface))" strokeWidth="3.5" strokeLinejoin="round" paintOrder="stroke" style=${{ pointerEvents: 'none', fontWeight: isSel || n.n >= 60 ? 600 : 400 }}>${mapTrunc(n.name, isSel ? 28 : 16)}</text></g>`;
+            const left = showLabel.get(n.id);
+            return html`<g key=${n.id} transform=${`translate(${p.x},${p.y})`} opacity=${dim ? 0.25 : 1}>
+              <text x=${left ? -(r + 5) : r + 5} y="3.5" textAnchor=${left ? 'end' : 'start'} fontSize="10.5" fill="rgb(var(--c-txt))"
+                stroke="rgb(var(--c-surface))" strokeWidth="3.5" strokeLinejoin="round" paintOrder="stroke"
+                style=${{ fontWeight: isSel || n.n >= 60 ? 600 : 400 }}>${mapTrunc(n.name, isSel ? 28 : 16)}</text></g>`;
           })}
         </g>
       </svg>`;
     }
 
     // ---------- Enjambre (canvas) ----------
-    const SW_W = 760, SW_H = 420, SW_L = 46, SW_R = 14, SW_T = 18, SW_B = 34;
-    function swarmTarget(it, mode) {
-      const yv = Math.log10(Math.max(0.1, Math.min(10, it.idx)));
-      const y = SW_T + (1 - (yv + 1) / 2) * (SW_H - SW_T - SW_B) + (it.j - 0.5) * 6;
-      if (mode === 'week') {
-        const w = Math.max(1, Math.min(53, it.week || 1));
-        return { x: SW_L + 8 + (w - 1) / 52 * (SW_W - SW_L - SW_R - 16) + (it.j - 0.5) * 9, y };
-      }
-      if (it.dur == null) return { x: SW_L + 10 + it.j * 44, y };
-      const d = Math.min(it.dur, 120);
-      return { x: SW_L + 78 + Math.sqrt(d / 120) * (SW_W - SW_L - SW_R - 92) + (it.j - 0.5) * 7, y };
-    }
+    const SW_W = 760, SW_H = 420, SW_L = 46, SW_R = 14, SW_T = 22, SW_B = 34;
     const swarmDurX = (d) => SW_L + 78 + Math.sqrt(Math.min(d, 120) / 120) * (SW_W - SW_L - SW_R - 92);
-    const swarmY = (v) => SW_T + (1 - (Math.log10(v) + 1) / 2) * (SW_H - SW_T - SW_B);
+    const swarmWeekX = (w) => SW_L + 8 + (Math.max(1, Math.min(53, w)) - 1) / 52 * (SW_W - SW_L - SW_R - 16);
+    const swarmY = (v) => SW_T + (1 - (Math.log10(Math.max(0.1, Math.min(10, v))) + 1) / 2) * (SW_H - SW_T - SW_B);
+    function swarmTarget(it, mode) {
+      const y = swarmY(it.idx) + (it.j - 0.5) * 6;
+      if (mode === 'week') return { x: swarmWeekX(it.week || 1) + (it.j - 0.5) * 9, y };
+      if (it.dur == null) return { x: SW_L + 10 + it.j * 44, y };
+      return { x: swarmDurX(it.dur) + (it.j - 0.5) * 7, y };
+    }
     const cssVar = (name) => (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim();
     const cssRgb = (name, a = 1) => { const v = cssVar(name); return v.includes(',') || v.startsWith('#') || v.startsWith('rgb') ? v : `rgba(${v.split(/\s+/).join(',')},${a})`; };
 
-    function MapSwarm({ M, mode, colorMode, focusSet, onPick }) {
+    function MapSwarm({ M, mode, colorMode, focusSet, onPick, frame, ghost }) {
       const ref = useRef(null);
       const st = useRef({ cur: null, from: null, t0: 0, raf: 0, hover: null });
       const [tip, setTip] = useState(null);
+      // tamaño por alcance relativo a su plataforma
+      const sizeOf = useMemo(() => {
+        const base = M.items.length > 1500 ? 1.5 : M.items.length > 600 ? 1.8 : 2.2;
+        return (it) => Math.max(1.4, Math.min(7, base * Math.sqrt(Math.sqrt(it.p.reach / (M.fit[it.p.platform].medReach || 1))) * 1.15));
+      }, [M]);
+      // mediana móvil (la curva que el ojo busca)
+      const medLine = useMemo(() => {
+        const ITEMS = frame == null ? M.items : M.items.filter(it => it.rank <= frame);
+        if (mode === 'dur') {
+          const pts = [];
+          const nv = ITEMS.filter(it => it.dur == null);
+          if (nv.length >= 8) pts.push({ x: SW_L + 32, y: swarmY(mapMed(nv.map(it => it.idx))), gap: true });
+          for (const b of MAP_DUR) {
+            const xs = ITEMS.filter(it => it.dur != null && it.dur > b.lo && it.dur <= b.hi); if (xs.length < 8) continue;
+            pts.push({ x: swarmDurX(Math.sqrt(b.lo * Math.min(b.hi, 120)) || b.hi / 2), y: swarmY(mapMed(xs.map(it => it.idx))) });
+          }
+          return pts;
+        }
+        const byW = new Map(); for (const it of ITEMS) { if (it.week == null) continue; if (!byW.has(it.week)) byW.set(it.week, []); byW.get(it.week).push(it.idx); }
+        const ws = [...byW.keys()].sort((a, b) => a - b);
+        return ws.map(w => { const xs = []; for (let k = w - 1; k <= w + 1; k++) if (byW.has(k)) xs.push(...byW.get(k)); return xs.length >= 6 ? { x: swarmWeekX(w), y: swarmY(mapMed(xs)) } : null; }).filter(Boolean);
+      }, [M, mode, frame]);
+      const top5 = useMemo(() => [...M.items].sort((a, b) => b.idx - a.idx).slice(0, 5), [M]);
       const colorOf = (it) => colorMode === 'infl' ? (isInfluencer(it.p) ? MAP_HOT : null) : (PLAT_COLORS[it.p.platform] || '#888');
       const draw = useCallback(() => {
-        const cv = ref.current; if (!cv) return;
+        const cv = ref.current; if (!cv || !st.current.cur) return;
         const dpr = window.devicePixelRatio || 1;
         if (cv.width !== SW_W * dpr) { cv.width = SW_W * dpr; cv.height = SW_H * dpr; }
         const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, SW_W, SW_H);
-        const txt3 = cssRgb('--c-txt3'), txt4 = cssRgb('--c-txt4'), grid = cssRgb('--c-txt', 0.07), muted = cssRgb('--c-txt4', 0.55);
+        const txt = cssRgb('--c-txt'), txt3 = cssRgb('--c-txt3'), txt4 = cssRgb('--c-txt4'), grid = cssRgb('--c-txt', 0.07), muted = cssRgb('--c-txt4', 0.55), surf = cssRgb('--c-surface');
         g.font = '10px "JetBrains Mono", ui-monospace, monospace';
-        // zona ganadora
         if (mode === 'dur' && M.bestDur) {
-          const x0 = swarmDurX(M.bestDur.lo), x1 = swarmDurX(M.bestDur.hi);
+          const x0 = swarmDurX(Math.max(M.bestDur.lo, 3)), x1 = swarmDurX(Math.min(M.bestDur.hi, 120));
           g.fillStyle = 'rgba(240,56,107,0.08)'; g.fillRect(x0, SW_T, x1 - x0, SW_H - SW_T - SW_B);
           g.fillStyle = MAP_HOT; g.textAlign = 'center';
-          g.fillText('MEJOR ZONA · ' + mapX(M.bestDur.idx), (x0 + x1) / 2, SW_T - 5);
+          g.fillText('MEJOR ZONA · ' + mapX(M.bestDur.idx), (x0 + x1) / 2, SW_T - 7);
         }
-        // eje y (índice)
         g.textAlign = 'right';
         for (const v of [0.1, 0.3, 1, 3, 10]) {
           const y = swarmY(v);
           g.fillStyle = v === 1 ? txt3 : txt4; g.fillText(mapX(v), SW_L - 8, y + 3);
           if (v === 1) { g.fillStyle = grid; g.fillRect(SW_L, y - 0.75, SW_W - SW_L - SW_R, 1.5); }
         }
-        // eje x
         g.textAlign = 'center'; g.fillStyle = txt4;
         const yb = SW_H - SW_B + 18;
         if (mode === 'dur') {
           g.fillText('SIN VIDEO', SW_L + 32, yb);
           for (const d of [5, 15, 30, 60, 120]) g.fillText(d === 120 ? '120 s+' : d + ' s', swarmDurX(d), yb);
         } else {
-          for (const w of [1, 10, 20, 30, 40, 50]) g.fillText('S' + w, SW_L + 8 + (w - 1) / 52 * (SW_W - SW_L - SW_R - 16), yb);
+          for (const w of [1, 10, 20, 30, 40, 50]) g.fillText('S' + w, swarmWeekX(w), yb);
         }
-        // puntos
         const s = st.current; const now = performance.now();
         const k = s.from ? Math.min(1, (now - s.t0) / 1500) : 1;
-        const items = M.items; const r = items.length > 1500 ? 2.1 : items.length > 600 ? 2.6 : 3.2;
+        const vis = (it) => frame == null || it.rank <= frame;
+        const items = M.items;
         const order = focusSet ? [...items.filter(it => !focusSet.has(it.i)), ...items.filter(it => focusSet.has(it.i))] : items;
         for (const it of order) {
+          if (!vis(it)) { it._x = null; continue; }
           const to = s.cur[it.i]; let x = to.x, y = to.y;
           if (s.from && k < 1) {
             const f = s.from[it.i]; const kk = Math.max(0, Math.min(1, (k - it.j * 0.3) / 0.7)); const e = 1 - Math.pow(1 - kk, 3);
             x = f.x + (to.x - f.x) * e; y = f.y + (to.y - f.y) * e;
           }
           it._x = x; it._y = y;
-          const c = colorOf(it);
-          const on = focusSet ? focusSet.has(it.i) : true;
-          g.globalAlpha = on ? (c ? 0.88 : 0.5) : 0.07;
+          const c = colorOf(it); const on = focusSet ? focusSet.has(it.i) : true;
+          const fresh = frame != null && it.rank === frame;
+          const r = sizeOf(it) * (fresh ? 1.6 : 1);
+          g.globalAlpha = on ? (c ? 0.72 : 0.45) : 0.06;
           g.fillStyle = c || muted;
-          g.beginPath(); g.arc(x, y, focusSet && on ? r + 1.1 : r, 0, Math.PI * 2); g.fill();
+          g.beginPath(); g.arc(x, y, focusSet && on ? r + 1 : r, 0, Math.PI * 2); g.fill();
+          if (fresh) { g.globalAlpha = 0.9; g.strokeStyle = MAP_HOT; g.lineWidth = 1.2; g.stroke(); }
         }
         g.globalAlpha = 1;
-        if (s.hover) { const h = s.hover; g.strokeStyle = cssRgb('--c-txt'); g.lineWidth = 1.5; g.beginPath(); g.arc(h._x, h._y, r + 3, 0, Math.PI * 2); g.stroke(); }
+        // mediana
+        if (k >= 1 && medLine.length > 1) {
+          g.lineJoin = 'round'; g.lineCap = 'round';
+          const path = () => { g.beginPath(); let started = false; for (const p of medLine) { if (p.gap) continue; if (!started) { g.moveTo(p.x, p.y); started = true; } else g.lineTo(p.x, p.y); } };
+          g.strokeStyle = surf; g.lineWidth = 5; path(); g.stroke();
+          g.strokeStyle = txt; g.lineWidth = 2.2; path(); g.stroke();
+          for (const p of medLine) { g.fillStyle = txt; g.beginPath(); g.arc(p.x, p.y, p.gap ? 3.5 : 2.6, 0, Math.PI * 2); g.fill(); }
+          const lp = medLine[medLine.length - 1]; g.textAlign = 'left'; g.fillStyle = txt; g.font = '600 10px "JetBrains Mono", ui-monospace, monospace';
+          g.fillText('MEDIANA', Math.min(lp.x + 6, SW_W - 70), lp.y - 8);
+          g.font = '10px "JetBrains Mono", ui-monospace, monospace';
+        }
+        // etiquetas de los 5 más fuera de serie
+        if (k >= 1 && !focusSet && frame == null) {
+          g.textAlign = 'left'; const placed = [];
+          for (const it of top5) {
+            if (it._x == null) continue;
+            if (placed.some(q => Math.abs(q.y - it._y) < 14 && Math.abs(q.x - it._x) < 150)) continue;
+            placed.push({ x: it._x, y: it._y });
+            const lbl = (PLAT_LETTERS[it.p.platform] || '') + ' · ' + mapTrunc(String([it.p.subcampaign, it.p.product].find(x => x && !MAP_SKIP.test(String(x).trim())) || it.p.format || ''), 18);
+            const lx = it._x > SW_W - 150 ? it._x - 8 : it._x + 8; g.textAlign = it._x > SW_W - 150 ? 'right' : 'left';
+            g.lineWidth = 3; g.strokeStyle = surf; g.strokeText(lbl, lx, it._y + 3); g.fillStyle = txt3; g.fillText(lbl, lx, it._y + 3);
+          }
+        }
+        // post fantasma (predicción)
+        if (ghost && k >= 1) {
+          const gx = mode === 'week' ? swarmWeekX(Math.min(53, (M.lastWeek || 52) + 1)) : ghost.dur ? swarmDurX(ghost.dur) : SW_L + 32;
+          const y0 = swarmY(ghost.hi), y1 = swarmY(ghost.lo), yc = swarmY(ghost.idx);
+          g.fillStyle = 'rgba(240,56,107,0.16)'; g.fillRect(gx - 9, y0, 18, y1 - y0);
+          g.fillStyle = MAP_HOT; g.fillRect(gx - 0.75, y0, 1.5, y1 - y0);
+          g.beginPath(); g.moveTo(gx, yc - 8); g.lineTo(gx + 8, yc); g.lineTo(gx, yc + 8); g.lineTo(gx - 8, yc); g.closePath();
+          g.fillStyle = MAP_HOT; g.fill(); g.lineWidth = 2; g.strokeStyle = surf; g.stroke();
+          g.textAlign = gx > SW_W - 140 ? 'right' : 'left'; g.font = '600 10px "JetBrains Mono", ui-monospace, monospace';
+          const tx = gx > SW_W - 140 ? gx - 13 : gx + 13;
+          g.lineWidth = 3; g.strokeStyle = surf; g.strokeText('TU POST · ' + mapX(ghost.idx), tx, yc + 3); g.fillStyle = MAP_HOT; g.fillText('TU POST · ' + mapX(ghost.idx), tx, yc + 3);
+          g.font = '10px "JetBrains Mono", ui-monospace, monospace';
+        }
+        if (s.hover && s.hover._x != null) { const h = s.hover; g.strokeStyle = txt; g.lineWidth = 1.5; g.beginPath(); g.arc(h._x, h._y, sizeOf(h) + 3, 0, Math.PI * 2); g.stroke(); }
         if (k < 1) s.raf = requestAnimationFrame(draw);
-      }, [M, mode, colorMode, focusSet]);
+      }, [M, mode, colorMode, focusSet, frame, ghost, medLine, top5, sizeOf]);
 
-      // posiciones: dispersión inicial → destino (animado)
       useEffect(() => {
         const s = st.current; cancelAnimationFrame(s.raf);
         const target = {}; for (const it of M.items) target[it.i] = swarmTarget(it, mode);
@@ -6667,58 +6879,58 @@
         const x = (e.clientX - rc.left) * SW_W / rc.width, y = (e.clientY - rc.top) * SW_H / rc.height;
         let best = null, bd = 64;
         for (const it of M.items) { if (it._x == null) continue; const dx = it._x - x, dy = it._y - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = it; } }
-        return { best, rc, x, y };
+        return { best, rc };
       };
       const onMove = (e) => {
         const { best, rc } = locate(e);
         st.current.hover = best; draw();
-        setTip(best ? { it: best, left: best._x * rc.width / SW_W, top: best._y * rc.height / SW_H } : null);
+        setTip(best ? { it: best, left: best._x * rc.width / SW_W, top: best._y * rc.height / SW_H, w: rc.width } : null);
       };
       return html`<div className="relative">
         <canvas ref=${ref} className="w-full h-auto block" style=${{ aspectRatio: SW_W + ' / ' + SW_H, cursor: tip ? 'pointer' : 'default' }}
-          role="img" aria-label="Enjambre de posts: cada punto es un post, a la derecha más largo, arriba más engagement que su plataforma"
+          role="img" aria-label="Enjambre de posts: cada punto es un post; a la derecha más largo, arriba más ER que posts de su plataforma con alcance parecido"
           onMouseMove=${onMove} onMouseLeave=${() => { st.current.hover = null; setTip(null); draw(); }}
           onClick=${(e) => { const { best } = locate(e); if (best) onPick(best.p); }}></canvas>
         ${tip && html`<div className="absolute pointer-events-none z-10 rounded-lg px-3 py-2 text-[11px] shadow-lg"
-            style=${{ left: Math.min(tip.left + 12, 9999), top: tip.top + 12, background: 'var(--ch-tip-bg)', color: 'var(--ch-tip-text)', border: '1px solid var(--ch-tip-border)', maxWidth: 260 }}>
+            style=${{ left: Math.min(tip.left + 12, tip.w - 250), top: tip.top + 12, background: 'var(--ch-tip-bg)', color: 'var(--ch-tip-text)', border: '1px solid var(--ch-tip-border)', maxWidth: 260 }}>
           <div className="font-medium">${tip.it.p.platform} · ${tip.it.p.format || 'Sin formato'}${tip.it.dur ? ' · ' + Math.round(tip.it.dur) + ' s' : ''}</div>
           <div style=${{ color: 'var(--ch-tip-label)' }}>${[tip.it.p.campaign, tip.it.p.subcampaign].filter(x => x && !MAP_SKIP.test(String(x).trim())).join(' · ') || '—'}</div>
-          <div className="font-mono tabular-nums mt-1">ER ${mapPct(tip.it.p.basic_er)} · ${mapX(tip.it.idx)} su plataforma${tip.it.vtr != null ? ' · VTR ' + mapPct(tip.it.vtr) : ''}</div>
+          <div className="font-mono tabular-nums mt-1">ER ${mapPct(tip.it.p.basic_er)} · alcance ${fmtFull(tip.it.p.reach)}</div>
+          <div className="font-mono tabular-nums">${mapX(tip.it.idx)} lo esperado${tip.it.vtr != null ? ' · VTR ' + mapPct(tip.it.vtr) : ''}</div>
         </div>`}
       </div>`;
     }
 
     function MapBar({ v, color }) {
       const w = v == null ? 0 : Math.max(4, Math.min(100, Math.log10(Math.max(0.1, Math.min(10, v))) * 50 + 50));
-      return html`<span className="inline-block w-[64px] h-[6px] rounded-full bg-onSurface/[0.08] align-middle overflow-hidden">
+      return html`<span className="inline-block w-[56px] h-[6px] rounded-full bg-onSurface/[0.08] align-middle overflow-hidden shrink-0">
         <span className="block h-full rounded-full" style=${{ width: w + '%', background: color }}></span></span>`;
     }
-    const mapIdxColor = (v) => (v == null ? 'rgb(var(--c-faint))' : v >= 1.15 ? MAP_GOOD : v <= 0.85 ? MAP_BAD : 'rgb(var(--c-txt4))');
 
     function MapConsole({ lines }) {
       const [shown, setShown] = useState(0);
       useEffect(() => {
         if (mapReduced()) { setShown(lines.length); return; }
-        setShown(0); let i = 0; const t = setInterval(() => { i += 1; setShown(i); if (i >= lines.length) clearInterval(t); }, 320);
+        setShown(0); let i = 0; const t = setInterval(() => { i += 1; setShown(i); if (i >= lines.length) clearInterval(t); }, 300);
         return () => clearInterval(t);
       }, [lines]);
-      return html`<div className="rounded-xl bg-onSurface/[0.03] px-4 py-3 font-mono text-[10.5px] leading-[1.75] text-txt3 min-h-[140px]">
+      return html`<div className="rounded-xl bg-onSurface/[0.03] px-4 py-3 font-mono text-[10.5px] leading-[1.75] text-txt3 min-h-[150px]">
         <div className="text-[9px] uppercase tracking-[0.2em] text-txt4 mb-1">Reporte</div>
         ${lines.slice(0, shown).map((l, i) => html`<div key=${i}><span className="text-txt4">${l.t}</span>  ${l.s}</div>`)}
         ${shown < lines.length && html`<span className="inline-block w-[7px] h-[12px] bg-txt3/60 align-middle animate-pulse"></span>`}
       </div>`;
     }
 
-    function MapFeed({ items, onPick, title }) {
+    function MapFeed({ items, onPick, title, rotate = true, max = 6 }) {
       const top = useMemo(() => [...items].sort((a, b) => b.idx - a.idx).slice(0, 24), [items]);
       const [off, setOff] = useState(0);
       useEffect(() => {
         setOff(0);
-        if (mapReduced() || top.length <= 6) return;
+        if (!rotate || mapReduced() || top.length <= max) return;
         const t = setInterval(() => setOff(o => (o + 1) % top.length), 2400);
         return () => clearInterval(t);
-      }, [top]);
-      const view = top.length <= 6 ? top : Array.from({ length: 6 }, (_, k) => top[(off + k) % top.length]);
+      }, [top, rotate]);
+      const view = top.length <= max || !rotate ? top.slice(0, max) : Array.from({ length: max }, (_, k) => top[(off + k) % top.length]);
       return html`<div>
         <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2 flex items-center gap-2">
           <span className="inline-block w-[6px] h-[6px] rounded-full animate-pulse" style=${{ background: MAP_HOT }}></span>${title}</div>
@@ -6736,12 +6948,12 @@
       </div>`;
     }
 
-    function MapNodePanel({ M, nodeId, onPick, onClear, setSel }) {
+    function MapNodePanel({ M, nodeId, onPick, onClear, setSel, setEdge }) {
       const n = M.nodes.find(x => x.id === nodeId);
       if (!n) return null;
       const conns = M.edges.filter(e => e.a === n.id || e.b === n.id)
-        .map(e => ({ node: M.nodes.find(x => x.id === (e.a === n.id ? e.b : e.a)), w: e.w }))
-        .filter(c => c.node).sort((a, b) => b.w - a.w).slice(0, 8);
+        .map(e => ({ e, node: M.nodes.find(x => x.id === (e.a === n.id ? e.b : e.a)) }))
+        .filter(c => c.node).sort((a, b) => b.e.w - a.e.w).slice(0, 9);
       const plats = {}; for (const it of n.items) plats[it.p.platform] = (plats[it.p.platform] || 0) + 1;
       return html`<div>
         <div className="flex items-start justify-between gap-2 mb-3">
@@ -6751,25 +6963,51 @@
           </div>
           <button onClick=${onClear} className="text-txt4 hover:text-txt text-[11px] font-mono shrink-0">Cerrar ×</button>
         </div>
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          ${[['Posts', fmtFull(n.n), 'text-txt'], ['Índice', mapX(n.idx), ''], ['VTR', n.vtr != null ? mapPct(n.vtr) : '—', 'text-txt']].map(([l, v, c]) => html`
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          ${[['Posts', fmtFull(n.n), null], ['Índice', mapX(n.idx), mapIdxColor(n.idx)], ['VTR', n.vtr != null ? mapPct(n.vtr) : '—', null]].map(([l, v, c]) => html`
             <div key=${l} className="rounded-lg bg-onSurface/[0.04] px-2.5 py-2">
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4">${l}</div>
-              <div className=${"font-mono tabular-nums text-[15px] " + c} style=${l === 'Índice' ? { color: mapIdxColor(n.idx) } : null}>${v}</div>
+              <div className="font-mono tabular-nums text-[15px] text-txt" style=${c ? { color: c } : null}>${v}</div>
             </div>`)}
         </div>
         <div className="text-[10.5px] text-txt4 mb-3">${Object.entries(plats).sort((a, b) => b[1] - a[1]).map(([p, c]) => p + ' ' + c).join(' · ')}</div>
-        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Conexiones</div>
+        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Combinado con · índice de los posts en común</div>
         <div className="space-y-0.5 mb-4">
-          ${conns.map(c => html`<button key=${c.node.id} onClick=${() => setSel(c.node.id)}
+          ${conns.map(c => html`<button key=${c.node.id} onClick=${() => setEdge(c.e)}
               className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05]">
             <span className="w-[7px] h-[7px] rounded-full shrink-0" style=${{ background: MAP_TYPES[c.node.type].color }}></span>
             <span className="text-txt2 truncate text-left">${c.node.name}</span>
-            <span className="ml-auto text-txt4 font-mono text-[10px] tabular-nums">${c.w}</span>
-            <${MapBar} v=${c.node.idx} color=${mapIdxColor(c.node.idx)}/>
+            <span className="ml-auto text-txt4 font-mono text-[10px] tabular-nums">${c.e.w}</span>
+            <span className="font-mono text-[10.5px] tabular-nums w-[34px] text-right" style=${{ color: mapIdxColor(c.e.idx) }}>${mapX(c.e.idx)}</span>
           </button>`)}
         </div>
-        <${MapFeed} items=${n.items} onPick=${onPick} title="Sus mejores posts"/>
+        <${MapFeed} items=${n.items} onPick=${onPick} title="Sus mejores posts" rotate=${false} max=${5}/>
+      </div>`;
+    }
+
+    function MapEdgePanel({ M, edge, onPick, onClear, setSel }) {
+      const A = M.nodes.find(x => x.id === edge.a), B = M.nodes.find(x => x.id === edge.b);
+      if (!A || !B) return null;
+      const vt = edge.items.map(it => it.vtr).filter(v => v != null);
+      return html`<div>
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-mono uppercase tracking-[0.2em] mb-1 text-txt4">Combinación</div>
+            <button onClick=${() => setSel(A.id)} className="block text-left text-[14px] text-txt font-medium leading-tight hover:underline">${A.name}</button>
+            <div className="text-txt4 text-[11px] my-0.5">+</div>
+            <button onClick=${() => setSel(B.id)} className="block text-left text-[14px] text-txt font-medium leading-tight hover:underline">${B.name}</button>
+          </div>
+          <button onClick=${onClear} className="text-txt4 hover:text-txt text-[11px] font-mono shrink-0">Cerrar ×</button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          ${[['Posts', fmtFull(edge.w), null], ['Índice', mapX(edge.idx), mapIdxColor(edge.idx)], ['VTR', vt.length >= 3 ? mapPct(mapMean(vt)) : '—', null]].map(([l, v, c]) => html`
+            <div key=${l} className="rounded-lg bg-onSurface/[0.04] px-2.5 py-2">
+              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4">${l}</div>
+              <div className="font-mono tabular-nums text-[15px] text-txt" style=${c ? { color: c } : null}>${v}</div>
+            </div>`)}
+        </div>
+        <p className="text-[11px] text-txt3 mb-4">Por separado: ${A.name} ${mapX(A.idx)} · ${B.name} ${mapX(B.idx)}.${edge.w < 5 ? ' Con menos de 5 posts, tómalo como pista, no como regla.' : ''}</p>
+        <${MapFeed} items=${edge.items} onPick=${onPick} title="Posts de la combinación" rotate=${false} max=${6}/>
       </div>`;
     }
 
@@ -6779,40 +7017,206 @@
           className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (value === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
       </div>`;
     }
+    function MapSelect({ label, value, onChange, options }) {
+      return html`<label className="block min-w-0">
+        <span className="block text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">${label}</span>
+        <select value=${value} onChange=${(e) => onChange(e.target.value)}
+          className="w-full h-[32px] px-2 rounded-lg border border-line bg-onSurface/[0.03] text-[12px] text-txt focus:outline-none focus:border-line2">
+          ${options.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
+        </select></label>`;
+    }
+
+    // ---------- Simulador predictivo ----------
+    const MAP_DUR_PICK = [['', 'Sin video'], ['8', '≤10 s'], ['13', '11–15 s'], ['18', '16–20 s'], ['25', '21–30 s'], ['38', '31–45 s'], ['52', '46–60 s'], ['75', '60 s+']];
+    function MapPredictor({ M, model, recipe, setRecipe, pred }) {
+      const opts = useMemo(() => {
+        const its = M.items.filter(it => it.p.platform === recipe.pl);
+        const vals = (fn, min = 3) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].filter(([, c]) => c >= min).sort((a, b) => b[1] - a[1]).map(([v]) => v); };
+        const plats = [...new Set(M.items.map(it => it.p.platform))].sort((a, b) => M.items.filter(it => it.p.platform === b).length - M.items.filter(it => it.p.platform === a).length);
+        return {
+          plats, formats: vals(it => it.p.format), ct: vals(it => it.p.content_type && String(it.p.content_type).trim()),
+          ob: vals(it => it.p.objective && String(it.p.objective).trim()), st: vals(it => it.p.stage && String(it.p.stage).trim()),
+          fam: vals(it => mapFam(it.p.product)), hasDur: its.some(it => it.dur != null && it.p.format === recipe.format),
+        };
+      }, [M, recipe.pl, recipe.format]);
+      const set = (k) => (v) => setRecipe(r => ({ ...r, [k]: v }));
+      const conf = model && model.val.byPlat[recipe.pl];
+      const confTone = !conf ? 'text-txt4' : conf.conf === 'alta' ? 'text-success' : conf.conf === 'media' ? 'text-amber' : 'text-txt4';
+      return html`<div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Simulador · arma tu post</div>
+          ${conf && html`<span className=${"text-[10px] font-mono " + confTone} title=${conf.corr != null ? 'Correlación predicho vs. real en las últimas 8 semanas: ' + conf.corr.toFixed(2) : ''}>Confianza ${conf.conf}</span>`}
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <${MapSelect} label="Plataforma" value=${recipe.pl} onChange=${(v) => setRecipe(r => ({ ...r, pl: v, format: '', ct: '', ob: '', fam: '' }))} options=${opts.plats.map(p => [p, p])}/>
+          <${MapSelect} label="Pieza" value=${recipe.format} onChange=${set('format')} options=${opts.formats.map(p => [p, p])}/>
+          ${opts.hasDur && html`<${MapSelect} label="Duración" value=${recipe.dur} onChange=${set('dur')} options=${MAP_DUR_PICK.slice(1)}/>`}
+          <${MapSelect} label="Día" value=${recipe.day} onChange=${set('day')} options=${[1, 2, 3, 4, 5, 6, 0].map(d => [String(d), MAP_DAYS[d]])}/>
+          <${MapSelect} label="Producto" value=${recipe.fam} onChange=${set('fam')} options=${opts.fam.map(p => [p, p])}/>
+          <${MapSelect} label="Tipo de contenido" value=${recipe.ct} onChange=${set('ct')} options=${opts.ct.map(p => [p, p])}/>
+          <${MapSelect} label="Objetivo" value=${recipe.ob} onChange=${set('ob')} options=${opts.ob.map(p => [p, p])}/>
+          <${MapSelect} label="Influencer" value=${recipe.inf} onChange=${set('inf')} options=${[['0', 'No'], ['1', 'Sí']]}/>
+        </div>
+        ${pred ? html`
+          <div className="rounded-xl bg-onSurface/[0.04] px-4 py-3 mb-3">
+            <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">ER básico esperado</div>
+            <div className="flex items-baseline gap-3">
+              <span className="font-mono tabular-nums text-[26px] leading-none" style=${{ color: MAP_HOT }}>${mapPct(pred.er)}</span>
+              <span className="font-mono text-[12px] tabular-nums" style=${{ color: mapIdxColor(pred.idx) }}>${mapX(pred.idx)} lo típico</span>
+            </div>
+            <div className="text-[11px] text-txt3 mt-1.5">Rango probable ${mapPct(pred.lo)} – ${mapPct(pred.hi)} · la mitad de los posts así cae aquí</div>
+            ${pred.vtr != null && html`<div className="text-[11px] text-txt3">VTR esperado ${mapPct(pred.vtr)}</div>`}
+          </div>
+          ${pred.moves.length > 0 && html`<div className="mb-3">
+            <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Para subirlo</div>
+            ${pred.moves.map(m => html`<button key=${m.k} onClick=${() => setRecipe(r => ({ ...r, [m.k]: m.v }))}
+                className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05] text-left">
+              <span className="text-txt2">${m.label}</span><span className="ml-auto font-mono tabular-nums text-success">+${Math.round(m.up * 100)}%</span></button>`)}
+          </div>`}
+          <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Posts parecidos · resaltados en el enjambre</div>
+          <div className="text-[11px] text-txt3">${pred.analogs.length} posts · rindieron ${mapX(mapMed(pred.analogs.map(a => a.idx)))} lo esperado para su alcance</div>
+        ` : html`<div className="text-[12px] text-txt4">Hacen falta más posts para predecir esta plataforma.</div>`}
+      </div>`;
+    }
 
     function ContentMapSection({ D, onPick }) {
       const [scope, setScope] = useState('org');
       const [colorMode, setColorMode] = useState('perf');
       const [swMode, setSwMode] = useState('dur');
       const [swColor, setSwColor] = useState('plat');
-      const [sel, setSel] = useState(null);
+      const [sel, setSelRaw] = useState(null);
+      const [selEdge, setSelEdge] = useState(null);
       const [hover, setHover] = useState(null);
+      const [frame, setFrame] = useState(null);
+      const [playing, setPlaying] = useState(false);
+      const [simOn, setSimOn] = useState(false);
+      const setSel = (id) => { setSelEdge(null); setSelRaw(id); };
+      const setEdge = (e) => { setSelRaw(null); setSelEdge(e); };
       const posts = useMemo(() => (D.allPosts || []).filter(p => scope === 'all' || /org/i.test(String(p.strategy || ''))), [D.allPosts, scope]);
       const M = useMemo(() => computeContentMap(posts), [posts]);
+      const model = useMemo(() => buildModel(M.items), [M]);
+      useEffect(() => { window.__smxMap = { M, model, mapRecipeOf }; }, [M, model]);
       const recipes = useMemo(() => computeRecipes(M.items), [M]);
-      useEffect(() => { setSel(null); }, [M]);
+      useEffect(() => { setSelRaw(null); setSelEdge(null); setFrame(null); setPlaying(false); }, [M]);
+
+      // ---- reproducción semana a semana
+      useEffect(() => {
+        if (!playing) return;
+        const t = setInterval(() => setFrame(f => {
+          const nx = f == null ? 0 : f + 1;
+          if (nx >= M.frames.length - 1) { setPlaying(false); return M.frames.length - 1; }
+          return nx;
+        }), 380);
+        return () => clearInterval(t);
+      }, [playing, M.frames.length]);
+      const frameLabel = frame == null ? null : (() => { const k = M.frames[frame]; return 'S' + (k % 100) + ' · ' + Math.floor(k / 100); })();
+      const visItems = frame == null ? M.items : M.items.filter(it => it.rank <= frame);
+
+      // ---- simulador
+      const [recipe, setRecipe] = useState(null);
+      useEffect(() => {
+        if (!M.items.length) return;
+        const pl = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {})).sort((a, b) => b[1] - a[1])[0][0];
+        setRecipe({ pl, format: '', dur: '25', day: '3', ct: '', ob: '', fam: '', inf: '0' });
+      }, [M]);
+      // completa valores vacíos con el más común de la plataforma
+      const fullRecipe = useMemo(() => {
+        if (!recipe) return null;
+        const its = M.items.filter(it => it.p.platform === recipe.pl);
+        const mode = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v) m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || ''; };
+        const r = { ...recipe };
+        if (!r.format || !its.some(it => it.p.format === r.format)) r.format = mode(it => it.p.format);
+        if (!r.ct) r.ct = mode(it => it.p.content_type && String(it.p.content_type).trim());
+        if (!r.ob) r.ob = mode(it => it.p.objective && String(it.p.objective).trim());
+        if (!r.fam) r.fam = mode(it => mapFam(it.p.product));
+        if (!its.some(it => it.dur != null && it.p.format === r.format)) r.dur = '';
+        else if (!r.dur) r.dur = '25';
+        return r;
+      }, [recipe, M]);
+      const pred = useMemo(() => {
+        if (!model || !fullRecipe) return null;
+        const R = (r) => ({ pl: r.pl, format: r.format, dur: r.dur ? Number(r.dur) : null, day: r.day === '' ? null : Number(r.day), ct: r.ct, ob: r.ob, st: null, inf: r.inf === '1', fam: r.fam });
+        const f = M.fit[fullRecipe.pl]; if (!f) return null;
+        const lx = Math.log(f.medReach || 1);
+        const yp = model.full.predict(R(fullRecipe), lx); if (yp == null) return null;
+        const sd = model.full.sd[fullRecipe.pl] || 0.8;
+        const expBase = Math.exp(f.a + f.b * lx) * f.norm;
+        const er = Math.exp(yp);
+        let vtr = null;
+        if (model.vtrM && fullRecipe.dur) { const v = model.vtrM.predict(R(fullRecipe), null); if (v != null) vtr = Math.max(0, Math.min(100, v)); }
+        // qué cambiar: mejor alternativa por variable
+        const its = M.items.filter(it => it.p.platform === fullRecipe.pl);
+        const cand = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].filter(([, c]) => c >= 5).map(([v]) => v); };
+        const tries = [
+          ['format', cand(it => it.p.format), (v) => 'Cambiar a ' + v],
+          ['dur', fullRecipe.dur ? MAP_DUR_PICK.slice(1).map(([v]) => v) : [], (v) => 'Duración ' + (MAP_DUR_PICK.find(x => x[0] === v) || [, v])[1]],
+          ['day', cand(it => it.day == null ? null : String(it.day)), (v) => 'Publicar en ' + MAP_DAYS[Number(v)].toLowerCase()],
+          ['ct', cand(it => it.p.content_type && String(it.p.content_type).trim()), (v) => 'Contenido ' + String(v).toLowerCase()],
+          ['ob', cand(it => it.p.objective && String(it.p.objective).trim()), (v) => 'Objetivo ' + v],
+          ['inf', ['0', '1'], (v) => v === '1' ? 'Con influencer' : 'Sin influencer'],
+        ];
+        const moves = [];
+        for (const [k, vals, lab] of tries) {
+          let best = null;
+          for (const v of vals) {
+            if (String(v) === String(fullRecipe[k])) continue;
+            const y2 = model.full.predict(R({ ...fullRecipe, [k]: String(v) }), lx); if (y2 == null) continue;
+            const up = Math.exp(y2 - yp) - 1;
+            if (up > 0.08 && (!best || up > best.up)) best = { k, v: String(v), up, label: lab(String(v)) };
+          }
+          if (best) moves.push(best);
+        }
+        moves.sort((a, b) => b.up - a.up);
+        // posts parecidos
+        const r0 = R(fullRecipe);
+        const analogs = its.map(it => {
+          let s = 0;
+          if (it.p.format === r0.format) s += 4;
+          if (r0.dur != null && it.dur != null) { const b0 = mapDurB(r0.dur), b1 = mapDurB(it.dur); s += (b0 && b1 && b0.k === b1.k ? 3 : 0) + Math.max(0, 1 - Math.abs(it.dur - r0.dur) / 15); }
+          if (it.day === r0.day) s += 1; if (mapFam(it.p.product) === r0.fam) s += 1.5;
+          if (String(it.p.content_type || '').trim() === r0.ct) s += 1; if (String(it.p.objective || '').trim() === r0.ob) s += 0.5;
+          if (isInfluencer(it.p) === r0.inf) s += 0.5;
+          return { it, s: s + it.rank * 0.001 };
+        }).sort((a, b) => b.s - a.s).slice(0, 12).map(x => x.it);
+        return { er, idx: er / expBase, lo: Math.exp(yp - 0.674 * sd), hi: Math.exp(yp + 0.674 * sd),
+          idxLo: Math.exp(yp - 0.674 * sd) / expBase, idxHi: Math.exp(yp + 0.674 * sd) / expBase,
+          vtr, moves: moves.slice(0, 3), analogs, dur: r0.dur };
+      }, [model, fullRecipe, M]);
+      const ghost = simOn && pred ? { dur: pred.dur, idx: pred.idx, lo: pred.idxLo, hi: pred.idxHi } : null;
+
       const focusNode = sel || hover;
       const focusSet = useMemo(() => {
-        if (!focusNode) return null;
-        const n = M.nodes.find(x => x.id === focusNode); return n ? new Set(n.items.map(it => it.i)) : null;
-      }, [focusNode, M]);
-      const outliers = M.items.filter(it => it.idx >= 1.5).length;
+        if (selEdge) return new Set(selEdge.items.map(it => it.i));
+        if (focusNode) { const n = M.nodes.find(x => x.id === focusNode); return n ? new Set(n.items.map(it => it.i)) : null; }
+        if (simOn && pred) return new Set(pred.analogs.map(it => it.i));
+        return null;
+      }, [focusNode, selEdge, M, simOn, pred]);
+      const simHl = useMemo(() => {
+        if (!simOn || !pred || !fullRecipe) return null;
+        const id = 'piece|' + foldTxt(fullRecipe.pl + ' · ' + fullRecipe.format);
+        const s = new Set([id]); for (const it of pred.analogs) for (const n of it.nodes) if (n.startsWith('concept|') || n.startsWith('product|')) s.add(n);
+        return s;
+      }, [simOn, pred, fullRecipe]);
+
+      const bestCombos = useMemo(() => M.edges.filter(e => e.w >= 5).sort((a, b) => b.idx - a.idx).slice(0, 7), [M]);
+      const worstCombos = useMemo(() => M.edges.filter(e => e.w >= 5).sort((a, b) => a.idx - b.idx).slice(0, 3), [M]);
+      const nodeName = (id) => (M.nodes.find(n => n.id === id) || {}).name || '';
+      const outliers = visItems.filter(it => it.idx >= 1.5).length;
       const lines = useMemo(() => {
-        const t0 = new Date(); const ts = (k) => { const d = new Date(t0.getTime() + k * 1000); return '[' + d.toTimeString().slice(0, 8) + ']'; };
-        const meds = Object.entries(M.platMed).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([p, v]) => p + ' ' + mapPct(v)).join(' · ');
-        const bestNode = [...M.nodes].filter(n => n.n >= 6).sort((a, b) => b.idx - a.idx)[0];
-        const worstNode = [...M.nodes].filter(n => n.n >= 6).sort((a, b) => a.idx - b.idx)[0];
-        const L = [
-          { s: `Cargando ${fmtFull(M.items.length)} posts con ER básico (${scope === 'org' ? 'orgánico' : 'orgánico y pauta'})` },
-          { s: `ER típico por plataforma: ${meds}` },
-          { s: `${M.nodes.length} nodos · ${M.edges.length} conexiones` },
-        ];
+        const t0 = new Date(); const ts = (k) => '[' + new Date(t0.getTime() + k * 1000).toTimeString().slice(0, 8) + ']';
+        const L = [{ s: `Cargando ${fmtFull(M.items.length)} posts con ER básico (${scope === 'org' ? 'orgánico' : 'orgánico y pauta'})` },
+          { s: `Ajuste por alcance listo · ${M.nodes.length} nodos · ${M.edges.length} combinaciones` }];
+        if (bestCombos[0]) L.push({ s: `Mejor combinación: ${nodeName(bestCombos[0].a)} + ${nodeName(bestCombos[0].b)} · ${mapX(bestCombos[0].idx)} en ${bestCombos[0].w} posts` });
+        if (worstCombos[0]) L.push({ s: `Combinación más floja: ${nodeName(worstCombos[0].a)} + ${nodeName(worstCombos[0].b)} · ${mapX(worstCombos[0].idx)}` });
         if (M.bestDur) L.push({ s: `Duración con mejor índice: ${M.bestDur.k} (${mapX(M.bestDur.idx)}, ${M.bestDur.n} videos)` });
-        if (bestNode) L.push({ s: `Arriba de lo esperado: ${bestNode.name} · ${MAP_TYPES[bestNode.type].label.toLowerCase()} · ${mapX(bestNode.idx)}` });
-        if (worstNode && worstNode !== bestNode) L.push({ s: `Debajo de lo esperado: ${worstNode.name} · ${MAP_TYPES[worstNode.type].label.toLowerCase()} · ${mapX(worstNode.idx)}` });
-        L.push({ s: 'Listo. Toca un nodo para ver sus conexiones y sus posts.' });
+        if (model && model.val.n) {
+          const conf = Object.entries(model.val.byPlat).filter(([, v]) => v.corr != null).sort((a, b) => b[1].corr - a[1].corr);
+          L.push({ s: `Modelo probado con las últimas 8 semanas (${model.val.n} posts): error típico ±${Math.round(model.val.err * 100)}% vs ±${Math.round(model.val.errBase * 100)}% usando solo el promedio` });
+          if (conf.length) L.push({ s: `Confianza alta: ${conf.filter(([, v]) => v.conf === 'alta').map(([p]) => p).join(', ') || 'ninguna'} · media: ${conf.filter(([, v]) => v.conf === 'media').map(([p]) => p).join(', ') || 'ninguna'} · baja: ${conf.filter(([, v]) => v.conf === 'baja').map(([p]) => p).join(', ') || 'ninguna'}` });
+        }
+        L.push({ s: 'Listo. Toca un nodo, una combinación o arma un post en el simulador.' });
         return L.map((l, k) => ({ ...l, t: ts(k) }));
-      }, [M, scope]);
+      }, [M, scope, model, bestCombos, worstCombos]);
 
       if (M.items.length < 20) {
         return html`<section id="sec-mapa" className="px-4 md:px-7 py-7 relative group">
@@ -6820,76 +7224,109 @@
           <div className="rounded-xl bg-surface border border-line p-8 text-center text-txt3 text-sm">Hacen falta al menos 20 posts con ER básico en el filtro actual.</div>
         </section>`;
       }
-      const platShare = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {}))
-        .sort((a, b) => b[1] - a[1]);
+      const platShare = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {})).sort((a, b) => b[1] - a[1]);
+      const comboRow = (e) => html`<button key=${e.a + e.b} onClick=${() => setEdge(e)}
+          onMouseEnter=${() => setHover(null)}
+          className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05] text-left">
+        <span className="text-txt2 truncate min-w-0">${mapTrunc(nodeName(e.a), 18)} <span className="text-txt4">+</span> ${mapTrunc(nodeName(e.b), 18)}</span>
+        <span className="ml-auto text-txt4 font-mono text-[10px] tabular-nums shrink-0">${e.w}</span>
+        <span className="font-mono text-[10.5px] tabular-nums w-[34px] text-right shrink-0" style=${{ color: mapIdxColor(e.idx) }}>${mapX(e.idx)}</span>
+      </button>`;
       return html`
         <section id="sec-mapa" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-mapa" name="Mapa de contenido" />
           <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
-            <div className="max-w-[640px]">
+            <div className="max-w-[660px]">
               <h2 className="text-[18px] font-medium text-txt">Mapa de contenido</h2>
-              <p className="text-txt4 text-[12px] mt-1">Cada post se mide contra el post típico de su plataforma: 1× es lo normal, 2× es el doble de ER básico. Así un post de X y uno de TikTok se comparan en la misma escala. Respeta los filtros de arriba.</p>
+              <p className="text-txt4 text-[12px] mt-1">Cada post se compara con lo que se espera en su plataforma para su alcance: 1× es lo normal, 2× el doble de ER básico. Así un post que llegó a mucha gente no sale castigado. Respeta los filtros de arriba.</p>
             </div>
             <${MapSeg} label="Pauta" value=${scope} onChange=${setScope} options=${[['org', 'Orgánico'], ['all', 'Todo']]}/>
           </div>
 
-          <div className="rounded-xl bg-surface border border-line px-5 py-4 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-4">
-            <${MapCounter} label="Posts" value=${M.items.length} fmtFn=${fmtFull}/>
-            <${MapCounter} label="Nodos" value=${M.nodes.length} fmtFn=${fmtFull}/>
-            <${MapCounter} label="Conexiones" value=${M.edges.length} fmtFn=${fmtFull}/>
-            <${MapCounter} label="Sobresalientes ≥1.5×" value=${M.items.length ? outliers / M.items.length * 100 : null} fmtFn=${(v) => Math.round(v) + '%'} tone="text-success"/>
-            <${MapCounter} label="Semana" value=${M.lastWeek} fmtFn=${(v) => 'S' + Math.round(v)} tone="text-accent"/>
+          <div className="rounded-xl bg-surface border border-line px-5 py-4 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              <${MapCounter} label="Posts" value=${visItems.length} fmtFn=${fmtFull} instant=${frame != null}/>
+              <${MapCounter} label="Nodos" value=${M.nodes.length} fmtFn=${fmtFull}/>
+              <${MapCounter} label="Combinaciones" value=${M.edges.length} fmtFn=${fmtFull}/>
+              <${MapCounter} label="Sobresalientes ≥1.5×" value=${visItems.length ? outliers / visItems.length * 100 : null} fmtFn=${(v) => Math.round(v) + '%'} tone="text-success" instant=${frame != null}/>
+              <div className="min-w-0">
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1">Semana</div>
+                <div className="font-mono tabular-nums text-[22px] leading-none text-accent">${frameLabel || ('S' + (M.lastWeek || '—'))}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <button onClick=${() => { if (!playing && (frame == null || frame >= M.frames.length - 1)) setFrame(0); setPlaying(p => !p); }}
+                className="h-[30px] px-3 rounded-lg text-[11px] font-medium text-white shrink-0 inline-flex items-center gap-1.5" style=${{ background: MAP_HOT }}
+                aria-label=${playing ? 'Pausar la reproducción' : 'Reproducir el año semana a semana'}>
+                ${playing ? html`<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="3" height="8" fill="currentColor"/><rect x="6" y="1" width="3" height="8" fill="currentColor"/></svg> Pausa`
+                  : html`<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1l7 4-7 4z" fill="currentColor"/></svg> Reproducir el año`}
+              </button>
+              <input type="range" min="0" max=${Math.max(0, M.frames.length - 1)} value=${frame == null ? M.frames.length - 1 : frame}
+                onInput=${(e) => { setPlaying(false); setFrame(Number(e.target.value)); }} aria-label="Semana de la reproducción"
+                className="flex-1 min-w-0" style=${{ accentColor: MAP_HOT }}/>
+              ${frame != null && html`<button onClick=${() => { setPlaying(false); setFrame(null); }} className="text-[11px] text-txt3 hover:text-txt font-mono shrink-0">Ver todo</button>`}
+            </div>
           </div>
 
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-4 mb-4">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_310px] gap-4 mb-4">
             <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Red · quién aparece con quién</div>
-                <${MapSeg} label="Color de la red" value=${colorMode} onChange=${setColorMode} options=${[['perf', 'Rendimiento'], ['type', 'Tipo']]}/>
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Red · combinaciones y cómo rinden</div>
+                <${MapSeg} label="Color de los nodos" value=${colorMode} onChange=${setColorMode} options=${[['perf', 'Rendimiento'], ['type', 'Tipo']]}/>
               </div>
-              <${MapNetwork} M=${M} sel=${sel} setSel=${setSel} hover=${hover} setHover=${setHover} colorMode=${colorMode}/>
+              <${MapNetwork} M=${M} focus=${focusNode} focusEdge=${selEdge} sel=${sel} setSel=${setSel} setHover=${setHover} colorMode=${colorMode} frame=${frame} hl=${simHl}/>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10.5px] text-txt3 mt-2">
                 ${colorMode === 'type'
                   ? Object.entries(MAP_TYPES).map(([k, t]) => html`<span key=${k} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: t.color }}></span>${t.label}</span>`)
-                  : [[MAP_GOOD, 'Arriba de su plataforma (≥1.15×)'], ['rgb(var(--c-txt4))', 'En línea'], [MAP_BAD, 'Debajo (≤0.85×)']].map(([c, l]) => html`<span key=${l} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: c }}></span>${l}</span>`)}
-                <span className="text-txt4">Tamaño = posts · grosor = posts que comparten</span>
+                  : [[MAP_GOOD, 'Arriba de lo esperado (≥1.15×)'], ['rgb(var(--c-txt4))', 'En línea'], [MAP_BAD, 'Debajo (≤0.85×)']].map(([c, l]) => html`<span key=${l} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: c }}></span>${l}</span>`)}
+                <span className="text-txt4">Líneas verdes y rojas = combinaciones que funcionan o no (3+ posts)</span>
               </div>
             </div>
             <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
-              ${sel ? html`<${MapNodePanel} M=${M} nodeId=${sel} onPick=${onPick} onClear=${() => setSel(null)} setSel=${setSel}/>` : html`
-                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Nodos con mejor índice</div>
-                <div className="space-y-0.5 mb-5">
-                  ${[...M.nodes].filter(n => n.n >= 6).sort((a, b) => b.idx - a.idx).slice(0, 8).map(n => html`
-                    <button key=${n.id} onClick=${() => setSel(n.id)} onMouseEnter=${() => setHover(n.id)} onMouseLeave=${() => setHover(null)}
-                      className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05]">
-                      <span className="w-[7px] h-[7px] rounded-full shrink-0" style=${{ background: MAP_TYPES[n.type].color }}></span>
-                      <span className="text-txt2 truncate text-left">${n.name}</span>
-                      <span className="ml-auto font-mono text-[10.5px] tabular-nums" style=${{ color: mapIdxColor(n.idx) }}>${mapX(n.idx)}</span>
-                      <${MapBar} v=${n.idx} color=${mapIdxColor(n.idx)}/>
-                    </button>`)}
-                </div>
-                <${MapFeed} items=${M.items} onPick=${onPick} title="Feed · posts sobresalientes"/>`}
+              ${selEdge ? html`<${MapEdgePanel} M=${M} edge=${selEdge} onPick=${onPick} onClear=${() => setEdge(null)} setSel=${setSel}/>`
+                : sel ? html`<${MapNodePanel} M=${M} nodeId=${sel} onPick=${onPick} onClear=${() => setSel(null)} setSel=${setSel} setEdge=${setEdge}/>`
+                : html`
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Combinaciones que funcionan · 5+ posts</div>
+                <div className="space-y-0.5 mb-4">${bestCombos.map(comboRow)}</div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Las que no</div>
+                <div className="space-y-0.5 mb-4">${worstCombos.map(comboRow)}</div>
+                <div className="text-[10.5px] text-txt4">La última columna es el índice de los posts que comparten ambas; antes, cuántos son.</div>`}
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-4 mb-4">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_310px] gap-4 mb-4">
             <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Enjambre · cada punto es un post${focusSet ? html` · <span style=${{ color: MAP_HOT }}>${(M.nodes.find(x => x.id === focusNode) || {}).name}</span>` : ''}</div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Enjambre · cada punto es un post${focusSet ? html` · <span style=${{ color: MAP_HOT }}>${selEdge ? 'combinación' : focusNode ? nodeName(focusNode) : 'posts parecidos al tuyo'}</span>` : ''}</div>
                 <div className="flex flex-wrap gap-2">
                   <${MapSeg} label="Eje horizontal" value=${swMode} onChange=${setSwMode} options=${[['dur', 'Duración'], ['week', 'Semana']]}/>
                   <${MapSeg} label="Color de los puntos" value=${swColor} onChange=${setSwColor} options=${[['plat', 'Plataforma'], ['infl', 'Influencer']]}/>
                 </div>
               </div>
-              <${MapSwarm} M=${M} mode=${swMode} colorMode=${swColor} focusSet=${focusSet} onPick=${onPick}/>
+              <${MapSwarm} M=${M} mode=${swMode} colorMode=${swColor} focusSet=${focusSet} onPick=${onPick} frame=${frame} ghost=${ghost}/>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10.5px] text-txt3 mt-1">
                 ${swColor === 'plat'
                   ? platShare.map(([p, c]) => html`<span key=${p} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: PLAT_COLORS[p] || '#888' }}></span>${p} <span className="text-txt4 font-mono">${Math.round(c / M.items.length * 100)}%</span></span>`)
                   : html`<span className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: MAP_HOT }}></span>Con influencer</span><span className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full bg-txt4/60"></span>Marca</span>`}
-                <span className="text-txt4">Arriba = más ER que su plataforma · toca un punto para abrir el post</span>
+                <span className="text-txt4">Tamaño = alcance · arriba = más ER de lo esperado · la línea es la mediana</span>
               </div>
             </div>
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              ${!simOn ? html`
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Simulador</div>
+                <p className="text-[12px] text-txt3 mb-4">Arma un post (plataforma, pieza, duración, día, producto) y el modelo te dice qué ER esperar, con su rango, qué cambiar para subirlo y cuáles posts del pasado se le parecen.</p>
+                <button onClick=${() => setSimOn(true)} className="h-[34px] px-4 rounded-lg text-[12px] font-medium text-white" style=${{ background: MAP_HOT }}>Abrir simulador</button>
+                ${model && model.val.n > 0 && html`<p className="text-[10.5px] text-txt4 mt-4">Probado con las últimas 8 semanas: acierta mejor que el promedio en ${Object.values(model.val.byPlat).filter(v => v.conf === 'alta' || v.conf === 'media').length} de ${Object.keys(model.val.byPlat).length} plataformas.</p>`}`
+                : html`${fullRecipe && html`<${MapPredictor} M=${M} model=${model} recipe=${fullRecipe} setRecipe=${setRecipe} pred=${pred}/>`}
+                  <button onClick=${() => setSimOn(false)} className="mt-4 text-[11px] text-txt4 hover:text-txt font-mono">Cerrar simulador ×</button>`}
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_310px] gap-4">
             <${MapConsole} lines=${lines}/>
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <${MapFeed} items=${visItems} onPick=${onPick} title="Feed · posts sobresalientes"/>
+            </div>
           </div>
 
           <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2 mt-6">Recetas que hoy funcionan</div>
@@ -6901,13 +7338,13 @@
                 <span className="ml-auto text-[10.5px] text-txt4 font-mono">ER típico ${mapPct(M.platMed[r.pl])}</span>
               </div>
               <div className="space-y-2 text-[12px]">
-                ${r.fmt && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Pieza</span><span className="text-txt2">${r.fmt.k}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.fmt.idx) }}>${mapX(r.fmt.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[44px] text-right">${r.fmt.n}</span></div>`}
-                ${r.dur && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Duración</span><span className="text-txt2">${r.dur.k}${r.dur.vtr != null && r.shortest && r.shortest.k !== r.dur.k && r.shortest.vtr != null ? html` <span className="text-txt4">· VTR ${mapPct(r.dur.vtr)} vs ${mapPct(r.shortest.vtr)} en ${r.shortest.k}</span>` : ''}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.dur.idx) }}>${mapX(r.dur.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[44px] text-right">${r.dur.n}</span></div>`}
-                ${r.day && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Día</span><span className="text-txt2">${r.day.k}${r.worstDay && r.worstDay.k !== r.day.k ? html` <span className="text-txt4">· evitar ${r.worstDay.k.toLowerCase()} (${mapX(r.worstDay.idx)})</span>` : ''}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.day.idx) }}>${mapX(r.day.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[44px] text-right">${r.day.n}</span></div>`}
+                ${r.fmt && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Pieza</span><span className="text-txt2">${r.fmt.k}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.fmt.idx) }}>${mapX(r.fmt.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[34px] text-right">${r.fmt.n}</span></div>`}
+                ${r.dur && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Duración</span><span className="text-txt2">${r.dur.k}${r.dur.vtr != null && r.shortest && r.shortest.k !== r.dur.k && r.shortest.vtr != null ? html` <span className="text-txt4">· VTR ${mapPct(r.dur.vtr)} vs ${mapPct(r.shortest.vtr)} en ${r.shortest.k}</span>` : ''}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.dur.idx) }}>${mapX(r.dur.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[34px] text-right">${r.dur.n}</span></div>`}
+                ${r.day && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Día</span><span className="text-txt2">${r.day.k}${r.worstDay && r.worstDay.k !== r.day.k ? html` <span className="text-txt4">· evitar ${r.worstDay.k.toLowerCase()} (${mapX(r.worstDay.idx)})</span>` : ''}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.day.idx) }}>${mapX(r.day.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[34px] text-right">${r.day.n}</span></div>`}
               </div>
             </div>`)}
           </div>
-          <p className="text-[10.5px] text-txt4 mt-2">Mediana del índice de cada grupo; la última columna es el número de posts. Mínimo 8 posts por pieza y 6 por duración o día. Muestra qué acompaña a los mejores resultados, no prueba que lo cause.</p>
+          <p className="text-[10.5px] text-txt4 mt-2">Mediana del índice de cada grupo; la última columna es el número de posts. Mínimo 8 posts por pieza y 6 por duración o día. El índice y el simulador muestran qué acompaña a los mejores resultados; no prueban que lo causen.</p>
         </section>`;
     }
 
