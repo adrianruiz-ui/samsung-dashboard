@@ -1576,6 +1576,8 @@
           { id: 'sec-vtr',          name: 'VTR' },
           { id: 'sec-influencers',  name: 'Influencers' },
           { id: 'sec-mapa',         name: 'Mapa de contenido' },
+          { id: 'sec-desgaste',     name: 'Desgaste de conceptos' },
+          { id: 'sec-cierre',       name: 'Cierre de campaña' },
           { id: 'sec-mezcla',       name: 'Mezcla' },
           { id: 'sec-cadencia',     name: 'Cadencia' },
           { id: 'sec-horarios',     name: 'Horarios' },
@@ -1646,7 +1648,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-24-v78';
+    const BUILD_VERSION = '2026-10-24-v79';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2261,6 +2263,8 @@
       { id: 'vtr',          label: 'VTR',                Icon: PlayIcon,     group: 'resultados' },
       { id: 'influencers',  label: 'Influencers',        Icon: StarIcon,     group: 'resultados' },
       { id: 'mapa',         label: 'Mapa de contenido',  Icon: LayersIcon,   group: 'resultados' },
+      { id: 'desgaste',     label: 'Desgaste de conceptos', Icon: TrendIcon, group: 'resultados' },
+      { id: 'cierre',       label: 'Cierre de campaña',  Icon: TargetIcon,   group: 'resultados' },
       { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
       { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
       { id: 'horarios',     label: 'Horarios',           Icon: ClockIcon,    group: 'analisis' },
@@ -5739,7 +5743,7 @@
     // de marca de la MISMA plataforma y formato (peras con peras).
     // ============================================================
     const isInfluencer = (p) => /^s[ií]/i.test(String(p.is_influencer || '').trim());
-    function InfluencersSection({ D, onPick }) {
+    function InfluencersSection({ D, onPick, rawPosts }) {
       const posts = D.allPosts || [];
       const infl = posts.filter(isInfluencer);
       const plats = [...new Set(infl.map(p => p.platform))];
@@ -5895,6 +5899,7 @@
                 ${ranked.length > limit && html`<button onClick=${() => setLimit(l => l + 10)} className="mt-3 text-[12px] text-accent hover:underline">Ver 10 más (${ranked.length - limit} restantes)</button>`}
               </div>
             </div>`}
+          <${InfluencerFairBlock} D=${D} rawPosts=${rawPosts} onPick=${onPick}/>
         </section>`;
     }
 
@@ -7650,6 +7655,420 @@
 
           <p className="text-[10.5px] text-txt4 mt-3">El índice, el simulador y el calendario muestran qué acompaña a los mejores resultados; no prueban que lo causen.</p>
         </section>`;
+    }
+
+    // ============================================================
+    // v79 — LO QUE EL MODELO EXPLICA: desgaste de conceptos, ranking
+    // justo de influencers, cierre de campaña y predicción en el buscador.
+    // Todo usa un mismo modelo entrenado con TODO el orgánico (sin filtros)
+    // para comparar cada post contra lo que se esperaba para su pieza,
+    // plataforma, duración, día, producto y alcance.
+    // ============================================================
+    const MAP_MODEL_CACHE = new WeakMap();
+    function mapModelFor(posts) {
+      if (!posts || !posts.length) return null;
+      if (MAP_MODEL_CACHE.has(posts)) return MAP_MODEL_CACHE.get(posts);
+      const org = posts.filter(p => /org/i.test(String(p.strategy || '')));
+      const M = computeContentMap(org);
+      const model = M.items.length >= 60 ? buildModel(M.items, M.frames) : null;
+      const out = model ? { M, model } : null;
+      MAP_MODEL_CACHE.set(posts, out);
+      return out;
+    }
+    const mapIsOrg = (p) => /org/i.test(String(p.strategy || ''));
+    // Residuos en log: e = ER real vs esperado (con su alcance real); r = alcance real vs esperado.
+    // eB / rB: lo mismo pero contra lo que habría logrado la marca sola (sin influencer).
+    function mapResid(G, p) {
+      if (!G || !mapRateOk(p)) return null;
+      const d = parseDate(p.date);
+      const r = mapRecipeOf({ p, dur: p.duration > 0 ? p.duration : null, day: d ? d.getDay() : null });
+      const pe = G.model.er.predict(r, Math.log(p.reach)), pr = G.model.reach.predict(r, null);
+      if (pe == null || pr == null) return null;
+      const rb = { ...r, inf: false };
+      const peB = G.model.er.predict(rb, Math.log(p.reach)), prB = G.model.reach.predict(rb, null);
+      return { e: Math.log(p.basic_er) - pe, r: Math.log(p.reach) - pr, eB: Math.log(p.basic_er) - peB, rB: Math.log(p.reach) - prB };
+    }
+    const mapExpMed = (a) => (a.length ? Math.exp(mapMed(a)) : null);
+    const mapVsTxt = (v) => (v == null ? '—' : v >= 1 ? `+${Math.round((v - 1) * 100)}%` : `−${Math.round((1 - v) * 100)}%`);
+    function MapPill({ tone, children }) {
+      const c = tone === 'good' ? MAP_GOOD : tone === 'bad' ? MAP_BAD : tone === 'warn' ? 'rgb(var(--c-amber))' : 'rgb(var(--c-txt3))';
+      const bg = tone === 'good' ? 'rgba(47,176,131,0.14)' : tone === 'bad' ? 'rgba(229,72,77,0.13)' : tone === 'warn' ? 'rgb(var(--c-amber) / 0.14)' : 'rgb(var(--c-txt) / 0.07)';
+      return html`<span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap" style=${{ color: c, background: bg }}>${children}</span>`;
+    }
+
+    // ---------- Desgaste de conceptos ----------
+    const FAT_BUCKETS = [[1, 1, '1'], [2, 2, '2'], [3, 3, '3'], [4, 5, '4–5'], [6, 8, '6–8'], [9, 12, '9–12'], [13, 20, '13–20'], [21, 999, '21+']];
+    function computeFatigue(posts, G) {
+      const lastDate = Math.max(...posts.map(p => { const d = parseDate(p.date); return d ? d.getTime() : 0; }));
+      const by = new Map();
+      for (const p of posts) {
+        if (!mapIsOrg(p)) continue;
+        const name = String(p.subcampaign || '').trim(); if (!name || MAP_SKIP.test(name)) continue;
+        const res = mapResid(G, p); if (!res) continue;
+        const d = parseDate(p.date); if (!d) continue;
+        const k = foldTxt(name);
+        if (!by.has(k)) by.set(k, { names: new Map(), xs: [] });
+        const g = by.get(k); g.names.set(name, (g.names.get(name) || 0) + 1); g.xs.push({ p, t: d.getTime(), e: res.e });
+      }
+      const concepts = [];
+      const pooled = FAT_BUCKETS.map(() => []);
+      for (const g of by.values()) {
+        if (g.xs.length < 6) continue;
+        g.xs.sort((a, b) => a.t - b.t);
+        g.xs.forEach((x, i) => { x.k = i + 1; const bi = FAT_BUCKETS.findIndex(([lo, hi]) => x.k >= lo && x.k <= hi); if (bi >= 0) pooled[bi].push(x.e); });
+        const n = g.xs.length; const third = Math.max(2, Math.round(n / 3));
+        const first = Math.exp(mapMed(g.xs.slice(0, third).map(x => x.e)));
+        const lastN = Math.min(Math.max(3, Math.round(n / 4)), n - 2);
+        const last = Math.exp(mapMed(g.xs.slice(-lastN).map(x => x.e)));
+        const roll = g.xs.map((x, i) => Math.exp(mapMed(g.xs.slice(Math.max(0, i - 2), i + 1).map(y => y.e))));
+        // pendiente: efecto de duplicar las repeticiones
+        const lx = g.xs.map(x => Math.log(x.k)), ly = g.xs.map(x => x.e); const mx = mapMean(lx), my = mapMean(ly);
+        let sxy = 0, sxx = 0; for (let i = 0; i < n; i++) { sxy += (lx[i] - mx) * (ly[i] - my); sxx += (lx[i] - mx) ** 2; }
+        const perDouble = sxx ? Math.exp(sxy / sxx * Math.LN2) - 1 : 0;
+        const change = last / first - 1;
+        const peak = roll.reduce((m, v, i) => (v > roll[m] ? i : m), 0);
+        const breakAt = (() => { for (let i = Math.max(peak, 2); i < n; i++) if (roll[i] < 0.85 && roll.slice(i).every(v => v < 1)) return i + 1; return null; })();
+        const daysSince = (lastDate - g.xs[n - 1].t) / 864e5;
+        const status = change <= -0.3 && last <= 0.85 ? 'cansado' : change <= -0.15 ? 'bajando' : change >= 0.15 ? 'creciendo' : 'estable';
+        const plats = {}; for (const x of g.xs) plats[x.p.platform] = (plats[x.p.platform] || 0) + 1;
+        concepts.push({ name: [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0], n, xs: g.xs, roll, first, last, change, perDouble, breakAt,
+          status, active: daysSince <= 28, daysSince, plats, overall: Math.exp(mapMed(g.xs.map(x => x.e))) });
+      }
+      const curve = FAT_BUCKETS.map(([lo, hi, l], i) => ({ l, n: pooled[i].length, v: pooled[i].length >= 8 ? Math.exp(mapMed(pooled[i])) : null }));
+      const order = { cansado: 0, bajando: 1, estable: 2, creciendo: 3 };
+      concepts.sort((a, b) => (b.active - a.active) || (order[a.status] - order[b.status]) || b.n - a.n);
+      return { concepts, curve };
+    }
+    function FatSpark({ c }) {
+      const W = 220, H = 64, n = c.roll.length;
+      const X = (i) => 4 + (n === 1 ? 0 : i * (W - 8) / (n - 1));
+      const span = Math.min(Math.log10(5), Math.max(Math.log10(1.6), ...c.roll.map(v => Math.abs(Math.log10(v))), ...c.xs.map(x => Math.min(Math.log10(4), Math.abs(x.e) / Math.LN10))));
+      const Y = (v) => { const lv = Math.max(-span, Math.min(span, Math.log10(Math.max(0.05, v)))); return H / 2 - lv / span * (H / 2 - 5); };
+      const col = c.status === 'cansado' ? MAP_BAD : c.status === 'bajando' ? 'rgb(var(--c-amber))' : c.status === 'creciendo' ? MAP_GOOD : 'rgb(var(--c-txt3))';
+      return html`<svg viewBox=${`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label=${'Rendimiento de ' + c.name + ' post a post'}>
+        <rect x="0" y=${Y(1) - 0.75} width=${W} height="1.5" fill="rgb(var(--c-txt) / 0.10)"/>
+        ${c.xs.map((x, i) => html`<circle key=${i} cx=${X(i)} cy=${Y(Math.exp(x.e))} r="2" fill="rgb(var(--c-txt4))" fillOpacity="0.45"/>`)}
+        <polyline points=${c.roll.map((v, i) => `${X(i)},${Y(v)}`).join(' ')} fill="none" stroke=${col} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"/>
+        ${c.breakAt && (c.status === 'cansado' || c.status === 'bajando') && html`<circle cx=${X(c.breakAt - 1)} cy=${Y(c.roll[c.breakAt - 1])} r="4" fill=${MAP_BAD} stroke="rgb(var(--c-surface))" strokeWidth="1.5"/>`}
+      </svg>`;
+    }
+    function ConceptFatigueSection({ D, rawPosts, onPick }) {
+      const G = useMemo(() => mapModelFor(rawPosts), [rawPosts]);
+      const F = useMemo(() => (G ? computeFatigue(D.allPosts || [], G) : null), [D.allPosts, G]);
+      const [only, setOnly] = useState('active');
+      const [open, setOpen] = useState(null);
+      const [limit, setLimit] = useState(9);
+      if (!F || !F.concepts.length) return html`<section id="sec-desgaste" className="px-4 md:px-7 py-7 relative group">
+        <h2 className="text-[18px] font-medium text-txt mb-4">Desgaste de conceptos</h2>
+        <div className="rounded-xl bg-surface border border-line p-8 text-center text-txt3 text-sm">Hacen falta conceptos con al menos 6 posts orgánicos en el filtro actual.</div></section>`;
+      const list = F.concepts.filter(c => only === 'all' || c.active);
+      const tired = F.concepts.filter(c => c.active && c.status === 'cansado');
+      const cv = F.curve.filter(b => b.v != null);
+      const cv10 = (F.curve.find(b => b.l === '9–12') || {}).v, cv1 = (F.curve.find(b => b.l === '1') || {}).v;
+      const W = 560, H = 180, x0 = 40, x1 = W - 12, y0 = 30, yb = H - 30;
+      const dev = Math.max(0.25, ...cv.map(b => Math.abs(b.v - 1))) * 1.2;
+      const BX = (i) => x0 + i * (x1 - x0) / F.curve.length; const bw = (x1 - x0) / F.curve.length - 10;
+      const yc = (y0 + yb) / 2; const BY = (v) => yc - (v - 1) / dev * ((yb - y0) / 2);
+      const ST = { cansado: ['Cansado', 'bad'], bajando: ['Bajando', 'warn'], estable: ['Estable', 'neutral'], creciendo: ['Creciendo', 'good'] };
+      const advice = (c) => c.status === 'cansado' ? `Pausar o refrescar: rinde ${mapVsTxt(c.last)} contra lo esperado en sus últimos posts${c.breakAt ? `; se cansó hacia el post ${c.breakAt}` : ''}.`
+        : c.status === 'bajando' ? `Vigilar: viene de ${mapX(c.first)} a ${mapX(c.last)}. Cambiar formato o gancho antes de que se canse.`
+        : c.status === 'creciendo' ? `Le queda cuerda: sus últimos posts rinden mejor que los primeros (${mapX(c.first)} → ${mapX(c.last)}).`
+        : `Estable: rinde ${mapX(c.overall)} lo esperado y no muestra desgaste.`;
+      return html`
+        <section id="sec-desgaste" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-desgaste" name="Desgaste de conceptos" />
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+            <div className="max-w-[660px]">
+              <h2 className="text-[18px] font-medium text-txt">Desgaste de conceptos</h2>
+              <p className="text-txt4 text-[12px] mt-1">Cómo cambia el rendimiento de un concepto conforme se repite. Cada post se mide contra lo esperado para su pieza, plataforma, duración, día, producto y alcance (1× = lo normal), así que la caída es del concepto y no de la mezcla. Solo orgánico; respeta los filtros de arriba.</p>
+            </div>
+            <${MapSeg} label="Conceptos" value=${only} onChange=${(v) => { setOnly(v); setLimit(9); }} options=${[['active', 'Activos'], ['all', 'Todos']]}/>
+          </div>
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4 mb-4">
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1">Patrón general · todos los conceptos</div>
+              <p className="text-[12.5px] text-txt2 mb-2">${cv1 && cv10 ? `El primer post de un concepto rinde ${mapX(cv1)} lo esperado; hacia el post 9–12 baja a ${mapX(cv10)} (${mapVsTxt(cv10 / cv1)}).` : 'Rendimiento mediano según el número de veces que se ha repetido el concepto.'}</p>
+              <svg viewBox=${`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label="Rendimiento mediano por número de repetición del concepto">
+                <rect x=${x0} y=${BY(1) - 0.75} width=${x1 - x0} height="1.5" fill="rgb(var(--c-txt) / 0.12)"/>
+                <text x=${x0 - 6} y=${BY(1) + 3} fontSize="10" textAnchor="end" fill="rgb(var(--c-txt4))" fontFamily="JetBrains Mono, monospace">1×</text>
+                ${F.curve.map((b, i) => b.v == null ? null : html`<g key=${b.l}>
+                  <rect x=${BX(i) + 5} y=${Math.min(BY(b.v), BY(1))} width=${bw} height=${Math.max(2, Math.abs(BY(b.v) - BY(1)))} rx="3"
+                    fill=${b.v >= 1.05 ? MAP_GOOD : b.v <= 0.95 ? MAP_BAD : 'rgb(var(--c-txt4))'} fillOpacity="0.75"><title>${`Post ${b.l} de cada concepto: ${mapX(b.v)} lo esperado (${b.n} posts)`}</title></rect>
+                  <text x=${BX(i) + 5 + bw / 2} y=${b.v >= 1 ? BY(b.v) - 6 : BY(b.v) + 13} fontSize="10.5" textAnchor="middle" fill="rgb(var(--c-txt2))" fontFamily="JetBrains Mono, monospace">${mapX(b.v)}</text>
+                  <text x=${BX(i) + 5 + bw / 2} y=${H - 8} fontSize="10" textAnchor="middle" fill="rgb(var(--c-txt4))" fontFamily="JetBrains Mono, monospace">#${b.l}</text></g>`)}
+              </svg>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Para planear</div>
+              ${tired.length ? html`<p className="text-[12.5px] text-txt2 mb-3"><b style=${{ color: MAP_BAD }}>${tired.length} ${tired.length === 1 ? 'concepto activo se cansó' : 'conceptos activos se cansaron'}:</b> ${tired.map(c => c.name).join(', ')}.</p>`
+                : html`<p className="text-[12.5px] text-txt2 mb-3">Ningún concepto activo muestra desgaste fuerte.</p>`}
+              ${(() => { const g = F.concepts.filter(c => c.active && c.status === 'creciendo'); return g.length ? html`<p className="text-[12.5px] text-txt2 mb-3"><b style=${{ color: MAP_GOOD }}>Con cuerda:</b> ${g.map(c => c.name).join(', ')}.</p>` : null; })()}
+              ${(() => { const g = F.concepts.filter(c => c.active && c.status === 'bajando'); return g.length ? html`<p className="text-[12.5px] text-txt2 mb-3"><b className="text-amber">Bajando:</b> ${g.map(c => c.name).join(', ')}.</p>` : null; })()}
+              <p className="text-[10.5px] text-txt4">Activo = publicó en las últimas 4 semanas. «Cansado» = sus últimos posts rinden 30% menos que los primeros y debajo de lo esperado.</p>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            ${list.slice(0, limit).map(c => html`<div key=${c.name} className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="flex items-start gap-2 mb-1">
+                <div className="min-w-0"><div className="text-[13px] text-txt font-medium truncate">${c.name}</div>
+                  <div className="text-[10.5px] text-txt4">${c.n} posts · ${Object.entries(c.plats).sort((a, b) => b[1] - a[1]).map(([p, k]) => (PLAT_LETTERS[p] || p) + ' ' + k).join(' · ')}${c.active ? '' : ' · terminado'}</div></div>
+                <span className="ml-auto shrink-0"><${MapPill} tone=${ST[c.status][1]}>${ST[c.status][0]}</${MapPill}></span>
+              </div>
+              <${FatSpark} c=${c}/>
+              <div className="flex items-baseline justify-between text-[11px] font-mono tabular-nums text-txt3 mt-1"><span>Inicio ${mapX(c.first)}</span><span>Ahora ${mapX(c.last)}</span></div>
+              <p className="text-[11.5px] text-txt2 mt-2">${advice(c)}</p>
+              <button onClick=${() => setOpen(open === c.name ? null : c.name)} className="mt-2 text-[10.5px] text-txt4 hover:text-txt font-mono">${open === c.name ? 'Ocultar posts' : 'Ver posts'}</button>
+              ${open === c.name && html`<div className="mt-2 space-y-0.5 max-h-[220px] overflow-y-auto">${[...c.xs].reverse().map(x => html`<button key=${x.k} onClick=${() => onPick(x.p)}
+                  className="w-full flex items-center gap-2 text-[11px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05] text-left">
+                <span className="font-mono text-txt4 w-[24px]">#${x.k}</span>
+                <span className="font-mono text-[10px] px-1.5 rounded text-white" style=${{ background: PLAT_COLORS[x.p.platform] || '#888' }}>${PLAT_LETTERS[x.p.platform] || '·'}</span>
+                <span className="text-txt2 truncate">${x.p.format || ''}${x.p.duration ? ' · ' + Math.round(x.p.duration) + ' s' : ''}</span>
+                <span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(Math.exp(x.e)) }}>${mapX(Math.exp(x.e))}</span></button>`)}</div>`}
+            </div>`)}
+          </div>
+          ${list.length > limit && html`<div className="text-center mt-4"><button onClick=${() => setLimit(l => l + 9)} className="text-[12px] text-txt3 hover:text-txt rounded-lg bg-onSurface/[0.04] hover:bg-onSurface/[0.07] px-4 py-2">Ver ${Math.min(9, list.length - limit)} más</button></div>`}
+          <p className="text-[10.5px] text-txt4 mt-3">La línea es la mediana móvil de 3 posts; el punto rojo marca dónde se cansó. Conceptos con al menos 6 posts orgánicos.</p>
+        </section>`;
+    }
+
+    // ---------- Ranking justo de influencers ----------
+    function InfluencerFairBlock({ D, rawPosts, onPick }) {
+      const G = useMemo(() => mapModelFor(rawPosts), [rawPosts]);
+      const [sortK, setSortK] = useState('i');
+      const [lim, setLim] = useState(12);
+      const rows = useMemo(() => {
+        if (!G) return [];
+        const by = new Map();
+        for (const p of D.allPosts || []) {
+          if (!isInfluencer(p) || !mapIsOrg(p)) continue;
+          const raw = String(p.influencer_name || '').trim(); if (!raw) continue;
+          const res = mapResid(G, p); if (!res) continue;
+          const k = foldTxt(raw);
+          if (!by.has(k)) by.set(k, { names: new Map(), xs: [] });
+          const g = by.get(k); g.names.set(raw, (g.names.get(raw) || 0) + 1); g.xs.push({ p, ...res });
+        }
+        return [...by.values()].map(g => {
+          const e = mapExpMed(g.xs.map(x => x.eB)), r = mapExpMed(g.xs.map(x => x.rB)), i = mapExpMed(g.xs.map(x => x.eB + x.rB));
+          const n = g.xs.length;
+          const verdict = n < 3 ? ['Poca evidencia', 'neutral'] : i >= 1.2 ? ['Volver a contratar', 'good'] : i <= 0.8 ? ['No repetir', 'bad'] : ['Evaluar', 'warn'];
+          const top = [...g.xs].sort((a, b) => (b.eB + b.rB) - (a.eB + a.rB))[0].p;
+          return { name: [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0], n, e, r, i, verdict, top,
+            plats: [...new Set(g.xs.map(x => x.p.platform))] };
+        });
+      }, [D.allPosts, G]);
+      if (!rows.length) return null;
+      const f = { i: (x) => x.i, e: (x) => x.e, r: (x) => x.r }[sortK];
+      const sorted = [...rows].sort((a, b) => (b.n >= 3) - (a.n >= 3) || f(b) - f(a));
+      const cell = (v) => html`<span className="font-mono tabular-nums" style=${{ color: mapIdxColor(v) }}>${mapX(v)}</span>`;
+      return html`<div className="rounded-xl bg-surface border border-line p-5 mt-4">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+          <div className="max-w-[640px]">
+            <div className="text-[13px] text-txt font-medium">Ranking justo · cuánto aporta cada influencer</div>
+            <p className="text-[11.5px] text-txt4 mt-0.5">Cada post se compara contra lo que habría logrado la marca sola con la misma plataforma, pieza, duración, día, producto y alcance. 1.5× = 50% más que la marca sola. Solo orgánico.</p>
+          </div>
+          <${MapSeg} label="Ordenar ranking justo" value=${sortK} onChange=${setSortK} options=${[['i', 'Interacciones'], ['e', 'Engagement'], ['r', 'Alcance']]}/>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead><tr className="text-[9px] font-mono uppercase tracking-[0.15em] text-txt4">
+              <th className="text-left py-2 pr-2 font-medium">Influencer</th><th className="text-right py-2 px-2 font-medium">Posts</th>
+              <th className="text-right py-2 px-2 font-medium">Engagement</th><th className="text-right py-2 px-2 font-medium">Alcance</th><th className="text-right py-2 px-2 font-medium">Interacciones</th>
+              <th className="text-left py-2 pl-3 font-medium">Veredicto</th></tr></thead>
+            <tbody>${sorted.slice(0, lim).map((x, i) => html`<tr key=${x.name} className=${i % 2 ? '' : 'bg-onSurface/[0.025]'}>
+              <td className="py-2 pr-2 pl-1"><button onClick=${() => onPick && onPick(x.top)} className="text-txt2 hover:text-txt text-left">${x.name}</button>
+                <span className="text-txt4 text-[10.5px] ml-1.5">${x.plats.map(p => PLAT_LETTERS[p] || p).join(' · ')}</span></td>
+              <td className="py-2 px-2 text-right tabular-nums text-txt3">${x.n}</td>
+              <td className="py-2 px-2 text-right">${cell(x.e)}</td><td className="py-2 px-2 text-right">${cell(x.r)}</td><td className="py-2 px-2 text-right">${cell(x.i)}</td>
+              <td className="py-2 pl-3"><${MapPill} tone=${x.verdict[1]}>${x.verdict[0]}</${MapPill}></td></tr>`)}</tbody>
+          </table>
+        </div>
+        ${sorted.length > lim && html`<button onClick=${() => setLim(l => l + 12)} className="mt-3 text-[12px] text-accent hover:underline">Ver 12 más (${sorted.length - lim} restantes)</button>`}
+        <p className="text-[10.5px] text-txt4 mt-2">Veredicto con 3 posts o más: «Volver a contratar» si sus interacciones superan en 20% o más a la marca sola; «No repetir» si quedan 20% abajo. El nombre abre su mejor post.</p>
+      </div>`;
+    }
+
+    // ---------- Cierre de campaña ----------
+    function CampaignCloseSection({ rawPosts, onPick }) {
+      const G = useMemo(() => mapModelFor(rawPosts), [rawPosts]);
+      const camps = useMemo(() => {
+        const m = new Map();
+        for (const p of rawPosts || []) {
+          const c = String(p.campaign || '').trim(); if (!c || MAP_SKIP.test(c)) continue;
+          const d = parseDate(p.date); if (!d) continue;
+          if (!m.has(c)) m.set(c, { c, n: 0, first: d, last: d });
+          const g = m.get(c); g.n += 1; if (d < g.first) g.first = d; if (d > g.last) g.last = d;
+        }
+        return [...m.values()].filter(g => g.n >= 8).sort((a, b) => b.last - a.last);
+      }, [rawPosts]);
+      const [camp, setCamp] = useState(null);
+      const cur = camp || (camps[0] && camps[0].c);
+      const R = useMemo(() => {
+        if (!cur || !G) return null;
+        const posts = (rawPosts || []).filter(p => String(p.campaign || '').trim() === cur);
+        const lastBase = Math.max(...(rawPosts || []).map(p => { const d = parseDate(p.date); return d ? d.getTime() : 0; }));
+        const info = camps.find(g => g.c === cur);
+        const sum = (k) => posts.reduce((s, p) => s + (Number(p[k]) || 0), 0);
+        const rateP = posts.filter(p => p.basic_er != null && !((p.platform === 'Instagram' || p.platform === 'Facebook') && p.format === 'Stories'));
+        const vt = posts.map(p => p.vtr).filter(v => v != null && isFinite(v));
+        const org = posts.filter(mapIsOrg).map(p => ({ p, res: mapResid(G, p) })).filter(x => x.res);
+        const grp = (keyFn) => {
+          const m = new Map();
+          for (const x of org) { const k = keyFn(x.p); if (!k || MAP_SKIP.test(String(k).trim())) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+          return [...m.entries()].map(([k, xs]) => ({ k, n: xs.length, e: mapExpMed(xs.map(x => x.res.e)), r: mapExpMed(xs.map(x => x.res.r)), i: mapExpMed(xs.map(x => x.res.e + x.res.r)) }))
+            .filter(g => g.n >= 2).sort((a, b) => b.i - a.i);
+        };
+        const dims = [
+          ['Concepto', grp(p => p.subcampaign)], ['Pieza', grp(p => p.platform + ' · ' + (p.format || 'Sin formato'))],
+          ['Producto', grp(p => p.product)], ['Etapa', grp(p => p.stage)], ['Influencer', grp(p => (isInfluencer(p) ? 'Con influencer' : 'Marca sola'))],
+        ].filter(([, g]) => g.length);
+        const ranked = [...org].sort((a, b) => (b.res.e + b.res.r) - (a.res.e + a.res.r));
+        const allG = dims.flatMap(([d, gs]) => gs.filter(g => g.n >= 3).map(g => ({ ...g, d })));
+        const wins = allG.filter(g => g.i >= 1.15).sort((a, b) => b.i - a.i).slice(0, 3);
+        const loss = allG.filter(g => g.i <= 0.85).sort((a, b) => a.i - b.i).slice(0, 3);
+        return { posts, info, ended: (lastBase - info.last.getTime()) / 864e5 > 14,
+          reach: sum('reach'), inter: sum('interactions'), views: sum('views'),
+          ber: rateP.length ? mapMean(rateP.map(p => p.basic_er)) : null, vtr: vt.length ? mapMean(vt) : null,
+          nOrg: org.length, oE: mapExpMed(org.map(x => x.res.e)), oR: mapExpMed(org.map(x => x.res.r)), oI: mapExpMed(org.map(x => x.res.e + x.res.r)),
+          dims, top: ranked.slice(0, 3), bottom: ranked.slice(-3).reverse(), wins, loss,
+          plats: Object.entries(posts.reduce((a, p) => { a[p.platform] = (a[p.platform] || 0) + 1; return a; }, {})).sort((a, b) => b[1] - a[1]) };
+      }, [cur, G, rawPosts, camps]);
+      if (!camps.length || !R) return null;
+      const dfmt = (d) => d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+      const postRow = (x) => html`<button key=${x.p.link || Math.random()} onClick=${() => onPick(x.p)} className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05] text-left">
+        <span className="font-mono text-[10px] px-1.5 rounded text-white" style=${{ background: PLAT_COLORS[x.p.platform] || '#888' }}>${PLAT_LETTERS[x.p.platform] || '·'}</span>
+        <span className="text-txt2 truncate">${x.p.format || ''}${x.p.duration ? ' · ' + Math.round(x.p.duration) + ' s' : ''} · ${[x.p.subcampaign, x.p.product].filter(v => v && !MAP_SKIP.test(String(v).trim())).join(' · ')}</span>
+        <span className="ml-auto font-mono tabular-nums shrink-0" style=${{ color: mapIdxColor(Math.exp(x.res.e + x.res.r)) }}>${mapX(Math.exp(x.res.e + x.res.r))}</span></button>`;
+      const gLabel = (g) => `${g.d === 'Influencer' || g.d === 'Pieza' ? '' : g.d.toLowerCase() + ' '}${g.k}`;
+      return html`
+        <section id="sec-cierre" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-cierre" name="Cierre de campaña" />
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+            <div className="max-w-[640px]">
+              <h2 className="text-[18px] font-medium text-txt">Cierre de campaña</h2>
+              <p className="text-txt4 text-[12px] mt-1">El post-mortem automático: totales de la campaña y qué rindió arriba o abajo de lo esperado para su pieza, plataforma, duración, día, producto y alcance. No depende de los filtros de arriba.</p>
+            </div>
+            <label className="block min-w-[240px]">
+              <span className="block text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Campaña</span>
+              <select value=${cur} onChange=${(e) => setCamp(e.target.value)} className="w-full h-[34px] px-2 rounded-lg border border-line bg-onSurface/[0.03] text-[12px] text-txt focus:outline-none focus:border-line2">
+                ${camps.map(g => html`<option key=${g.c} value=${g.c}>${g.c} · ${g.n} posts</option>`)}
+              </select></label>
+          </div>
+          <div className="rounded-xl bg-surface border border-line p-5 mb-4">
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="text-[16px] text-txt font-medium">${cur}</div>
+              <${MapPill} tone=${R.ended ? 'neutral' : 'warn'}>${R.ended ? 'Terminada' : 'En curso · cierre preliminar'}</${MapPill}>
+              <span className="text-[11.5px] text-txt4">${dfmt(R.info.first)} – ${dfmt(R.info.last)} · ${R.posts.length} posts · ${R.plats.map(([p, n]) => p + ' ' + n).join(' · ')}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              ${[['Alcance', fmtFull(R.reach)], ['Interacciones', fmtFull(R.inter)], ['Views', fmtFull(R.views)], ['ER básico', R.ber == null ? '—' : mapPct(R.ber)], ['VTR', R.vtr == null ? '—' : mapPct(R.vtr)],
+                 ['Vs. lo esperado', R.oI == null ? '—' : mapX(R.oI)]].map(([l, v], i) => html`<div key=${l} className="min-w-0">
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">${l}</div>
+                <div className="font-mono tabular-nums text-[20px] leading-none" style=${i === 5 && R.oI != null ? { color: mapIdxColor(R.oI) } : null}>${v}</div></div>`)}
+            </div>
+            <p className="text-[10.5px] text-txt4 mt-3">Totales con orgánico y pauta. «Vs. lo esperado» compara las interacciones de los ${R.nOrg} posts orgánicos contra lo esperado (engagement ${mapX(R.oE)} · alcance ${mapX(R.oR)}).</p>
+          </div>
+          <div className="grid lg:grid-cols-3 gap-4 mb-4">
+            <div className="rounded-xl bg-surface border border-line p-4">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] mb-2" style=${{ color: MAP_GOOD }}>Lo que funcionó</div>
+              ${R.wins.length ? R.wins.map(g => html`<p key=${g.d + g.k} className="text-[12px] text-txt2 mb-1.5">${gLabel(g)}: <b className="font-mono" style=${{ color: MAP_GOOD }}>${mapVsTxt(g.i)}</b> <span className="text-txt4">(${g.n} posts)</span></p>`) : html`<p className="text-[12px] text-txt3">Nada destacó con 3 posts o más.</p>`}
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-4">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] mb-2" style=${{ color: MAP_BAD }}>Lo que no</div>
+              ${R.loss.length ? R.loss.map(g => html`<p key=${g.d + g.k} className="text-[12px] text-txt2 mb-1.5">${gLabel(g)}: <b className="font-mono" style=${{ color: MAP_BAD }}>${mapVsTxt(g.i)}</b> <span className="text-txt4">(${g.n} posts)</span></p>`) : html`<p className="text-[12px] text-txt3">Nada quedó claramente abajo con 3 posts o más.</p>`}
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-4">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Para la próxima</div>
+              ${R.wins[0] && html`<p className="text-[12px] text-txt2 mb-1.5">Repetir ${gLabel(R.wins[0])}${R.wins[1] ? ` y ${gLabel(R.wins[1])}` : ''}.</p>`}
+              ${R.loss[0] && html`<p className="text-[12px] text-txt2 mb-1.5">Replantear o reducir ${gLabel(R.loss[0])}.</p>`}
+              ${!R.wins.length && !R.loss.length && html`<p className="text-[12px] text-txt3">La campaña rindió en línea con lo esperado; no hay una palanca clara.</p>`}
+              <p className="text-[10.5px] text-txt4 mt-2">Lectura con 3 posts o más por grupo; con menos, tómalo como pista.</p>
+            </div>
+          </div>
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Contra lo esperado · por dimensión</div>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+                ${R.dims.map(([d, gs]) => html`<div key=${d} className="min-w-0">
+                  <div className="text-[11px] text-txt font-medium mb-1">${d}</div>
+                  ${gs.slice(0, 6).map(g => html`<div key=${g.k} className="flex items-center gap-2 text-[11.5px] py-0.5">
+                    <span className="text-txt2 truncate min-w-0">${g.k}</span><span className="ml-auto text-txt4 font-mono text-[10px] shrink-0">${g.n}</span>
+                    <${MapBar} v=${g.i} color=${mapIdxColor(g.i)}/>
+                    <span className="font-mono tabular-nums w-[38px] text-right shrink-0" style=${{ color: mapIdxColor(g.i) }}>${mapX(g.i)}</span></div>`)}
+                </div>`)}
+              </div>
+              <p className="text-[10.5px] text-txt4 mt-3">Interacciones (engagement × alcance) contra lo esperado; el número gris es la cantidad de posts orgánicos.</p>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Mejores posts vs. lo esperado</div>
+              <div className="space-y-0.5 mb-4">${R.top.map(postRow)}</div>
+              <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Los más flojos</div>
+              <div className="space-y-0.5">${R.bottom.map(postRow)}</div>
+            </div>
+          </div>
+        </section>`;
+    }
+
+    // ---------- Predicción desde el buscador ----------
+    const ASK_PREDICT_RX = /\b(?:esperaria(?:s|mos|n)?|esperar|espero|esperamos|predic\w*|pronostic\w*|cuanto (?:daria|haria|sacaria|tendria|lograria|generaria)|que tanto (?:daria|funcionaria|rendiria)|como le iria|que tal le iria|cuanto rendiria|como rendiria|simula\w*|estimad[oa]s?|estima(?:s|mos)?|proyecta(?:s|mos)?)\b/;
+    const ASK_DAYS_RX = [[1, /\blunes\b/], [2, /\bmartes\b/], [3, /\bmiercoles\b/], [4, /\bjueves\b/], [5, /\bviernes\b/], [6, /\bsabados?\b/], [0, /\bdomingos?\b/]];
+    const ASK_FMT_PLAT = { Short: 'YouTube', Reels: 'Instagram', Carrusel: 'Instagram', Stories: 'Instagram', Texto: 'Threads' };
+    function askRunPredict(spec, all, base) {
+      const G = mapModelFor(all);
+      if (!G) return { ...base, chips: [], kind: 'notice', headline: { label: 'Predicción', value: 'Sin datos suficientes', sub: 'Hacen falta al menos 60 posts orgánicos con ER básico para entrenar el modelo.' } };
+      const t = ' ' + askFold(spec.q) + ' ';
+      const fmts = (spec.dims.formats || []).filter(f => f !== '__videos');
+      let plats = spec.dims.platforms && spec.dims.platforms.length ? [...spec.dims.platforms] : null;
+      const its = G.M.items;
+      const known = [...new Set(its.map(it => it.p.platform))];
+      if (!plats) plats = fmts.length ? known.filter(pl => its.filter(it => it.p.platform === pl && it.p.format === fmts[0]).length >= 5) : [];
+      if (!plats.length && fmts.length && ASK_FMT_PLAT[fmts[0]]) plats = [ASK_FMT_PLAT[fmts[0]]];
+      if (!plats.length) plats = known.sort((a, b) => its.filter(it => it.p.platform === b).length - its.filter(it => it.p.platform === a).length).slice(0, 4);
+      const day = (ASK_DAYS_RX.find(([, rx]) => rx.test(t)) || [null])[0];
+      const fam = spec.dims.products && spec.dims.products.length ? mapFam(spec.dims.products[0]) : null;
+      const inf = /\bcon (?:un |una )?influencers?\b|\b(?:creador|creadora|talento) /.test(t) ? '1' : '0';
+      const ct = /\bglobal\b/.test(t) ? 'Global' : /\blocal\b/.test(t) ? 'Local' : /\bregional\b/.test(t) ? 'Regional' : null;
+      const durTxt = t.match(/\b(\d{1,3}) ?(?:s|seg|segs|segundos?)\b/);
+      const dur = durTxt ? Number(durTxt[1]) : spec.dur ? (spec.dur.min != null && spec.dur.max != null ? (spec.dur.min + spec.dur.max) / 2 : spec.dur.max != null ? spec.dur.max : spec.dur.min + 5) : null;
+      const filled = [];
+      const rows = []; let main = null;
+      for (const pl of plats) {
+        const P = its.filter(it => it.p.platform === pl);
+        const mode = (fn) => { const m = new Map(); for (const it of P) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''; };
+        const format = fmts.find(f => P.some(it => it.p.format === f)) || mode(it => it.p.format);
+        const hasDur = P.some(it => it.dur != null && it.p.format === format);
+        const rec = { pl, format, dur: hasDur ? String(Math.round(dur || mapMed(P.filter(it => it.dur != null && it.p.format === format).map(it => it.dur)) || 25)) : '',
+          day: String(day != null ? day : mode(it => it.day)), ct: ct || mode(it => it.p.content_type && String(it.p.content_type).trim()),
+          ob: mode(it => it.p.objective && String(it.p.objective).trim()), fam: fam || mode(it => mapFam(it.p.product)), inf };
+        const pr = mapPredictRecipe(G.model, G.M, rec); if (!pr) continue;
+        const conf = (G.model.val.byPlat[pl] || {}).conf || 'sin prueba';
+        rows.push({ rec, pr, conf });
+        if (!main) main = { rec, pr, conf };
+      }
+      if (!main) return { ...base, kind: 'empty' };
+      if (!fmts.length) filled.push('pieza');
+      if (day == null) filled.push('día');
+      if (!fam) filled.push('producto');
+      if (!ct) filled.push('tipo de contenido');
+      if (!spec.dur && !durTxt && main.rec.dur) filled.push('duración');
+      const desc = (r) => `${r.rec.pl} · ${r.rec.format}${r.rec.dur ? ' · ' + r.rec.dur + ' s' : ''} · ${MAP_DAYS[Number(r.rec.day)].toLowerCase()} · ${r.rec.fam}${r.rec.inf === '1' ? ' · con influencer' : ''}`;
+      if (rows.length === 1) {
+        const r = main.pr;
+        return { ...base, kind: 'table', posts: [],
+          headline: { label: 'ER básico esperado', value: mapPct(r.er), sub: `Rango probable ${mapPct(r.lo)}–${mapPct(r.hi)} (la mitad de los posts así cae aquí) · ${mapX(r.idx)} lo típico de ${main.rec.pl}. ${desc(main)}. Confianza del modelo en ${main.rec.pl}: ${main.conf}.` },
+          table: { cols: ['Métrica', 'Esperado', 'Rango probable'], align: ['l', 'r', 'r'], rows: [
+            ['Alcance', fmtFull(r.reach), fmtFull(r.reachLo) + ' – ' + fmtFull(r.reachHi)],
+            ...(r.views != null ? [['Views', fmtFull(r.views), fmtFull(r.viewsLo) + ' – ' + fmtFull(r.viewsHi)]] : []),
+            ['Interacciones', fmtFull(r.inter), '—'],
+            ...(r.vtr != null ? [['VTR', mapPct(r.vtr), '—']] : [])] },
+          notes: [ ...(filled.length ? [`No dijiste ${filled.join(', ')}: usé lo más común en ${main.rec.pl}.`] : []),
+            'Predicción de un modelo entrenado con el orgánico de la base; ajústala en Mapa de contenido → Simulador.'] };
+      }
+      return { ...base, kind: 'table', posts: [],
+        headline: { label: 'ER básico esperado', value: `${mapPct(Math.min(...rows.map(r => r.pr.er)))} – ${mapPct(Math.max(...rows.map(r => r.pr.er)))}`, sub: `Predicción por plataforma${fmts.length ? ' para ' + fmts[0] : ''}${day != null ? ' un ' + MAP_DAYS[day].toLowerCase() : ''}${fam ? ' de ' + fam : ''}.` },
+        table: { cols: ['Plataforma', 'Pieza', 'ER esperado', 'Rango', 'Alcance', 'Confianza'], align: ['l', 'l', 'r', 'r', 'r', 'l'],
+          rows: rows.sort((a, b) => b.pr.er - a.pr.er).map(r => [r.rec.pl, r.rec.format + (r.rec.dur ? ' · ' + r.rec.dur + ' s' : ''), mapPct(r.pr.er), mapPct(r.pr.lo) + '–' + mapPct(r.pr.hi), fmtFull(r.pr.reach), r.conf]) },
+        notes: [...(filled.length ? [`No dijiste ${filled.join(', ')}: usé lo más común de cada plataforma.`] : []),
+          'Predicción de un modelo entrenado con el orgánico de la base; ajústala en Mapa de contenido → Simulador.'] };
     }
 
     // ============================================================
@@ -10341,6 +10760,8 @@
       if (/\bcalidad de (?:los )?datos\b|\bpendientes?\b|\bfalta(?:n)? (?:por )?capturar\b|\bsin capturar\b|\berror(?:es)? (?:en|de) (?:la base|captura|el sheet)\b|\bdatos (?:incompletos|faltantes|mal capturados)\b|\bque hay que corregir\b|\blinks? duplicados?\b|\bduplicados\b|\b(?:se puede|podemos|esta lista para|lista para) reportar\b|\bmal capturad[oa]s?\b|\bque falta (?:llenar|capturar)\b/.test(t) && !spec.intent0) {
         spec.intent0 = 'quality'; spec.qKind = qKind; t = t.replace(/\bcalidad de (?:los )?datos\b|\bpendientes?\b|\bduplicados?\b|\bmal capturad[oa]s?\b|\breportar\b|\bcorregir\b|\bcapturar\b/g, ' ');
       }
+      // v79 — predicción con el modelo («¿qué ER esperaría un carrusel de Fold8 un miércoles?»)
+      if (ASK_PREDICT_RX.test(t) && !spec.intent0) spec.intent0 = 'predict';
       // "vs el resto" / "contra lo demás"
       eat(/\b(?:vs|versus|contra|frente a|comparad[oa]s? con|o) (?:el |lo |todo el )?(?:resto|demas|otros|los demas|todo lo demas)(?: del contenido| de lo que publicamos)?\b/g, () => { spec.vsRest = true; spec.compare = true; });
       // pares que se comparan como grupo
@@ -10739,9 +11160,10 @@
                  table: { cols: ['Plataforma', 'Último post', 'Posts en los 7 días previos'], align: ['l', 'r', 'r'], rows } };
       }
       if (spec.intent === 'fol') return askRunFollowers(spec, base, ctx);
+      if (spec.intent === 'predict') return askRunPredict(spec, all, base);
       // Nada reconocible → ayuda en vez de un resumen de todo
       if (!Object.keys(spec.dims).length && !spec.periods.length && !spec.metrics.length && !spec.group && !spec.dur && !spec.vsRest && spec.intent !== 'kpi'
-          && !['notice', 'define', 'caps', 'fresh', 'fol', 'anoms', 'quality'].includes(spec.intent) && (spec.unused || []).length) {
+          && !['notice', 'define', 'caps', 'fresh', 'fol', 'anoms', 'quality', 'predict'].includes(spec.intent) && (spec.unused || []).length) {
         return { spec, kind: 'help', chips: [], scopeText: '', n: 0, posts: [], notices: [] };
       }
       // Mes sin año que no tiene datos → prueba el mismo mes del año anterior
@@ -11700,8 +12122,10 @@
                 <${PlatformsGrid}  D=${D} filters=${filters} setFilters=${setFilters}/>
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks} setFilters=${setFilters}/>
                 <${VtrSection}         D=${D} onPick=${setSelected}/>
-                <${InfluencersSection} D=${D} onPick=${setSelected}/>
+                <${InfluencersSection} D=${D} onPick=${setSelected} rawPosts=${allPosts}/>
                 <${ContentMapSection}  D=${D} onPick=${setSelected} rawPosts=${allPosts}/>
+                <${ConceptFatigueSection} D=${D} rawPosts=${allPosts} onPick=${setSelected}/>
+                <${CampaignCloseSection} rawPosts=${allPosts} onPick=${setSelected}/>
 
                 <${GroupBlock} id="analisis" label="Análisis" hint=${ttOnly ? "Mezcla, cadencia, horarios, promedios, comparativas, catálogo, TikTok creativo y simulador" : "Mezcla, cadencia, horarios, promedios, comparativas, catálogo y simulador"}
                   count=${ttOnly ? 8 : 7} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
