@@ -1648,7 +1648,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-24-v79';
+    const BUILD_VERSION = '2026-10-24-v80';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6361,22 +6361,29 @@
     }
 
     // ---------- Modelo (ridge, sin librerías) ----------
-    // Variables de una receta. `r` = {pl, format, dur, day, ct, ob, st, inf, fam}
+    // Variables de una receta. `r` = {pl, format, dur, day, ct, ob, st, inf, fam (= producto), pa}
+    // v80 — Orgánico vs. pauta y contenido local/global/regional: cada uno con su efecto,
+    // y el efecto local/global distinto en cada plataforma.
+    const mapPa = (p) => (/org/i.test(String(p.strategy || '')) ? 'Orgánico' : 'Pauta');
+    const mapFk = (pl, pa) => pl + '|' + (pa || 'Orgánico');
     function mapFeats(r) {
-      const b = mapDurB(r.dur);
+      const b = mapDurB(r.dur); const pa = r.pa || 'Orgánico';
       return [
+        'pa:' + pa, 'pp:' + r.pl + '|' + pa,
+        r.ct ? 'pc:' + r.pl + '|' + r.ct : null,
         'pf:' + r.pl + '|' + (r.format || '-'),
         b ? 'pd:' + r.pl + '|' + b.k : null,
         r.day != null ? 'dy:' + r.day : null,
         r.ct ? 'ct:' + r.ct : null,
         r.ob ? 'ob:' + r.ob : null,
         'in:' + (r.inf ? 1 : 0),
-        r.fam ? 'fa:' + r.fam : null,
+        r.fam ? 'fa:' + mapFam(r.fam) : null,
+        r.fam ? 'pr:' + foldTxt(r.fam) : null,   // v80 — producto específico; con pocos posts se apoya en su familia
       ].filter(Boolean);
     }
     const mapRecipeOf = (it) => ({ pl: it.p.platform, format: it.p.format || null, dur: it.dur, day: it.day,
       ct: it.p.content_type ? String(it.p.content_type).trim() : null, ob: it.p.objective ? String(it.p.objective).trim() : null,
-      st: it.p.stage ? String(it.p.stage).trim() : null, inf: isInfluencer(it.p), fam: mapFam(it.p.product) });
+      st: it.p.stage ? String(it.p.stage).trim() : null, inf: isInfluencer(it.p), fam: it.p.product && !MAP_SKIP.test(String(it.p.product).trim()) ? String(it.p.product).trim() : null, pa: mapPa(it.p) });
 
     function ridgeSolve(A, b, P) {
       // Eliminación gaussiana con pivoteo parcial sobre A (P×P, se modifica)
@@ -6417,7 +6424,8 @@
         const w = wOf ? wOf(it) : 1;
         for (let i = 0; i < idx.length; i++) { b[idx[i]] += w * val[i] * y; for (let j = 0; j < idx.length; j++) A[idx[i] * P + idx[j]] += w * val[i] * val[j]; }
       });
-      cols.forEach((c, i) => { A[i * P + i] += c.startsWith('pi:') ? 1e-3 : c.startsWith('ps:') ? 0.1 : lam; });
+      // v80 — producto y local/global por plataforma con más regularización (λ 20): sin ella sobreajustan
+      cols.forEach((c, i) => { A[i * P + i] += c.startsWith('pi:') ? 1e-3 : c.startsWith('ps:') ? 0.1 : (c.startsWith('pr:') || c.startsWith('pc:')) ? Math.max(lam, 20) : lam; });
       const beta = ridgeSolve(A, b, P);
       const coef = new Map(cols.map((c, i) => [c, beta[i]]));
       const predict = (r, lx) => {
@@ -6444,9 +6452,10 @@
       const rated = posts.filter(mapRateOk);
       // ajuste por alcance: log(ER) = a + b·log(alcance), por plataforma
       const fit = {}, platMed = {};
-      for (const pl of new Set(rated.map(p => p.platform))) {
-        const xs = rated.filter(p => p.platform === pl);
-        platMed[pl] = mapMed(xs.map(p => p.basic_er));
+      for (const pl of new Set(rated.map(p => p.platform))) platMed[pl] = mapMed(rated.filter(p => p.platform === pl).map(p => p.basic_er));
+      for (const fk of new Set(rated.map(p => mapFk(p.platform, mapPa(p))))) {
+        const pl = fk;
+        const xs = rated.filter(p => mapFk(p.platform, mapPa(p)) === fk);
         const lx = xs.map(p => Math.log(p.reach)), ly = xs.map(p => Math.log(p.basic_er));
         const mx = mapMean(lx), my = mapMean(ly);
         let bb = 0;
@@ -6456,7 +6465,7 @@
         fit[pl].norm = mapMed(raw) || 1;
       }
       const items = rated.map((p, i) => {
-        const d = parseDate(p.date); const f = fit[p.platform];
+        const d = parseDate(p.date); const f = fit[mapFk(p.platform, mapPa(p))];
         return {
           p, i, idx: p.basic_er / Math.exp(f.a + f.b * Math.log(p.reach)) / f.norm,
           dur: p.duration > 0 ? p.duration : null, week: p.week, wk: (p.year || (d ? d.getFullYear() : 0)) * 100 + (p.week || 0),
@@ -6696,7 +6705,7 @@
       // tamaño por alcance relativo a su plataforma
       const sizeOf = useMemo(() => {
         const base = M.items.length > 1500 ? 1.5 : M.items.length > 600 ? 1.8 : 2.2;
-        return (it) => Math.max(1.4, Math.min(7, base * Math.sqrt(Math.sqrt(it.p.reach / (M.fit[it.p.platform].medReach || 1))) * 1.15));
+        return (it) => Math.max(1.4, Math.min(7, base * Math.sqrt(Math.sqrt(it.p.reach / (M.fit[mapFk(it.p.platform, mapPa(it.p))].medReach || 1))) * 1.15));
       }, [M]);
       // mediana móvil (la curva que el ojo busca)
       const medLine = useMemo(() => {
@@ -6982,17 +6991,30 @@
     // ---------- v77 · Validación, registro, calendario, pruebas y audiencia ----------
     const MAP_HALF = 26;   // semanas: lo de hace 6 meses pesa la mitad que lo de esta semana
     const mapWeights = (refRank) => (it) => Math.pow(0.5, Math.max(0, refRank - it.rank) / MAP_HALF);
+    // v80 — un modelo para orgánico y otro para pauta: mezclados, la pauta empeora la predicción orgánica
+    function fitSplit(xs, yOf, lam, useReach, w) {
+      const o = xs.filter(it => mapPa(it.p) === 'Orgánico'), q = xs.filter(it => mapPa(it.p) !== 'Orgánico');
+      const mo = o.length >= 40 ? fitRidge(o, yOf, lam, useReach, w) : null;
+      const mq = q.length >= 40 ? fitRidge(q, yOf, lam, useReach, w) : null;
+      const mall = !mo || !mq ? fitRidge(xs, yOf, lam, useReach, w) : null;
+      const pick = (r) => (r.pa === 'Pauta' ? mq : mo) || mall;
+      return {
+        predict: (r, lx) => { const m = pick(r); return m ? m.predict(r, lx) : null; },
+        sdOf: (r) => { const m = pick(r); return (m && m.sd[r.pl]) || null; },
+        sd: (mo || mall || mq).sd,
+      };
+    }
     function buildModel(items, frames = []) {
       if (items.length < 60) return null;
       const last = Math.max(...items.map(it => it.rank));
       const w = mapWeights(last);
       const lyE = (it) => Math.log(it.p.basic_er), lyR = (it) => Math.log(it.p.reach), lyV = (it) => Math.log(it.p.views);
-      const er = fitRidge(items, lyE, 8, true, w);
-      const reach = fitRidge(items, lyR, 8, false, w);
+      const er = fitSplit(items, lyE, 8, true, w);
+      const reach = fitSplit(items, lyR, 8, false, w);
       const withViews = items.filter(it => it.p.views > 0);
-      const views = withViews.length >= 60 ? fitRidge(withViews, lyV, 8, false, w) : null;
+      const views = withViews.length >= 60 ? fitSplit(withViews, lyV, 8, false, w) : null;
       const vids = items.filter(it => it.vtr != null && it.dur != null);
-      const vtrM = vids.length >= 40 ? fitRidge(vids, it => it.vtr, 6, false, w) : null;
+      const vtrM = vids.length >= 40 ? fitSplit(vids, it => it.vtr, 6, false, w) : null;
       // Validación semana a semana: cada una de las últimas 12 semanas se predice
       // solo con lo publicado antes, sin conocer su alcance (como al planear).
       const val = { weeks: [], byPlat: {}, n: 0, err: null, errBase: null, hit: null, reachErr: null, reachBase: null };
@@ -7002,17 +7024,19 @@
         const tr = items.filter(it => it.rank < k), te = items.filter(it => it.rank === k);
         if (tr.length < 60 || !te.length) continue;
         const wk = mapWeights(k - 1);
-        const mE = fitRidge(tr, lyE, 8, true, wk), mR = fitRidge(tr, lyR, 8, false, wk);
+        const mE = fitSplit(tr, lyE, 8, true, wk), mR = fitSplit(tr, lyR, 8, false, wk);
         const base = {}, baseR = {};
-        for (const pl of new Set(tr.map(it => it.p.platform))) {
-          const xs = tr.filter(it => it.p.platform === pl);
-          base[pl] = Math.log(mapMed(xs.map(it => it.p.basic_er))); baseR[pl] = Math.log(mapMed(xs.map(it => it.p.reach)));
+        // referencia justa: el promedio de su misma plataforma y tipo de pauta
+        for (const fk of new Set(tr.map(it => mapFk(it.p.platform, mapPa(it.p))))) {
+          const xs = tr.filter(it => mapFk(it.p.platform, mapPa(it.p)) === fk);
+          base[fk] = Math.log(mapMed(xs.map(it => it.p.basic_er))); baseR[fk] = Math.log(mapMed(xs.map(it => it.p.reach)));
         }
         const wr = [];
         for (const it of te) {
           const r = mapRecipeOf(it); const pr = mR.predict(r, null); const p = pr == null ? null : mE.predict(r, pr);
-          if (p == null || base[r.pl] == null) continue;
-          wr.push({ k, pl: r.pl, y: lyE(it), p, b: base[r.pl], sd: mE.sd[r.pl] || 0.8, yr: lyR(it), pr, br: baseR[r.pl] });
+          const fk = mapFk(r.pl, r.pa);
+          if (p == null || base[fk] == null) continue;
+          wr.push({ k, pl: r.pl, pa: r.pa, y: lyE(it), p, b: base[fk], sd: mE.sdOf(r) || 0.8, yr: lyR(it), pr, br: baseR[fk] });
         }
         if (wr.length < 3) continue;
         rows.push(...wr);
@@ -7027,6 +7051,10 @@
         val.hit = rows.filter(r => Math.abs(r.y - r.p) <= 0.674 * r.sd).length / rows.length;
         val.reachErr = Math.exp(mapMed(rows.map(r => Math.abs(r.yr - r.pr)))) - 1;
         val.reachBase = Math.exp(mapMed(rows.map(r => Math.abs(r.yr - r.br)))) - 1;
+        for (const pa of ['Orgánico', 'Pauta']) {
+          const rr = rows.filter(r => r.pa === pa); if (rr.length < 20) continue;
+          (val.byPa = val.byPa || {})[pa] = { n: rr.length, err: Math.exp(mapMed(rr.map(r => Math.abs(r.y - r.p)))) - 1, errBase: Math.exp(mapMed(rr.map(r => Math.abs(r.y - r.b)))) - 1 };
+        }
         for (const pl of new Set(rows.map(r => r.pl))) {
           const rr = rows.filter(r => r.pl === pl);
           if (rr.length < 12) { val.byPlat[pl] = { n: rr.length, corr: null, conf: 'sin prueba' }; continue; }
@@ -7042,14 +7070,14 @@
 
     // Predicción completa de una receta (antes de publicar: el alcance también se predice)
     const mapRecipeR = (r) => ({ pl: r.pl, format: r.format, dur: r.dur ? Number(r.dur) : null, day: r.day === '' || r.day == null ? null : Number(r.day),
-      ct: r.ct, ob: r.ob, st: null, inf: r.inf === '1' || r.inf === true, fam: r.fam });
+      ct: r.ct, ob: r.ob, st: null, inf: r.inf === '1' || r.inf === true, fam: r.fam, pa: r.pa || 'Orgánico' });
     function mapPredictRecipe(model, M, recipe) {
       if (!model || !recipe) return null;
-      const R = mapRecipeR(recipe); const f = M.fit[R.pl]; if (!f) return null;
+      const R = mapRecipeR(recipe); const f = M.fit[mapFk(R.pl, R.pa)] || M.fit[mapFk(R.pl, 'Orgánico')]; if (!f) return null;
       const muR = model.reach.predict(R, null); if (muR == null) return null;
       const muE = model.er.predict(R, muR); if (muE == null) return null;
-      const sdE = model.er.sd[R.pl] || 0.8, sdR = model.reach.sd[R.pl] || 1;
-      const muV = model.views ? model.views.predict(R, null) : null; const sdV = model.views ? (model.views.sd[R.pl] || 1) : null;
+      const sdE = model.er.sdOf(R) || 0.8, sdR = model.reach.sdOf(R) || 1;
+      const muV = model.views ? model.views.predict(R, null) : null; const sdV = model.views ? (model.views.sdOf(R) || 1) : null;
       const expBase = Math.exp(f.a + f.b * muR) * f.norm;
       let vtr = null;
       if (model.vtrM && R.dur) { const v = model.vtrM.predict(R, null); if (v != null) vtr = Math.max(0, Math.min(100, v)); }
@@ -7081,7 +7109,7 @@
         const d0 = new Date(rec.d + 'T12:00:00');
         const days = (today - d0) / 864e5;
         if (days < 0) return { rec, status: 'programado' };
-        const cands = posts.filter(p => p.platform === rec.pl && (p.format || '') === rec.f && !used.has(p))
+        const cands = posts.filter(p => p.platform === rec.pl && (p.format || '') === rec.f && !used.has(p) && (!rec.pa || mapPa(p) === rec.pa))
           .map(p => ({ p, dd: Math.abs((parseDate(p.date) - d0) / 864e5) })).filter(x => isFinite(x.dd) && x.dd <= 1.5)
           .sort((a, b) => a.dd - b.dd || Math.abs((a.p.duration || 0) - (rec.du || 0)) - Math.abs((b.p.duration || 0) - (rec.du || 0)));
         const hit = cands[0];
@@ -7145,7 +7173,7 @@
       return html`<div>
         <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Precisión del modelo · últimas ${wk.length} semanas</div>
         <p className="text-[12px] text-txt2 mb-1">Cada semana se predijo solo con lo publicado antes y sin conocer su alcance, como al planear.</p>
-        <p className="text-[11.5px] text-txt3 mb-3">Error típico en ER: <b className="text-txt font-mono">±${Math.round(V.err * 100)}%</b> contra ±${Math.round(V.errBase * 100)}% usando solo el promedio de la plataforma. En alcance: <b className="text-txt font-mono">±${Math.round(V.reachErr * 100)}%</b> contra ±${Math.round(V.reachBase * 100)}%. El rango probable atrapó el ${Math.round(V.hit * 100)}% de los posts (lo ideal es cerca de 50%).</p>
+        <p className="text-[11.5px] text-txt3 mb-3">Error típico en ER: <b className="text-txt font-mono">±${Math.round(V.err * 100)}%</b> contra ±${Math.round(V.errBase * 100)}% usando solo el promedio de la plataforma (con su tipo de pauta). En alcance: <b className="text-txt font-mono">±${Math.round(V.reachErr * 100)}%</b> contra ±${Math.round(V.reachBase * 100)}%. El rango probable atrapó el ${Math.round(V.hit * 100)}% de los posts (lo ideal es cerca de 50%).${V.byPa ? ' ' + Object.entries(V.byPa).map(([k, v]) => `${k === 'Pauta' ? 'Con pauta' : 'Orgánico'}: ±${Math.round(v.err * 100)}% contra ±${Math.round(v.errBase * 100)}% (${v.n} posts).`).join(' ') : ''}</p>
         <svg viewBox=${`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label="Error típico del modelo contra el promedio, semana a semana">
           ${[0, 0.25, 0.5, 0.75, 1].filter(v => v <= maxE).map(v => html`<text key=${v} x=${x0 - 6} y=${Y(v) + 3} fontSize="10" textAnchor="end" fill="rgb(var(--c-txt4))" fontFamily="JetBrains Mono, monospace">±${Math.round(v * 100)}%</text>`)}
           <polyline points=${line('errBase')} fill="none" stroke="rgb(var(--c-txt4))" strokeWidth="2" strokeDasharray="4 4"/>
@@ -7166,20 +7194,21 @@
     // ---------- Planeador de calendario ----------
     const MAP_PLAN_METRICS = [['views', 'Views'], ['reach', 'Alcance'], ['inter', 'Interacciones']];
     function mapNormal(rnd) { let u = 0, v = 0; while (u === 0) u = rnd(); while (v === 0) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
-    function mapPlanCandidates(M, model, metric, plats) {
+    function mapPlanCandidates(M, model, metric, plats, pa = 'Orgánico', ctSel = null) {
       const out = [];
       for (const pl of plats) {
-        const its = M.items.filter(it => it.p.platform === pl);
+        const its0 = M.items.filter(it => it.p.platform === pl); const itsP = its0.filter(it => mapPa(it.p) === pa);
+        const its = itsP.length >= 15 ? itsP : its0;
         const cnt = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return m; };
         const mode = (fn) => [...cnt(fn).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-        const ct = mode(it => it.p.content_type && String(it.p.content_type).trim()), ob = mode(it => it.p.objective && String(it.p.objective).trim()), fam = mode(it => mapFam(it.p.product));
+        const ct = mode(it => it.p.content_type && String(it.p.content_type).trim()), ob = mode(it => it.p.objective && String(it.p.objective).trim()), fam = mode(it => it.p.product && String(it.p.product).trim());
         const fmts = [...cnt(it => it.p.format).entries()].filter(([, c]) => c >= 5).map(([f]) => f);
         const days = [...cnt(it => it.day).entries()].filter(([, c]) => c >= 3).map(([d]) => d);
         for (const f of fmts) {
           const durItems = its.filter(it => it.p.format === f && it.dur != null);
           const durs = durItems.length >= 5 ? MAP_DUR_PICK.slice(1).filter(([v]) => durItems.filter(it => mapDurB(it.dur) === mapDurB(Number(v))).length >= 3).map(([v]) => v) : [''];
           for (const du of (durs.length ? durs : [''])) for (const dy of days) {
-            const rec = { pl, format: f, dur: du, day: String(dy), ct, ob, fam, inf: '0' };
+            const rec = { pl, format: f, dur: du, day: String(dy), ct: ctSel || ct, ob, fam, inf: '0', pa };
             const P = mapPredictRecipe(model, M, rec); if (!P) continue;
             let mu, sd;
             if (metric === 'reach') { mu = P.muR; sd = P.sdR; }
@@ -7227,6 +7256,8 @@
       const [n, setN] = useState('20');
       const [plats, setPlats] = useState(null);
       const [mix, setMix] = useState('hoy');
+      const [pa, setPa] = useState('Orgánico');
+      const [ctSel, setCtSel] = useState('');
       const [res, setRes] = useState(null);
       const [busy, setBusy] = useState(false);
       const P = plats || allPlats;
@@ -7237,7 +7268,7 @@
       const run = () => {
         setBusy(true);
         setTimeout(() => {
-          const cands = mapPlanCandidates(M, model, metric, P);
+          const cands = mapPlanCandidates(M, model, metric, P, pa, ctSel || null);
           const N = Math.max(1, Math.min(200, Number(n) || 1)); const G = Number(goal) || 0;
           const pick = mapAllocate(cands, N, P, shares, mix);
           const sim = mapSimTotal(pick, G);
@@ -7282,6 +7313,16 @@
                   className=${"px-2 py-1 rounded-md text-[11px] transition-colors " + (on ? "text-white" : "bg-onSurface/[0.04] text-txt3")} style=${on ? { background: PLAT_COLORS[pl] || '#888' } : null}>${pl}</button>`; })}
               </div>
             </div>
+            <div className="flex flex-wrap gap-4">
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Pauta</div>
+                <${MapSeg} label="Pauta del calendario" value=${pa} onChange=${setPa} options=${[['Orgánico', 'Orgánico'], ['Pauta', 'Con pauta']]}/>
+              </div>
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Contenido</div>
+                <${MapSeg} label="Tipo de contenido del calendario" value=${ctSel} onChange=${setCtSel} options=${[['', 'Mixto'], ['Local', 'Local'], ['Global', 'Global'], ['Regional', 'Regional']]}/>
+              </div>
+            </div>
             <div>
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">Mezcla de plataformas</div>
               <${MapSeg} label="Mezcla de plataformas" value=${mix} onChange=${setMix} options=${[['hoy', 'Como hoy'], ['libre', 'Libre']]}/>
@@ -7311,7 +7352,7 @@
                   </tr>`)}</tbody>
                 </table>
               </div>
-              <p className="text-[10.5px] text-txt4 mt-2">Por post se muestra la mediana esperada. Usa el tipo de contenido, objetivo y producto más comunes de cada plataforma y sin influencer; ajústalo en el simulador con «Simular».</p>`}
+              <p className="text-[10.5px] text-txt4 mt-2">Por post se muestra la mediana esperada. Con «Mixto» usa el tipo de contenido más común de cada plataforma; también el objetivo y el producto más comunes, sin influencer. Ajústalo en el simulador con «Simular».</p>`}
           </div>
         </div>
       </div>`;
@@ -7325,7 +7366,7 @@
         return {
           plats, formats: vals(it => it.p.format), ct: vals(it => it.p.content_type && String(it.p.content_type).trim()),
           ob: vals(it => it.p.objective && String(it.p.objective).trim()), st: vals(it => it.p.stage && String(it.p.stage).trim()),
-          fam: vals(it => mapFam(it.p.product)), hasDur: its.some(it => it.dur != null && it.p.format === recipe.format),
+          fam: vals(it => it.p.product && !MAP_SKIP.test(String(it.p.product).trim()) ? String(it.p.product).trim() : null), hasDur: its.some(it => it.dur != null && it.p.format === recipe.format),
         };
       }, [M, recipe.pl, recipe.format]);
       const set = (k) => (v) => setRecipe(r => ({ ...r, [k]: v }));
@@ -7336,13 +7377,13 @@
       const doSave = () => {
         if (!pred) return;
         const rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), d: saveDate, pl: recipe.pl, f: recipe.format,
-          du: recipe.dur ? Number(recipe.dur) : null, dy: Number(recipe.day), ct: recipe.ct, ob: recipe.ob, fa: recipe.fam, in: recipe.inf === '1' ? 1 : 0,
+          du: recipe.dur ? Number(recipe.dur) : null, dy: Number(recipe.day), ct: recipe.ct, ob: recipe.ob, fa: recipe.fam, in: recipe.inf === '1' ? 1 : 0, pa: recipe.pa || 'Orgánico',
           er: +pred.er.toFixed(3), lo: +pred.lo.toFixed(3), hi: +pred.hi.toFixed(3), rc: Math.round(pred.reach), vw: pred.views == null ? null : Math.round(pred.views),
           q: saveNote.trim().slice(0, 80), by: authState.email || '', v: BUILD_VERSION };
         savePrediction(rec, (saveNote.trim() || `${recipe.pl} · ${recipe.format}`).slice(0, 120));
         setSaved(true); setSaveNote(''); setTimeout(() => setSaved(false), 2200); onSaved && onSaved();
       };
-      const conf = model && model.val.byPlat[recipe.pl];
+      const conf = model && (recipe.pa === 'Pauta' ? { conf: 'baja · pauta', corr: null } : model.val.byPlat[recipe.pl]);
       const confTone = !conf ? 'text-txt4' : conf.conf === 'alta' ? 'text-success' : conf.conf === 'media' ? 'text-amber' : 'text-txt4';
       return html`<div>
         <div className="flex items-center justify-between mb-3">
@@ -7358,6 +7399,7 @@
           <${MapSelect} label="Tipo de contenido" value=${recipe.ct} onChange=${set('ct')} options=${opts.ct.map(p => [p, p])}/>
           <${MapSelect} label="Objetivo" value=${recipe.ob} onChange=${set('ob')} options=${opts.ob.map(p => [p, p])}/>
           <${MapSelect} label="Influencer" value=${recipe.inf} onChange=${set('inf')} options=${[['0', 'No'], ['1', 'Sí']]}/>
+          <${MapSelect} label="Pauta" value=${recipe.pa || 'Orgánico'} onChange=${set('pa')} options=${[['Orgánico', 'Orgánico'], ['Pauta', 'Con pauta']]}/>
         </div>
         ${pred ? html`
           <div className="rounded-xl bg-onSurface/[0.04] px-4 py-3 mb-3">
@@ -7379,6 +7421,20 @@
                 <div className="text-[10px] text-txt4 truncate">${sub}</div>
               </div>`)}
           </div>
+          ${(pred.ctVars.length > 1 || pred.paVars.length > 1) && html`<div className="mb-3">
+            <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">La misma pieza como…</div>
+            <div className="space-y-0.5">
+              ${[...pred.ctVars.map(x => ({ ...x, k: 'ct', lab: 'Contenido ' + x.v.toLowerCase(), on: x.v === recipe.ct })),
+                 ...pred.paVars.map(x => ({ ...x, k: 'pa', lab: x.v === 'Pauta' ? 'Con pauta' : 'Orgánico', on: x.v === (recipe.pa || 'Orgánico') }))].map(x => html`
+                <button key=${x.k + x.v} onClick=${() => setRecipe(r => ({ ...r, [x.k]: x.v }))}
+                  className=${"w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 text-left " + (x.on ? 'bg-onSurface/[0.06]' : 'hover:bg-onSurface/[0.04]')}>
+                  <span className=${x.on ? 'text-txt font-medium' : 'text-txt2'}>${x.lab}</span>
+                  <span className="ml-auto font-mono tabular-nums text-txt">${mapPct(x.P.er)}</span>
+                  <span className="font-mono tabular-nums text-txt4 w-[74px] text-right">${fmtFull(x.P.reach)}</span>
+                </button>`)}
+            </div>
+            <div className="text-[10px] text-txt4 mt-1 text-right">ER esperado · alcance</div>
+          </div>`}
           ${pred.moves.length > 0 && html`<div className="mb-3">
             <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1.5">Para subirlo</div>
             ${pred.moves.map(m => html`<button key=${m.k} onClick=${() => setRecipe(r => ({ ...r, [m.k]: m.v }))}
@@ -7415,9 +7471,11 @@
       const setEdge = (e) => { setSelRaw(null); setSelEdge(e); };
       const posts = useMemo(() => (D.allPosts || []).filter(p => scope === 'all' || /org/i.test(String(p.strategy || ''))), [D.allPosts, scope]);
       const M = useMemo(() => computeContentMap(posts), [posts]);
-      const model = useMemo(() => buildModel(M.items, M.frames), [M]);
+      // El modelo aprende de orgánico y pauta juntos (cada uno con su efecto); el mapa muestra el alcance elegido
+      const MA = useMemo(() => (scope === 'all' ? M : computeContentMap(D.allPosts || [])), [scope, M, D.allPosts]);
+      const model = useMemo(() => buildModel(MA.items, MA.frames), [MA]);
       const [logVer, setLogVer] = useState(0);
-      useEffect(() => { window.__smxMap = { M, model, mapRecipeOf }; }, [M, model]);
+      useEffect(() => { window.__smxMap = { M, MA, model, mapRecipeOf, mapPredictRecipe }; }, [M, MA, model]);
       useEffect(() => { setSelRaw(null); setSelEdge(null); setFrame(null); setPlaying(false); }, [M]);
 
       // ---- reproducción semana a semana
@@ -7438,27 +7496,27 @@
       useEffect(() => {
         if (!M.items.length) return;
         const pl = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {})).sort((a, b) => b[1] - a[1])[0][0];
-        setRecipe({ pl, format: '', dur: '25', day: '3', ct: '', ob: '', fam: '', inf: '0' });
+        setRecipe({ pl, format: '', dur: '25', day: '3', ct: '', ob: '', fam: '', inf: '0', pa: 'Orgánico' });
       }, [M]);
       // completa valores vacíos con el más común de la plataforma
       const fullRecipe = useMemo(() => {
         if (!recipe) return null;
-        const its = M.items.filter(it => it.p.platform === recipe.pl);
+        const its0 = MA.items.filter(it => it.p.platform === recipe.pl); const itsP = its0.filter(it => mapPa(it.p) === (recipe.pa || 'Orgánico')); const its = itsP.length >= 15 ? itsP : its0;
         const mode = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v) m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || ''; };
-        const r = { ...recipe };
+        const r = { ...recipe }; if (!r.pa) r.pa = 'Orgánico';
         if (!r.format || !its.some(it => it.p.format === r.format)) r.format = mode(it => it.p.format);
         if (!r.ct) r.ct = mode(it => it.p.content_type && String(it.p.content_type).trim());
         if (!r.ob) r.ob = mode(it => it.p.objective && String(it.p.objective).trim());
-        if (!r.fam) r.fam = mode(it => mapFam(it.p.product));
+        if (!r.fam || !its.some(it => String(it.p.product || '').trim() === r.fam)) r.fam = mode(it => it.p.product && String(it.p.product).trim());
         if (!its.some(it => it.dur != null && it.p.format === r.format)) r.dur = '';
         else if (!r.dur) r.dur = '25';
         return r;
-      }, [recipe, M]);
+      }, [recipe, MA]);
       const pred = useMemo(() => {
         if (!model || !fullRecipe) return null;
-        const P0 = mapPredictRecipe(model, M, fullRecipe); if (!P0) return null;
+        const P0 = mapPredictRecipe(model, MA, fullRecipe); if (!P0) return null;
         // qué cambiar: mejor alternativa por variable
-        const its = M.items.filter(it => it.p.platform === fullRecipe.pl);
+        const its0 = MA.items.filter(it => it.p.platform === fullRecipe.pl); const itsP = its0.filter(it => mapPa(it.p) === fullRecipe.pa); const its = itsP.length >= 15 ? itsP : its0;
         const cand = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].filter(([, c]) => c >= 5).map(([v]) => v); };
         const tries = [
           ['format', cand(it => it.p.format), (v) => 'Cambiar a ' + v],
@@ -7473,7 +7531,7 @@
           let best = null;
           for (const v of vals) {
             if (String(v) === String(fullRecipe[k])) continue;
-            const P1 = mapPredictRecipe(model, M, { ...fullRecipe, [k]: String(v) }); if (!P1) continue;
+            const P1 = mapPredictRecipe(model, MA, { ...fullRecipe, [k]: String(v) }); if (!P1) continue;
             const up = Math.exp(P1.muE - P0.muE) - 1;
             if (up > 0.08 && (!best || up > best.up)) best = { k, v: String(v), up, label: lab(String(v)) };
           }
@@ -7485,19 +7543,24 @@
           let s = 0;
           if (it.p.format === r0.format) s += 4;
           if (r0.dur != null && it.dur != null) { const b0 = mapDurB(r0.dur), b1 = mapDurB(it.dur); s += (b0 && b1 && b0.k === b1.k ? 3 : 0) + Math.max(0, 1 - Math.abs(it.dur - r0.dur) / 15); }
-          if (it.day === r0.day) s += 1; if (mapFam(it.p.product) === r0.fam) s += 1.5;
+          if (it.day === r0.day) s += 1; const pr0 = String(it.p.product || '').trim(); if (pr0 === r0.fam) s += 2.5; else if (mapFam(pr0) === mapFam(r0.fam)) s += 1;
           if (String(it.p.content_type || '').trim() === r0.ct) s += 1; if (String(it.p.objective || '').trim() === r0.ob) s += 0.5;
           if (isInfluencer(it.p) === r0.inf) s += 0.5;
           return { it, s: s + it.rank * 0.001 };
         }).sort((a, b) => b.s - a.s).slice(0, 12).map(x => x.it);
-        return { ...P0, moves: moves.slice(0, 3), analogs };
-      }, [model, fullRecipe, M]);
+        // v80 — la misma pieza como local / global / regional y orgánica / con pauta
+        const ctVars = ['Local', 'Global', 'Regional'].filter(v => its0.filter(it => String(it.p.content_type || '').trim() === v).length >= 5)
+          .map(v => ({ v, P: mapPredictRecipe(model, MA, { ...fullRecipe, ct: v }) })).filter(x => x.P);
+        const paVars = ['Orgánico', 'Pauta'].filter(v => its0.filter(it => mapPa(it.p) === v).length >= 10)
+          .map(v => ({ v, P: mapPredictRecipe(model, MA, { ...fullRecipe, pa: v }) })).filter(x => x.P);
+        return { ...P0, moves: moves.slice(0, 3), analogs, ctVars, paVars };
+      }, [model, fullRecipe, MA]);
       const loadRecipe = (r) => {
-        setRecipe({ pl: r.pl, format: r.format || '', dur: r.dur || '', day: String(r.day ?? '3'), ct: r.ct || '', ob: r.ob || '', fam: r.fam || '', inf: String(r.inf || '0') });
+        setRecipe({ pl: r.pl, format: r.format || '', dur: r.dur || '', day: String(r.day ?? '3'), ct: r.ct || '', ob: r.ob || '', fam: r.fam || '', inf: String(r.inf || '0'), pa: r.pa || 'Orgánico' });
         setSimOn(true);
         setTimeout(() => { const el = document.getElementById('map-sim'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
       };
-      const ghost = simOn && pred ? { dur: pred.dur, idx: pred.idx, lo: pred.idxLo, hi: pred.idxHi } : null;
+      const ghost = simOn && pred && !(fullRecipe && fullRecipe.pa === 'Pauta' && scope === 'org') ? { dur: pred.dur, idx: pred.idx, lo: pred.idxLo, hi: pred.idxHi } : null;
 
       const focusNode = sel || hover;
       const focusSet = useMemo(() => {
@@ -7524,6 +7587,19 @@
         if (bestCombos[0]) L.push({ s: `Mejor combinación: ${nodeName(bestCombos[0].a)} + ${nodeName(bestCombos[0].b)} · ${mapX(bestCombos[0].idx)} en ${bestCombos[0].w} posts` });
         if (worstCombos[0]) L.push({ s: `Combinación más floja: ${nodeName(worstCombos[0].a)} + ${nodeName(worstCombos[0].b)} · ${mapX(worstCombos[0].idx)}` });
         if (M.bestDur) L.push({ s: `Duración con mejor índice: ${M.bestDur.k} (${mapX(M.bestDur.idx)}, ${M.bestDur.n} videos)` });
+        if (model) {
+          const gl = [];
+          for (const pl of [...new Set(MA.items.map(it => it.p.platform))]) {
+            const its = MA.items.filter(it => it.p.platform === pl && mapPa(it.p) === 'Orgánico');
+            const nL = its.filter(it => String(it.p.content_type || '').trim() === 'Local').length, nG = its.filter(it => String(it.p.content_type || '').trim() === 'Global').length;
+            if (nL < 8 || nG < 8) continue;
+            const mode = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''; };
+            const base = { pl, format: mode(it => it.p.format), dur: '', day: String(mode(it => it.day)), ob: mode(it => it.p.objective && String(it.p.objective).trim()), fam: mode(it => it.p.product && String(it.p.product).trim()), inf: '0', pa: 'Orgánico' };
+            const a = mapPredictRecipe(model, MA, { ...base, ct: 'Global' }), b = mapPredictRecipe(model, MA, { ...base, ct: 'Local' });
+            if (a && b) gl.push(`${pl} ${mapVsTxt(a.er / b.er)}`);
+          }
+          if (gl.length) L.push({ s: `Global vs. local (orgánico, misma pieza): ${gl.join(' · ')}` });
+        }
         if (model && model.val.n) {
           const conf = Object.entries(model.val.byPlat).filter(([, v]) => v.corr != null).sort((a, b) => b[1].corr - a[1].corr);
           L.push({ s: `Modelo probado semana a semana (${model.val.weeks.length} semanas, ${model.val.n} posts): error típico ±${Math.round(model.val.err * 100)}% vs ±${Math.round(model.val.errBase * 100)}% usando solo el promedio` });
@@ -7531,7 +7607,7 @@
         }
         L.push({ s: 'Listo. Toca un nodo, una combinación o arma un post en el simulador.' });
         return L.map((l, k) => ({ ...l, t: ts(k) }));
-      }, [M, scope, model, bestCombos, worstCombos]);
+      }, [M, MA, scope, model, bestCombos, worstCombos]);
 
       if (M.items.length < 20) {
         return html`<section id="sec-mapa" className="px-4 md:px-7 py-7 relative group">
@@ -7632,13 +7708,13 @@
                 <p className="text-[12px] text-txt3 mb-4">Arma un post (plataforma, pieza, duración, día, producto) y el modelo te dice qué ER esperar, con su rango, qué cambiar para subirlo y cuáles posts del pasado se le parecen.</p>
                 <button onClick=${() => setSimOn(true)} className="h-[34px] px-4 rounded-lg text-[12px] font-medium text-white" style=${{ background: MAP_HOT }}>Abrir simulador</button>
                 ${model && model.val.n > 0 && html`<p className="text-[10.5px] text-txt4 mt-4">Probado semana a semana: predice con confianza alta o media en ${Object.values(model.val.byPlat).filter(v => v.conf === 'alta' || v.conf === 'media').length} de ${Object.keys(model.val.byPlat).length} plataformas.</p>`}`
-                : html`${fullRecipe && html`<${MapPredictor} M=${M} model=${model} recipe=${fullRecipe} setRecipe=${setRecipe} pred=${pred} onSaved=${() => setLogVer(v => v + 1)}/>`}
+                : html`${fullRecipe && html`<${MapPredictor} M=${MA} model=${model} recipe=${fullRecipe} setRecipe=${setRecipe} pred=${pred} onSaved=${() => setLogVer(v => v + 1)}/>`}
                   <button onClick=${() => setSimOn(false)} className="mt-4 text-[11px] text-txt4 hover:text-txt font-mono">Cerrar simulador ×</button>`}
             </div>
           </div>
 
           <div className="rounded-xl bg-surface border border-line p-4 mb-4">
-            <${MapPlanner} M=${M} model=${model} onLoad=${loadRecipe}/>
+            <${MapPlanner} M=${MA} model=${model} onLoad=${loadRecipe}/>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-4 mb-4">
@@ -7668,8 +7744,7 @@
     function mapModelFor(posts) {
       if (!posts || !posts.length) return null;
       if (MAP_MODEL_CACHE.has(posts)) return MAP_MODEL_CACHE.get(posts);
-      const org = posts.filter(p => /org/i.test(String(p.strategy || '')));
-      const M = computeContentMap(org);
+      const M = computeContentMap(posts);
       const model = M.items.length >= 60 ? buildModel(M.items, M.frames) : null;
       const out = model ? { M, model } : null;
       MAP_MODEL_CACHE.set(posts, out);
@@ -7840,7 +7915,7 @@
         if (!G) return [];
         const by = new Map();
         for (const p of D.allPosts || []) {
-          if (!isInfluencer(p) || !mapIsOrg(p)) continue;
+          if (!isInfluencer(p)) continue;
           const raw = String(p.influencer_name || '').trim(); if (!raw) continue;
           const res = mapResid(G, p); if (!res) continue;
           const k = foldTxt(raw);
@@ -7864,7 +7939,7 @@
         <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
           <div className="max-w-[640px]">
             <div className="text-[13px] text-txt font-medium">Ranking justo · cuánto aporta cada influencer</div>
-            <p className="text-[11.5px] text-txt4 mt-0.5">Cada post se compara contra lo que habría logrado la marca sola con la misma plataforma, pieza, duración, día, producto y alcance. 1.5× = 50% más que la marca sola. Solo orgánico.</p>
+            <p className="text-[11.5px] text-txt4 mt-0.5">Cada post se compara contra lo que habría logrado la marca sola con la misma plataforma, pieza, duración, día, producto, tipo de contenido, pauta y alcance. 1.5× = 50% más que la marca sola.</p>
           </div>
           <${MapSeg} label="Ordenar ranking justo" value=${sortK} onChange=${setSortK} options=${[['i', 'Interacciones'], ['e', 'Engagement'], ['r', 'Alcance']]}/>
         </div>
@@ -7910,7 +7985,7 @@
         const sum = (k) => posts.reduce((s, p) => s + (Number(p[k]) || 0), 0);
         const rateP = posts.filter(p => p.basic_er != null && !((p.platform === 'Instagram' || p.platform === 'Facebook') && p.format === 'Stories'));
         const vt = posts.map(p => p.vtr).filter(v => v != null && isFinite(v));
-        const org = posts.filter(mapIsOrg).map(p => ({ p, res: mapResid(G, p) })).filter(x => x.res);
+        const org = posts.map(p => ({ p, res: mapResid(G, p) })).filter(x => x.res);
         const grp = (keyFn) => {
           const m = new Map();
           for (const x of org) { const k = keyFn(x.p); if (!k || MAP_SKIP.test(String(k).trim())) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
@@ -7919,7 +7994,7 @@
         };
         const dims = [
           ['Concepto', grp(p => p.subcampaign)], ['Pieza', grp(p => p.platform + ' · ' + (p.format || 'Sin formato'))],
-          ['Producto', grp(p => p.product)], ['Etapa', grp(p => p.stage)], ['Influencer', grp(p => (isInfluencer(p) ? 'Con influencer' : 'Marca sola'))],
+          ['Producto', grp(p => p.product)], ['Etapa', grp(p => p.stage)], ['Influencer', grp(p => (isInfluencer(p) ? 'Con influencer' : 'Marca sola'))], ['Pauta', grp(p => mapPa(p))], ['Tipo de contenido', grp(p => p.content_type)],
         ].filter(([, g]) => g.length);
         const ranked = [...org].sort((a, b) => (b.res.e + b.res.r) - (a.res.e + a.res.r));
         const allG = dims.flatMap(([d, gs]) => gs.filter(g => g.n >= 3).map(g => ({ ...g, d })));
@@ -7965,7 +8040,7 @@
                 <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4 mb-1">${l}</div>
                 <div className="font-mono tabular-nums text-[20px] leading-none" style=${i === 5 && R.oI != null ? { color: mapIdxColor(R.oI) } : null}>${v}</div></div>`)}
             </div>
-            <p className="text-[10.5px] text-txt4 mt-3">Totales con orgánico y pauta. «Vs. lo esperado» compara las interacciones de los ${R.nOrg} posts orgánicos contra lo esperado (engagement ${mapX(R.oE)} · alcance ${mapX(R.oR)}).</p>
+            <p className="text-[10.5px] text-txt4 mt-3">Totales con orgánico y pauta. «Vs. lo esperado» compara las interacciones de ${R.nOrg} posts (orgánico y pauta, cada uno contra lo suyo) (engagement ${mapX(R.oE)} · alcance ${mapX(R.oR)}).</p>
           </div>
           <div className="grid lg:grid-cols-3 gap-4 mb-4">
             <div className="rounded-xl bg-surface border border-line p-4">
@@ -7996,7 +8071,7 @@
                     <span className="font-mono tabular-nums w-[38px] text-right shrink-0" style=${{ color: mapIdxColor(g.i) }}>${mapX(g.i)}</span></div>`)}
                 </div>`)}
               </div>
-              <p className="text-[10.5px] text-txt4 mt-3">Interacciones (engagement × alcance) contra lo esperado; el número gris es la cantidad de posts orgánicos.</p>
+              <p className="text-[10.5px] text-txt4 mt-3">Interacciones (engagement × alcance) contra lo esperado; el número gris es la cantidad de posts.</p>
             </div>
             <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
               <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Mejores posts vs. lo esperado</div>
@@ -8024,23 +8099,24 @@
       if (!plats.length && fmts.length && ASK_FMT_PLAT[fmts[0]]) plats = [ASK_FMT_PLAT[fmts[0]]];
       if (!plats.length) plats = known.sort((a, b) => its.filter(it => it.p.platform === b).length - its.filter(it => it.p.platform === a).length).slice(0, 4);
       const day = (ASK_DAYS_RX.find(([, rx]) => rx.test(t)) || [null])[0];
-      const fam = spec.dims.products && spec.dims.products.length ? mapFam(spec.dims.products[0]) : null;
+      const fam = spec.dims.products && spec.dims.products.length ? spec.dims.products[0] : null;
       const inf = /\bcon (?:un |una )?influencers?\b|\b(?:creador|creadora|talento) /.test(t) ? '1' : '0';
+      const pa = /\b(?:pauta|pautad[oa]s?|pagad[oa]s?|paid|con inversion|promocionad[oa]s?|boost\w*|ads?)\b/.test(t) || (spec.dims.strategies || []).some(v => !/org/i.test(v)) ? 'Pauta' : 'Orgánico';
       const ct = /\bglobal\b/.test(t) ? 'Global' : /\blocal\b/.test(t) ? 'Local' : /\bregional\b/.test(t) ? 'Regional' : null;
       const durTxt = t.match(/\b(\d{1,3}) ?(?:s|seg|segs|segundos?)\b/);
       const dur = durTxt ? Number(durTxt[1]) : spec.dur ? (spec.dur.min != null && spec.dur.max != null ? (spec.dur.min + spec.dur.max) / 2 : spec.dur.max != null ? spec.dur.max : spec.dur.min + 5) : null;
       const filled = [];
       const rows = []; let main = null;
       for (const pl of plats) {
-        const P = its.filter(it => it.p.platform === pl);
+        const P0 = its.filter(it => it.p.platform === pl); const PP = P0.filter(it => mapPa(it.p) === pa); const P = PP.length >= 15 ? PP : P0;
         const mode = (fn) => { const m = new Map(); for (const it of P) { const v = fn(it); if (v == null || v === '') continue; m.set(v, (m.get(v) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''; };
         const format = fmts.find(f => P.some(it => it.p.format === f)) || mode(it => it.p.format);
         const hasDur = P.some(it => it.dur != null && it.p.format === format);
         const rec = { pl, format, dur: hasDur ? String(Math.round(dur || mapMed(P.filter(it => it.dur != null && it.p.format === format).map(it => it.dur)) || 25)) : '',
           day: String(day != null ? day : mode(it => it.day)), ct: ct || mode(it => it.p.content_type && String(it.p.content_type).trim()),
-          ob: mode(it => it.p.objective && String(it.p.objective).trim()), fam: fam || mode(it => mapFam(it.p.product)), inf };
+          ob: mode(it => it.p.objective && String(it.p.objective).trim()), fam: fam || mode(it => it.p.product && String(it.p.product).trim()), inf, pa };
         const pr = mapPredictRecipe(G.model, G.M, rec); if (!pr) continue;
-        const conf = (G.model.val.byPlat[pl] || {}).conf || 'sin prueba';
+        const conf = pa === 'Pauta' ? 'baja (pauta)' : (G.model.val.byPlat[pl] || {}).conf || 'sin prueba';
         rows.push({ rec, pr, conf });
         if (!main) main = { rec, pr, conf };
       }
@@ -8050,7 +8126,7 @@
       if (!fam) filled.push('producto');
       if (!ct) filled.push('tipo de contenido');
       if (!spec.dur && !durTxt && main.rec.dur) filled.push('duración');
-      const desc = (r) => `${r.rec.pl} · ${r.rec.format}${r.rec.dur ? ' · ' + r.rec.dur + ' s' : ''} · ${MAP_DAYS[Number(r.rec.day)].toLowerCase()} · ${r.rec.fam}${r.rec.inf === '1' ? ' · con influencer' : ''}`;
+      const desc = (r) => `${r.rec.pl} · ${r.rec.format}${r.rec.dur ? ' · ' + r.rec.dur + ' s' : ''} · ${MAP_DAYS[Number(r.rec.day)].toLowerCase()} · ${r.rec.fam} · contenido ${String(r.rec.ct || '').toLowerCase()} · ${r.rec.pa === 'Pauta' ? 'con pauta' : 'orgánico'}${r.rec.inf === '1' ? ' · con influencer' : ''}`;
       if (rows.length === 1) {
         const r = main.pr;
         return { ...base, kind: 'table', posts: [],
@@ -8061,14 +8137,14 @@
             ['Interacciones', fmtFull(r.inter), '—'],
             ...(r.vtr != null ? [['VTR', mapPct(r.vtr), '—']] : [])] },
           notes: [ ...(filled.length ? [`No dijiste ${filled.join(', ')}: usé lo más común en ${main.rec.pl}.`] : []),
-            'Predicción de un modelo entrenado con el orgánico de la base; ajústala en Mapa de contenido → Simulador.'] };
+            'Predicción de un modelo entrenado con el orgánico y la pauta de la base; ajústala en Mapa de contenido → Simulador.'] };
       }
       return { ...base, kind: 'table', posts: [],
         headline: { label: 'ER básico esperado', value: `${mapPct(Math.min(...rows.map(r => r.pr.er)))} – ${mapPct(Math.max(...rows.map(r => r.pr.er)))}`, sub: `Predicción por plataforma${fmts.length ? ' para ' + fmts[0] : ''}${day != null ? ' un ' + MAP_DAYS[day].toLowerCase() : ''}${fam ? ' de ' + fam : ''}.` },
         table: { cols: ['Plataforma', 'Pieza', 'ER esperado', 'Rango', 'Alcance', 'Confianza'], align: ['l', 'l', 'r', 'r', 'r', 'l'],
           rows: rows.sort((a, b) => b.pr.er - a.pr.er).map(r => [r.rec.pl, r.rec.format + (r.rec.dur ? ' · ' + r.rec.dur + ' s' : ''), mapPct(r.pr.er), mapPct(r.pr.lo) + '–' + mapPct(r.pr.hi), fmtFull(r.pr.reach), r.conf]) },
         notes: [...(filled.length ? [`No dijiste ${filled.join(', ')}: usé lo más común de cada plataforma.`] : []),
-          'Predicción de un modelo entrenado con el orgánico de la base; ajústala en Mapa de contenido → Simulador.'] };
+          'Predicción de un modelo entrenado con el orgánico y la pauta de la base; ajústala en Mapa de contenido → Simulador.'] };
     }
 
     // ============================================================
