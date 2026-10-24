@@ -1646,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-24-v77';
+    const BUILD_VERSION = '2026-10-24-v78';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -7312,135 +7312,6 @@
       </div>`;
     }
 
-    // ---------- Pruebas A/B sugeridas ----------
-    function computeTests(M, model) {
-      if (!model) return [];
-      const out = [];
-      const plats = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {})).filter(([, c]) => c >= 30).map(([p]) => p);
-      for (const pl of plats) {
-        const its = M.items.filter(it => it.p.platform === pl);
-        const cnt = (fn) => { const m = new Map(); for (const it of its) { const v = fn(it); if (v == null || v === '') continue; m.set(String(v), (m.get(String(v)) || 0) + 1); } return m; };
-        const mode = (fn) => [...cnt(fn).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-        const base = { pl, format: mode(it => it.p.format), ct: mode(it => it.p.content_type && String(it.p.content_type).trim()), ob: mode(it => it.p.objective && String(it.p.objective).trim()),
-          fam: mode(it => mapFam(it.p.product)), inf: '0', day: mode(it => it.day) };
-        const vids = its.filter(it => it.p.format === base.format && it.dur != null);
-        base.dur = vids.length >= 5 ? (MAP_DUR_PICK.slice(1).find(([v]) => mapDurB(Number(v)) === mapDurB(mapMed(vids.map(it => it.dur)))) || ['25'])[0] : '';
-        const P0 = mapPredictRecipe(model, M, base); if (!P0) continue;
-        const vars = [
-          ['format', 'Pieza', cnt(it => it.p.format), (v) => v],
-          ['dur', 'Duración', base.dur ? new Map(MAP_DUR_PICK.slice(1).map(([v, l]) => [v, vids.filter(it => mapDurB(it.dur) === mapDurB(Number(v))).length])) : new Map(), (v) => (MAP_DUR_PICK.find(x => x[0] === v) || [, v])[1]],
-          ['inf', 'Influencer', new Map([['1', its.filter(it => isInfluencer(it.p)).length]]), (v) => v === '1' ? 'con influencer' : 'sin influencer'],
-          ['day', 'Día', cnt(it => it.day), (v) => MAP_DAYS[Number(v)].toLowerCase()],
-        ];
-        for (const [k, lab, counts, show] of vars) {
-          let best = null;
-          for (const [v, c] of counts) {
-            if (String(v) === String(base[k]) || c < 3) continue;
-            const P1 = mapPredictRecipe(model, M, { ...base, [k]: String(v) }); if (!P1) continue;
-            const up = Math.exp(P1.muE - P0.muE) - 1;
-            if (up >= 0.15 && c < 40 && (!best || up * (1 - c / 40) > best.score)) best = { pl, k, lab, from: show(String(base[k])), to: show(String(v)), v: String(v), up, n: c, score: up * (1 - c / 40), base };
-          }
-          if (best) out.push(best);
-        }
-      }
-      return out.sort((a, b) => b.score - a.score).slice(0, 4);
-    }
-    function MapTests({ tests, onLoad }) {
-      return html`<div>
-        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Pruebas sugeridas · donde el modelo duda</div>
-        ${!tests.length ? html`<p className="text-[12px] text-txt3">El modelo no ve hoy ninguna apuesta con mucho potencial y poca evidencia.</p>` : html`
-          <div className="space-y-2.5">
-            ${tests.map(t => html`<div key=${t.pl + t.k} className="rounded-lg bg-onSurface/[0.04] px-3 py-2.5">
-              <div className="flex items-center gap-2 text-[12px] mb-1">
-                <span className="w-[8px] h-[8px] rounded-full" style=${{ background: PLAT_COLORS[t.pl] || '#888' }}></span>
-                <span className="text-txt font-medium">${t.pl} · ${t.lab.toLowerCase()}: ${t.from} vs. ${t.to}</span>
-                <span className="ml-auto font-mono tabular-nums text-success">+${Math.round(t.up * 100)}%</span>
-              </div>
-              <p className="text-[11px] text-txt3">El modelo estima +${Math.round(t.up * 100)}% de ER, pero con solo ${t.n} posts ${t.k === 'inf' ? 'con influencer' : 'así'} no alcanza para darlo por hecho. Prueba: 4 posts de cada versión con el mismo concepto en dos semanas, alternando días, y guárdalos en el registro.</p>
-              <button onClick=${() => onLoad({ ...t.base, [t.k]: t.v })} className="mt-1 text-[10.5px] text-txt4 hover:text-txt font-mono">Cargar en el simulador →</button>
-            </div>`)}
-          </div>`}
-      </div>`;
-    }
-
-    // ---------- Audiencia simulada (se abre en Claude) ----------
-    function mapPersonas(M) {
-      const out = [];
-      const plats = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {})).filter(([, c]) => c >= 30).sort((a, b) => b[1] - a[1]).map(([p]) => p);
-      for (const pl of plats) {
-        const its = M.items.filter(it => it.p.platform === pl);
-        const grp = (fn, min) => { const m = new Map(); for (const it of its) { const v = fn(it); if (!v || MAP_SKIP.test(String(v).trim())) continue; if (!m.has(v)) m.set(v, []); m.get(v).push(it.idx); } return [...m.entries()].filter(([, a]) => a.length >= min).map(([k, a]) => ({ k, n: a.length, idx: mapMed(a) })); };
-        const fmts = grp(it => it.p.format, 6).sort((a, b) => b.idx - a.idx);
-        const conc = grp(it => it.p.subcampaign, 4).sort((a, b) => b.idx - a.idx);
-        const prods = grp(it => mapFam(it.p.product), 6).sort((a, b) => b.idx - a.idx);
-        const durs = grp(it => (mapDurB(it.dur) || {}).k, 5).sort((a, b) => b.idx - a.idx);
-        const inf = grp(it => isInfluencer(it.p) ? 'Con influencer' : 'Marca', 5);
-        const vt = its.map(it => it.vtr).filter(v => v != null);
-        const L = [];
-        L.push(`ER básico típico ${mapPct(M.platMed[pl])} (${its.length} posts orgánicos analizados).`);
-        if (fmts.length) L.push(`Formatos que mejor responde: ${fmts.slice(0, 2).map(f => `${f.k} (${mapX(f.idx)})`).join(', ')}${fmts.length > 2 ? `; el que menos: ${fmts[fmts.length - 1].k} (${mapX(fmts[fmts.length - 1].idx)})` : ''}.`);
-        if (durs.length >= 2) L.push(`Duración que más engancha: ${durs[0].k} (${mapX(durs[0].idx)}); la que menos: ${durs[durs.length - 1].k} (${mapX(durs[durs.length - 1].idx)}).${vt.length >= 10 ? ` VTR promedio ${mapPct(mapMean(vt))}.` : ''}`);
-        if (conc.length) L.push(`Conceptos que le funcionaron: ${conc.slice(0, 3).map(c => `${c.k} (${mapX(c.idx)})`).join(', ')}${conc.length > 3 ? `. Los que no: ${conc.slice(-2).map(c => `${c.k} (${mapX(c.idx)})`).join(', ')}` : ''}.`);
-        if (prods.length >= 2) L.push(`Productos con más interés: ${prods.slice(0, 2).map(p => `${p.k} (${mapX(p.idx)})`).join(', ')}; con menos: ${prods[prods.length - 1].k} (${mapX(prods[prods.length - 1].idx)}).`);
-        const ci = inf.find(x => x.k === 'Con influencer'), cm = inf.find(x => x.k === 'Marca');
-        if (ci && cm) L.push(`Con influencer rinde ${mapX(ci.idx)} contra ${mapX(cm.idx)} de la marca sola.`);
-        out.push({ pl, lines: L });
-      }
-      return out;
-    }
-    function mapAudiencePrompt({ concept, personas, plats, recipe, pred }) {
-      const sel = personas.filter(p => plats.includes(p.pl));
-      const plan = recipe ? `${recipe.pl} · ${recipe.format}${recipe.dur ? ` · ${(MAP_DUR_PICK.find(x => x[0] === recipe.dur) || [, recipe.dur + ' s'])[1]}` : ''} · ${MAP_DAYS[Number(recipe.day)] || ''} · ${recipe.fam} · contenido ${String(recipe.ct || '').toLowerCase()} · objetivo ${recipe.ob}${recipe.inf === '1' ? ' · con influencer' : ''}` : '';
-      return [
-        'Actúa como un simulador de audiencia para Samsung Mobile México (Galaxy). Quiero una reacción cualitativa a un concepto de contenido ANTES de publicarlo.',
-        '',
-        'Reglas:',
-        '- Los perfiles de abajo se construyeron con el desempeño real de los posts orgánicos de Samsung MX en 2026 (índice 1.0× = lo normal en esa plataforma para su alcance). No son personas reales.',
-        '- Para cada plataforma, simula 10 usuarios distintos de ese público: varía edad, interés en tecnología, si usa Samsung o iPhone, y qué tan fan es de la marca. Usa español de México y el tono real de cada red.',
-        '- Para cada usuario: ¿se detiene o sigue de largo en los primeros 3 segundos?, qué haría (like, comentar, compartir, guardar, nada), el comentario que escribiría tal cual, y por qué.',
-        '- Cierra cada plataforma con: % que se detendría, las 3 objeciones o dudas principales, qué cambiarías del gancho y del copy, y una calificación del 1 al 10 de qué tan alineado está con lo que históricamente le funciona a ese público.',
-        '- Al final, las 3 recomendaciones más importantes para el equipo creativo.',
-        '- Es una simulación cualitativa: no inventes métricas de alcance ni de ER.',
-        '',
-        'CONCEPTO:',
-        concept.trim() || '(sin descripción)',
-        ...(plan ? ['', 'PIEZA PLANEADA:', plan] : []),
-        ...(pred ? [`Predicción del modelo de datos para esa pieza: ER básico ${mapPct(pred.er)} (rango ${mapPct(pred.lo)}–${mapPct(pred.hi)}), ${mapX(pred.idx)} lo típico.`] : []),
-        '',
-        'PERFILES DE AUDIENCIA:',
-        ...sel.flatMap(p => ['', `${p.pl}:`, ...p.lines.map(l => '- ' + l)]),
-      ].join('\n');
-    }
-    function MapAudience({ M, recipe, pred }) {
-      const personas = useMemo(() => mapPersonas(M), [M]);
-      const [concept, setConcept] = useState('');
-      const [plats, setPlats] = useState(null);
-      const [copied, setCopied] = useState(false);
-      const P = plats || (recipe ? [recipe.pl] : personas.slice(0, 2).map(p => p.pl));
-      const prompt = mapAudiencePrompt({ concept, personas, plats: P, recipe: recipe && P.includes(recipe.pl) ? recipe : null, pred: recipe && P.includes(recipe.pl) ? pred : null });
-      const open = () => { window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank', 'noopener'); };
-      const copy = async () => { try { await navigator.clipboard.writeText(prompt); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch {} };
-      return html`<div>
-        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Audiencia simulada · se abre en Claude</div>
-        <p className="text-[11.5px] text-txt3 mb-3">Describe el concepto o pega el copy. Se arma un público por plataforma con lo que históricamente le funciona y Claude simula cómo reaccionaría: quién se detiene, qué comentaría y qué objeciones tendría. Es insumo creativo, no una métrica.</p>
-        <textarea value=${concept} onInput=${(e) => setConcept(e.target.value)} rows="4" placeholder="Ej. Reel de 25 s: un creador intenta romper un Galaxy Z Fold8 en situaciones cotidianas; gancho: «¿Cuánto aguanta de verdad un plegable?»"
-          className="w-full px-3 py-2 rounded-lg border border-line bg-onSurface/[0.03] text-[12px] text-txt placeholder:text-txt4 focus:outline-none focus:border-line2 mb-2"></textarea>
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          ${personas.map(p => { const on = P.includes(p.pl); return html`<button key=${p.pl} onClick=${() => setPlats(on ? P.filter(x => x !== p.pl) : [...P, p.pl])} aria-pressed=${on}
-            className=${"px-2 py-1 rounded-md text-[11px] transition-colors " + (on ? "text-white" : "bg-onSurface/[0.04] text-txt3")} style=${on ? { background: PLAT_COLORS[p.pl] || '#888' } : null}>${p.pl}</button>`; })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick=${open} disabled=${!concept.trim() || !P.length} className="h-[34px] px-4 rounded-lg text-[12px] font-medium text-white disabled:opacity-50" style=${{ background: MAP_HOT }}>Simular en Claude</button>
-          <button onClick=${copy} disabled=${!P.length} className="h-[34px] px-3 rounded-lg text-[12px] text-txt2 bg-onSurface/[0.05] hover:bg-onSurface/[0.08] disabled:opacity-50">${copied ? 'Copiado' : 'Copiar prompt'}</button>
-          ${recipe && html`<span className="text-[10.5px] text-txt4">Incluye la pieza del simulador${pred ? ' y su predicción' : ''}.</span>`}
-        </div>
-        <details className="mt-3">
-          <summary className="text-[10.5px] text-txt4 cursor-pointer hover:text-txt">Ver los perfiles</summary>
-          <div className="mt-2 space-y-2">${personas.filter(p => P.includes(p.pl)).map(p => html`<div key=${p.pl} className="text-[11px] text-txt3"><div className="text-txt2 font-medium">${p.pl}</div>${p.lines.map((l, i) => html`<div key=${i}>· ${l}</div>`)}</div>`)}</div>
-        </details>
-      </div>`;
-    }
-
     function MapPredictor({ M, model, recipe, setRecipe, pred, onSaved }) {
       const opts = useMemo(() => {
         const its = M.items.filter(it => it.p.platform === recipe.pl);
@@ -7541,7 +7412,6 @@
       const M = useMemo(() => computeContentMap(posts), [posts]);
       const model = useMemo(() => buildModel(M.items, M.frames), [M]);
       const [logVer, setLogVer] = useState(0);
-      const tests = useMemo(() => computeTests(M, model), [M, model]);
       useEffect(() => { window.__smxMap = { M, model, mapRecipeOf }; }, [M, model]);
       useEffect(() => { setSelRaw(null); setSelEdge(null); setFrame(null); setPlaying(false); }, [M]);
 
@@ -7771,11 +7641,6 @@
             <div className="rounded-xl bg-surface border border-line p-4 min-w-0"><${MapLog} rawPosts=${rawPosts} ver=${logVer} onPick=${onPick}/></div>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-4 mb-4">
-            <div className="rounded-xl bg-surface border border-line p-4 min-w-0"><${MapTests} tests=${tests} onLoad=${loadRecipe}/></div>
-            <div className="rounded-xl bg-surface border border-line p-4 min-w-0"><${MapAudience} M=${M} recipe=${simOn ? fullRecipe : null} pred=${simOn ? pred : null}/></div>
-          </div>
-
           <div className="grid lg:grid-cols-[minmax(0,1fr)_310px] gap-4">
             <${MapConsole} lines=${lines}/>
             <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
@@ -7783,7 +7648,7 @@
             </div>
           </div>
 
-          <p className="text-[10.5px] text-txt4 mt-3">El índice, el simulador y el calendario muestran qué acompaña a los mejores resultados; no prueban que lo causen. Para eso están las pruebas sugeridas.</p>
+          <p className="text-[10.5px] text-txt4 mt-3">El índice, el simulador y el calendario muestran qué acompaña a los mejores resultados; no prueban que lo causen.</p>
         </section>`;
     }
 
