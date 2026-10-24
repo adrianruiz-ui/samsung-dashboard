@@ -1575,6 +1575,7 @@
           { id: 'sec-top-posts',    name: 'Top posts' },
           { id: 'sec-vtr',          name: 'VTR' },
           { id: 'sec-influencers',  name: 'Influencers' },
+          { id: 'sec-mapa',         name: 'Mapa de contenido' },
           { id: 'sec-mezcla',       name: 'Mezcla' },
           { id: 'sec-cadencia',     name: 'Cadencia' },
           { id: 'sec-horarios',     name: 'Horarios' },
@@ -1645,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-23-v74';
+    const BUILD_VERSION = '2026-10-24-v75';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2259,6 +2260,7 @@
       { id: 'top-posts',    label: 'Top posts',          Icon: RowsIcon,     group: 'resultados' },
       { id: 'vtr',          label: 'VTR',                Icon: PlayIcon,     group: 'resultados' },
       { id: 'influencers',  label: 'Influencers',        Icon: StarIcon,     group: 'resultados' },
+      { id: 'mapa',         label: 'Mapa de contenido',  Icon: LayersIcon,   group: 'resultados' },
       { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
       { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
       { id: 'horarios',     label: 'Horarios',           Icon: ClockIcon,    group: 'analisis' },
@@ -6297,6 +6299,615 @@
               </table>
               <div className="text-[11px] text-txt4 mt-2">Verde/ámbar: arriba o abajo de la mediana de TikTok del filtro (VTR ${pct(medVtr)} · ER básico ${pct(medBer)}).</div>`}
             </div>`}
+        </section>`;
+    }
+
+    // ============================================================
+    // v75 — MAPA DE CONTENIDO (estilo simulación de agentes)
+    // Red de campañas · conceptos · productos · influencers · piezas,
+    // enjambre de posts (duración × índice) y recetas en vivo.
+    // Índice = ER básico del post ÷ ER básico mediano de su plataforma
+    // en la vista actual (1× = post típico de esa plataforma). Así las
+    // plataformas se comparan entre sí sin que TikTok aplaste a X.
+    // ============================================================
+    const MAP_TYPES = {
+      campaign:   { label: 'Campaña',    color: '#5B7CFA' },
+      concept:    { label: 'Concepto',   color: '#F08C3A' },
+      product:    { label: 'Producto',   color: '#2FB083' },
+      influencer: { label: 'Influencer', color: '#A55EEA' },
+      piece:      { label: 'Pieza',      color: '#3FB6C8' },
+    };
+    const MAP_TYPE_LIMIT = { campaign: 12, concept: 16, product: 14, influencer: 12, piece: 14 };
+    const MAP_HOT = '#F0386B';
+    const MAP_GOOD = '#2FB083', MAP_BAD = '#E5484D';
+    const MAP_SKIP = /^(n\/?a|na|ninguno|ninguna|no aplica|sin .*|-|—|0)$/i;
+    const MAP_DUR = [
+      { k: '≤10 s', lo: 0, hi: 10 }, { k: '11–15 s', lo: 10, hi: 15 }, { k: '16–20 s', lo: 15, hi: 20 },
+      { k: '21–30 s', lo: 20, hi: 30 }, { k: '31–45 s', lo: 30, hi: 45 }, { k: '46–60 s', lo: 45, hi: 60 },
+      { k: '60 s+', lo: 60, hi: 600 },
+    ];
+    const MAP_DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const mapDurB = (d) => (d > 0 ? MAP_DUR.find(b => d > b.lo && d <= b.hi) || null : null);
+    const mapMed = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    const mapMean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : null);
+    const mapRateOk = (p) => p.basic_er != null && p.basic_er > 0 && p.reach > 0 &&
+      !((p.platform === 'Instagram' || p.platform === 'Facebook') && p.format === 'Stories');
+    const mapX = (v) => (v == null ? '—' : (v >= 9.95 ? v.toFixed(0) : v.toFixed(1)) + '×');
+    const mapPct = (v) => (v == null ? '—' : v.toFixed(1) + '%');
+    const mapTrunc = (s, n = 16) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+    function mapHash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; }
+    function mapRng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    const mapReduced = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function computeContentMap(posts) {
+      const rated = posts.filter(mapRateOk);
+      const byPlat = {};
+      for (const p of rated) (byPlat[p.platform] = byPlat[p.platform] || []).push(p.basic_er);
+      const platMed = {};
+      for (const [k, v] of Object.entries(byPlat)) platMed[k] = mapMed(v);
+      const items = rated.map((p, i) => {
+        const d = parseDate(p.date);
+        return {
+          p, i, idx: p.basic_er / platMed[p.platform],
+          dur: p.duration > 0 ? p.duration : null,
+          week: p.week, vtr: p.vtr != null && isFinite(p.vtr) ? p.vtr : null,
+          day: d ? d.getDay() : null, j: mapHash(String(p.link || '') + i), nodes: [],
+        };
+      });
+      // ---- nodos
+      const raw = new Map();
+      const keyOf = (type, name) => {
+        const n = String(name || '').trim();
+        if (!n || MAP_SKIP.test(n)) return null;
+        return { id: type + '|' + foldTxt(n), type, name: n };
+      };
+      for (const it of items) {
+        const p = it.p;
+        const ks = [keyOf('campaign', p.campaign), keyOf('concept', p.subcampaign), keyOf('product', p.product),
+          isInfluencer(p) ? keyOf('influencer', p.influencer_name) : null,
+          keyOf('piece', p.platform + ' · ' + (p.format || 'Sin formato'))].filter(Boolean);
+        const seen = new Set();
+        for (const k of ks) {
+          if (seen.has(k.id)) continue; seen.add(k.id);
+          if (!raw.has(k.id)) raw.set(k.id, { id: k.id, type: k.type, names: new Map(), items: [] });
+          const r = raw.get(k.id); r.items.push(it); r.names.set(k.name, (r.names.get(k.name) || 0) + 1);
+          it.nodes.push(k.id);
+        }
+      }
+      const kept = new Set();
+      const nodes = [];
+      for (const type of Object.keys(MAP_TYPES)) {
+        const list = [...raw.values()].filter(r => r.type === type && r.items.length >= 3)
+          .sort((a, b) => b.items.length - a.items.length).slice(0, MAP_TYPE_LIMIT[type]);
+        for (const r of list) {
+          kept.add(r.id);
+          const name = [...r.names.entries()].sort((a, b) => b[1] - a[1])[0][0];
+          const vt = r.items.map(x => x.vtr).filter(v => v != null);
+          nodes.push({ id: r.id, type, name, n: r.items.length, idx: mapMed(r.items.map(x => x.idx)),
+            er: mapMed(r.items.map(x => x.p.basic_er)), vtr: vt.length >= 3 ? mapMean(vt) : null, items: r.items,
+            r: Math.min(19, 3.5 + Math.sqrt(r.items.length) * 0.95) });
+        }
+      }
+      // ---- conexiones (co-ocurrencia en el mismo post)
+      const em = new Map();
+      for (const it of items) {
+        const ids = it.nodes.filter(id => kept.has(id));
+        for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+          const k = ids[a] < ids[b] ? ids[a] + '~' + ids[b] : ids[b] + '~' + ids[a];
+          em.set(k, (em.get(k) || 0) + 1);
+        }
+      }
+      const minW = items.length > 400 ? 2 : 1;
+      const edges = [...em.entries()].filter(([, w]) => w >= minW).sort((a, b) => b[1] - a[1]).slice(0, 300)
+        .map(([k, w]) => { const [a, b] = k.split('~'); return { a, b, w }; });
+      const linked = new Set(edges.flatMap(e => [e.a, e.b]));
+      const finalNodes = nodes.filter(n => linked.has(n.id));
+      // ---- zona de duración con mejor índice (todas las plataformas, videos)
+      const durStats = MAP_DUR.map(b => {
+        const xs = items.filter(x => x.dur != null && x.dur > b.lo && x.dur <= b.hi);
+        return { ...b, n: xs.length, idx: mapMed(xs.map(x => x.idx)) };
+      });
+      const bestDur = durStats.filter(b => b.n >= 15).sort((a, b) => b.idx - a.idx)[0] || null;
+      const weeks = posts.map(p => p.week).filter(w => w != null);
+      return { items, nodes: finalNodes, edges, platMed, bestDur, durStats,
+        lastWeek: weeks.length ? Math.max(...weeks) : null, total: posts.length };
+    }
+
+    function computeRecipes(items) {
+      const plats = {};
+      for (const it of items) (plats[it.p.platform] = plats[it.p.platform] || []).push(it);
+      const best = (groups, min) => groups.filter(g => g.n >= min).sort((a, b) => b.idx - a.idx)[0] || null;
+      const grp = (xs, keyFn) => {
+        const m = new Map();
+        for (const x of xs) { const k = keyFn(x); if (k == null) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+        return [...m.entries()].map(([k, v]) => ({ k, n: v.length, idx: mapMed(v.map(x => x.idx)),
+          vtr: (() => { const vs = v.map(x => x.vtr).filter(z => z != null); return vs.length >= 3 ? mapMean(vs) : null; })() }));
+      };
+      return Object.entries(plats).filter(([, xs]) => xs.length >= 15).map(([pl, xs]) => {
+        const fmt = best(grp(xs, x => x.p.format || null), 8);
+        const durs = grp(xs.filter(x => x.dur != null), x => (mapDurB(x.dur) || {}).k || null);
+        const dur = (() => { const d = best(durs, 6); return d && d.idx >= 1 ? d : null; })();
+        const shortest = MAP_DUR.map(b => durs.find(d => d.k === b.k)).find(d => d && d.n >= 6) || null;
+        const day = best(grp(xs, x => (x.day == null ? null : MAP_DAYS[x.day])), 6);
+        const worstDay = grp(xs, x => (x.day == null ? null : MAP_DAYS[x.day])).filter(g => g.n >= 6).sort((a, b) => a.idx - b.idx)[0] || null;
+        return { pl, n: xs.length, fmt, dur, shortest, day, worstDay };
+      }).sort((a, b) => b.n - a.n);
+    }
+
+    function useCountUp(target, dur = 900) {
+      const [v, setV] = useState(0);
+      useEffect(() => {
+        if (target == null || !isFinite(target)) { setV(target); return; }
+        if (mapReduced()) { setV(target); return; }
+        let raf; const t0 = performance.now();
+        const tick = (t) => { const k = Math.min(1, (t - t0) / dur); setV(target * (1 - Math.pow(1 - k, 3))); if (k < 1) raf = requestAnimationFrame(tick); };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+      }, [target]);
+      return v;
+    }
+
+    function MapCounter({ label, value, fmtFn, tone }) {
+      const v = useCountUp(value);
+      return html`<div className="min-w-0">
+        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1">${label}</div>
+        <div className=${"font-mono tabular-nums text-[22px] leading-none " + (tone || 'text-txt')}>${v == null ? '—' : fmtFn(v)}</div>
+      </div>`;
+    }
+
+    // ---------- Red (fuerzas propias, sin librerías) ----------
+    const NET_W = 760, NET_H = 540;
+    function useForceLayout(nodes, edges) {
+      const [pos, setPos] = useState({});
+      useEffect(() => {
+        if (!nodes.length) { setPos({}); return; }
+        const rnd = mapRng(nodes.length * 7919 + edges.length * 31);
+        const P = nodes.map(n => ({ id: n.id, r: n.r, x: NET_W / 2 + (rnd() - 0.5) * NET_W * 0.85, y: NET_H / 2 + (rnd() - 0.5) * NET_H * 0.85, vx: 0, vy: 0 }));
+        const ix = new Map(P.map((p, i) => [p.id, i]));
+        const maxW = Math.max(1, ...edges.map(e => e.w));
+        const E = edges.map(e => ({ a: ix.get(e.a), b: ix.get(e.b), w: e.w })).filter(e => e.a != null && e.b != null);
+        let alpha = 1;
+        const step = () => {
+          for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+            const A = P[i], B = P[j];
+            let dx = B.x - A.x, dy = B.y - A.y; const d2 = dx * dx + dy * dy || 0.01; const d = Math.sqrt(d2);
+            let f = 3200 * alpha / d2; const minD = A.r + B.r + 12;
+            if (d < minD) f += (minD - d) * 0.25;
+            dx /= d; dy /= d; A.vx -= dx * f; A.vy -= dy * f; B.vx += dx * f; B.vy += dy * f;
+          }
+          for (const e of E) {
+            const A = P[e.a], B = P[e.b]; const dx = B.x - A.x, dy = B.y - A.y; const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+            const k = 0.006 * (1 + 2 * Math.sqrt(e.w / maxW)) * alpha; const f = (d - 125) * k;
+            A.vx += dx / d * f; A.vy += dy / d * f; B.vx -= dx / d * f; B.vy -= dy / d * f;
+          }
+          for (const p of P) {
+            p.vx += (NET_W / 2 - p.x) * 0.0022 * alpha; p.vy += (NET_H / 2 - p.y) * 0.0042 * alpha;
+            p.vx *= 0.62; p.vy *= 0.62; p.x += p.vx; p.y += p.vy;
+            p.x = Math.max(p.r + 6, Math.min(NET_W - p.r - 70, p.x)); p.y = Math.max(p.r + 10, Math.min(NET_H - p.r - 12, p.y));
+          }
+          alpha *= 0.986;
+        };
+        const snap = () => setPos(Object.fromEntries(P.map(p => [p.id, { x: p.x, y: p.y }])));
+        if (mapReduced()) { while (alpha > 0.02) step(); snap(); return; }
+        let raf;
+        const loop = () => { step(); step(); snap(); if (alpha > 0.02) raf = requestAnimationFrame(loop); };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+      }, [nodes, edges]);
+      return pos;
+    }
+
+    function MapNetwork({ M, sel, setSel, hover, setHover, colorMode }) {
+      const pos = useForceLayout(M.nodes, M.edges);
+      const focus = sel || hover;
+      const nbr = useMemo(() => {
+        if (!focus) return null;
+        const s = new Set([focus]);
+        for (const e of M.edges) { if (e.a === focus) s.add(e.b); if (e.b === focus) s.add(e.a); }
+        return s;
+      }, [focus, M.edges]);
+      const maxW = Math.max(1, ...M.edges.map(e => e.w));
+      const fillOf = (n) => {
+        if (colorMode === 'type') return MAP_TYPES[n.type].color;
+        if (n.idx == null) return 'rgb(var(--c-faint))';
+        return n.idx >= 1.15 ? MAP_GOOD : n.idx <= 0.85 ? MAP_BAD : 'rgb(var(--c-txt4))';
+      };
+      const showLabel = useMemo(() => {
+        const out = new Map(); const boxes = [];
+        const pri = (n) => (n.id === focus ? 1e6 : nbr && nbr.has(n.id) ? 1e5 + n.n : n.n);
+        for (const n of [...M.nodes].sort((a, b) => pri(b) - pri(a))) {
+          const p = pos[n.id]; if (!p) continue;
+          const len = Math.min(n.id === focus ? 28 : 16, n.name.length);
+          const wl = len * 5.7 + 6; const left = p.x + n.r + wl > NET_W - 2;
+          const bx = left ? { x0: p.x - n.r - wl, x1: p.x - n.r - 2, y0: p.y - 7, y1: p.y + 7 } : { x0: p.x + n.r + 2, x1: p.x + n.r + wl, y0: p.y - 7, y1: p.y + 7 };
+          const hit = boxes.some(o => !(bx.x1 < o.x0 || bx.x0 > o.x1 || bx.y1 < o.y0 || bx.y0 > o.y1));
+          if (!hit || n.id === focus) { out.set(n.id, left); boxes.push(bx); }
+        }
+        return out;
+      }, [pos, M.nodes, focus, nbr]);
+      const ordered = focus ? [...M.edges.filter(e => e.a !== focus && e.b !== focus), ...M.edges.filter(e => e.a === focus || e.b === focus)] : M.edges;
+      return html`<svg viewBox=${`0 0 ${NET_W} ${NET_H}`} className="w-full h-auto block select-none" role="img"
+          aria-label="Red de campañas, conceptos, productos, influencers y piezas conectados por los posts que comparten"
+          onClick=${(e) => { if (e.target.tagName === 'svg') setSel(null); }}>
+        <g>
+          ${ordered.map(e => {
+            const a = pos[e.a], b = pos[e.b]; if (!a || !b) return null;
+            const on = focus && (e.a === focus || e.b === focus);
+            const w = 0.6 + 2.6 * Math.sqrt(e.w / maxW);
+            return html`<line key=${e.a + e.b} x1=${a.x} y1=${a.y} x2=${b.x} y2=${b.y}
+              stroke=${on ? MAP_HOT : 'rgb(var(--c-txt))'} strokeWidth=${on ? Math.max(2, w * 1.4) : w}
+              strokeOpacity=${on ? 0.95 : focus ? 0.035 : 0.09} strokeLinecap="round"/>`;
+          })}
+        </g>
+        <g>
+          ${M.nodes.map(n => {
+            const p = pos[n.id]; if (!p) return null;
+            const dim = nbr && !nbr.has(n.id);
+            const isSel = focus === n.id;
+            return html`<g key=${n.id} transform=${`translate(${p.x},${p.y})`} style=${{ cursor: 'pointer', transition: 'opacity .25s' }}
+                opacity=${dim ? 0.18 : 1}
+                onMouseEnter=${() => setHover(n.id)} onMouseLeave=${() => setHover(null)}
+                onClick=${(ev) => { ev.stopPropagation(); setSel(sel === n.id ? null : n.id); }}>
+              <title>${MAP_TYPES[n.type].label + ': ' + n.name + ' · ' + n.n + ' posts · índice ' + mapX(n.idx)}</title>
+              ${isSel && html`<circle r=${n.r + 6} fill="none" stroke=${MAP_HOT} strokeWidth="2.5"/>`}
+              <circle r=${n.r} fill=${fillOf(n)} stroke="rgb(var(--c-surface))" strokeWidth="2"/>
+              
+            </g>`;
+          })}
+        </g>
+        <g style=${{ pointerEvents: 'none' }}>
+          ${M.nodes.map(n => {
+            const p = pos[n.id]; if (!p || !showLabel.has(n.id)) return null;
+            const dim = nbr && !nbr.has(n.id); const isSel = focus === n.id;
+            return html`<g key=${n.id} transform=${`translate(${p.x},${p.y})`} opacity=${dim ? 0.25 : 1}><text x=${showLabel.get(n.id) ? -(n.r + 5) : n.r + 5} y="3.5" textAnchor=${showLabel.get(n.id) ? 'end' : 'start'} fontSize="10.5" fill="rgb(var(--c-txt))"
+                stroke="rgb(var(--c-surface))" strokeWidth="3.5" strokeLinejoin="round" paintOrder="stroke" style=${{ pointerEvents: 'none', fontWeight: isSel || n.n >= 60 ? 600 : 400 }}>${mapTrunc(n.name, isSel ? 28 : 16)}</text></g>`;
+          })}
+        </g>
+      </svg>`;
+    }
+
+    // ---------- Enjambre (canvas) ----------
+    const SW_W = 760, SW_H = 420, SW_L = 46, SW_R = 14, SW_T = 18, SW_B = 34;
+    function swarmTarget(it, mode) {
+      const yv = Math.log10(Math.max(0.1, Math.min(10, it.idx)));
+      const y = SW_T + (1 - (yv + 1) / 2) * (SW_H - SW_T - SW_B) + (it.j - 0.5) * 6;
+      if (mode === 'week') {
+        const w = Math.max(1, Math.min(53, it.week || 1));
+        return { x: SW_L + 8 + (w - 1) / 52 * (SW_W - SW_L - SW_R - 16) + (it.j - 0.5) * 9, y };
+      }
+      if (it.dur == null) return { x: SW_L + 10 + it.j * 44, y };
+      const d = Math.min(it.dur, 120);
+      return { x: SW_L + 78 + Math.sqrt(d / 120) * (SW_W - SW_L - SW_R - 92) + (it.j - 0.5) * 7, y };
+    }
+    const swarmDurX = (d) => SW_L + 78 + Math.sqrt(Math.min(d, 120) / 120) * (SW_W - SW_L - SW_R - 92);
+    const swarmY = (v) => SW_T + (1 - (Math.log10(v) + 1) / 2) * (SW_H - SW_T - SW_B);
+    const cssVar = (name) => (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim();
+    const cssRgb = (name, a = 1) => { const v = cssVar(name); return v.includes(',') || v.startsWith('#') || v.startsWith('rgb') ? v : `rgba(${v.split(/\s+/).join(',')},${a})`; };
+
+    function MapSwarm({ M, mode, colorMode, focusSet, onPick }) {
+      const ref = useRef(null);
+      const st = useRef({ cur: null, from: null, t0: 0, raf: 0, hover: null });
+      const [tip, setTip] = useState(null);
+      const colorOf = (it) => colorMode === 'infl' ? (isInfluencer(it.p) ? MAP_HOT : null) : (PLAT_COLORS[it.p.platform] || '#888');
+      const draw = useCallback(() => {
+        const cv = ref.current; if (!cv) return;
+        const dpr = window.devicePixelRatio || 1;
+        if (cv.width !== SW_W * dpr) { cv.width = SW_W * dpr; cv.height = SW_H * dpr; }
+        const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, SW_W, SW_H);
+        const txt3 = cssRgb('--c-txt3'), txt4 = cssRgb('--c-txt4'), grid = cssRgb('--c-txt', 0.07), muted = cssRgb('--c-txt4', 0.55);
+        g.font = '10px "JetBrains Mono", ui-monospace, monospace';
+        // zona ganadora
+        if (mode === 'dur' && M.bestDur) {
+          const x0 = swarmDurX(M.bestDur.lo), x1 = swarmDurX(M.bestDur.hi);
+          g.fillStyle = 'rgba(240,56,107,0.08)'; g.fillRect(x0, SW_T, x1 - x0, SW_H - SW_T - SW_B);
+          g.fillStyle = MAP_HOT; g.textAlign = 'center';
+          g.fillText('MEJOR ZONA · ' + mapX(M.bestDur.idx), (x0 + x1) / 2, SW_T - 5);
+        }
+        // eje y (índice)
+        g.textAlign = 'right';
+        for (const v of [0.1, 0.3, 1, 3, 10]) {
+          const y = swarmY(v);
+          g.fillStyle = v === 1 ? txt3 : txt4; g.fillText(mapX(v), SW_L - 8, y + 3);
+          if (v === 1) { g.fillStyle = grid; g.fillRect(SW_L, y - 0.75, SW_W - SW_L - SW_R, 1.5); }
+        }
+        // eje x
+        g.textAlign = 'center'; g.fillStyle = txt4;
+        const yb = SW_H - SW_B + 18;
+        if (mode === 'dur') {
+          g.fillText('SIN VIDEO', SW_L + 32, yb);
+          for (const d of [5, 15, 30, 60, 120]) g.fillText(d === 120 ? '120 s+' : d + ' s', swarmDurX(d), yb);
+        } else {
+          for (const w of [1, 10, 20, 30, 40, 50]) g.fillText('S' + w, SW_L + 8 + (w - 1) / 52 * (SW_W - SW_L - SW_R - 16), yb);
+        }
+        // puntos
+        const s = st.current; const now = performance.now();
+        const k = s.from ? Math.min(1, (now - s.t0) / 1500) : 1;
+        const items = M.items; const r = items.length > 1500 ? 2.1 : items.length > 600 ? 2.6 : 3.2;
+        const order = focusSet ? [...items.filter(it => !focusSet.has(it.i)), ...items.filter(it => focusSet.has(it.i))] : items;
+        for (const it of order) {
+          const to = s.cur[it.i]; let x = to.x, y = to.y;
+          if (s.from && k < 1) {
+            const f = s.from[it.i]; const kk = Math.max(0, Math.min(1, (k - it.j * 0.3) / 0.7)); const e = 1 - Math.pow(1 - kk, 3);
+            x = f.x + (to.x - f.x) * e; y = f.y + (to.y - f.y) * e;
+          }
+          it._x = x; it._y = y;
+          const c = colorOf(it);
+          const on = focusSet ? focusSet.has(it.i) : true;
+          g.globalAlpha = on ? (c ? 0.88 : 0.5) : 0.07;
+          g.fillStyle = c || muted;
+          g.beginPath(); g.arc(x, y, focusSet && on ? r + 1.1 : r, 0, Math.PI * 2); g.fill();
+        }
+        g.globalAlpha = 1;
+        if (s.hover) { const h = s.hover; g.strokeStyle = cssRgb('--c-txt'); g.lineWidth = 1.5; g.beginPath(); g.arc(h._x, h._y, r + 3, 0, Math.PI * 2); g.stroke(); }
+        if (k < 1) s.raf = requestAnimationFrame(draw);
+      }, [M, mode, colorMode, focusSet]);
+
+      // posiciones: dispersión inicial → destino (animado)
+      useEffect(() => {
+        const s = st.current; cancelAnimationFrame(s.raf);
+        const target = {}; for (const it of M.items) target[it.i] = swarmTarget(it, mode);
+        let from = s.cur;
+        if (!from || Object.keys(from).length !== M.items.length) {
+          const rnd = mapRng(M.items.length);
+          from = {}; for (const it of M.items) from[it.i] = { x: SW_L + rnd() * (SW_W - SW_L - SW_R), y: SW_T + rnd() * (SW_H - SW_T - SW_B) };
+        }
+        s.from = mapReduced() ? null : from; s.cur = target; s.t0 = performance.now();
+        s.raf = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(s.raf);
+      }, [M, mode]);
+      useEffect(() => { if (st.current.cur) { cancelAnimationFrame(st.current.raf); st.current.raf = requestAnimationFrame(draw); } }, [draw]);
+      useEffect(() => {
+        const mo = new MutationObserver(() => requestAnimationFrame(draw));
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        return () => mo.disconnect();
+      }, [draw]);
+
+      const locate = (e) => {
+        const cv = ref.current; const rc = cv.getBoundingClientRect();
+        const x = (e.clientX - rc.left) * SW_W / rc.width, y = (e.clientY - rc.top) * SW_H / rc.height;
+        let best = null, bd = 64;
+        for (const it of M.items) { if (it._x == null) continue; const dx = it._x - x, dy = it._y - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = it; } }
+        return { best, rc, x, y };
+      };
+      const onMove = (e) => {
+        const { best, rc } = locate(e);
+        st.current.hover = best; draw();
+        setTip(best ? { it: best, left: best._x * rc.width / SW_W, top: best._y * rc.height / SW_H } : null);
+      };
+      return html`<div className="relative">
+        <canvas ref=${ref} className="w-full h-auto block" style=${{ aspectRatio: SW_W + ' / ' + SW_H, cursor: tip ? 'pointer' : 'default' }}
+          role="img" aria-label="Enjambre de posts: cada punto es un post, a la derecha más largo, arriba más engagement que su plataforma"
+          onMouseMove=${onMove} onMouseLeave=${() => { st.current.hover = null; setTip(null); draw(); }}
+          onClick=${(e) => { const { best } = locate(e); if (best) onPick(best.p); }}></canvas>
+        ${tip && html`<div className="absolute pointer-events-none z-10 rounded-lg px-3 py-2 text-[11px] shadow-lg"
+            style=${{ left: Math.min(tip.left + 12, 9999), top: tip.top + 12, background: 'var(--ch-tip-bg)', color: 'var(--ch-tip-text)', border: '1px solid var(--ch-tip-border)', maxWidth: 260 }}>
+          <div className="font-medium">${tip.it.p.platform} · ${tip.it.p.format || 'Sin formato'}${tip.it.dur ? ' · ' + Math.round(tip.it.dur) + ' s' : ''}</div>
+          <div style=${{ color: 'var(--ch-tip-label)' }}>${[tip.it.p.campaign, tip.it.p.subcampaign].filter(x => x && !MAP_SKIP.test(String(x).trim())).join(' · ') || '—'}</div>
+          <div className="font-mono tabular-nums mt-1">ER ${mapPct(tip.it.p.basic_er)} · ${mapX(tip.it.idx)} su plataforma${tip.it.vtr != null ? ' · VTR ' + mapPct(tip.it.vtr) : ''}</div>
+        </div>`}
+      </div>`;
+    }
+
+    function MapBar({ v, color }) {
+      const w = v == null ? 0 : Math.max(4, Math.min(100, Math.log10(Math.max(0.1, Math.min(10, v))) * 50 + 50));
+      return html`<span className="inline-block w-[64px] h-[6px] rounded-full bg-onSurface/[0.08] align-middle overflow-hidden">
+        <span className="block h-full rounded-full" style=${{ width: w + '%', background: color }}></span></span>`;
+    }
+    const mapIdxColor = (v) => (v == null ? 'rgb(var(--c-faint))' : v >= 1.15 ? MAP_GOOD : v <= 0.85 ? MAP_BAD : 'rgb(var(--c-txt4))');
+
+    function MapConsole({ lines }) {
+      const [shown, setShown] = useState(0);
+      useEffect(() => {
+        if (mapReduced()) { setShown(lines.length); return; }
+        setShown(0); let i = 0; const t = setInterval(() => { i += 1; setShown(i); if (i >= lines.length) clearInterval(t); }, 320);
+        return () => clearInterval(t);
+      }, [lines]);
+      return html`<div className="rounded-xl bg-onSurface/[0.03] px-4 py-3 font-mono text-[10.5px] leading-[1.75] text-txt3 min-h-[140px]">
+        <div className="text-[9px] uppercase tracking-[0.2em] text-txt4 mb-1">Reporte</div>
+        ${lines.slice(0, shown).map((l, i) => html`<div key=${i}><span className="text-txt4">${l.t}</span>  ${l.s}</div>`)}
+        ${shown < lines.length && html`<span className="inline-block w-[7px] h-[12px] bg-txt3/60 align-middle animate-pulse"></span>`}
+      </div>`;
+    }
+
+    function MapFeed({ items, onPick, title }) {
+      const top = useMemo(() => [...items].sort((a, b) => b.idx - a.idx).slice(0, 24), [items]);
+      const [off, setOff] = useState(0);
+      useEffect(() => {
+        setOff(0);
+        if (mapReduced() || top.length <= 6) return;
+        const t = setInterval(() => setOff(o => (o + 1) % top.length), 2400);
+        return () => clearInterval(t);
+      }, [top]);
+      const view = top.length <= 6 ? top : Array.from({ length: 6 }, (_, k) => top[(off + k) % top.length]);
+      return html`<div>
+        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2 flex items-center gap-2">
+          <span className="inline-block w-[6px] h-[6px] rounded-full animate-pulse" style=${{ background: MAP_HOT }}></span>${title}</div>
+        <div className="space-y-1">
+          ${view.map((it, k) => html`<button key=${it.i + '-' + k} onClick=${() => onPick(it.p)}
+              className="w-full text-left rounded-lg px-2.5 py-1.5 hover:bg-onSurface/[0.05] transition-colors">
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="font-mono text-[10px] px-1.5 rounded text-white" style=${{ background: PLAT_COLORS[it.p.platform] || '#888' }}>${PLAT_LETTERS[it.p.platform] || '·'}</span>
+              <span className="text-txt2 truncate">${it.p.format || 'Sin formato'}${it.dur ? ' · ' + Math.round(it.dur) + ' s' : ''}</span>
+              <span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(it.idx) }}>${mapX(it.idx)}</span>
+            </div>
+            <div className="text-[10.5px] text-txt4 truncate pl-[30px]">${[it.p.subcampaign, it.p.product].filter(x => x && !MAP_SKIP.test(String(x).trim())).join(' · ') || it.p.campaign || '—'}</div>
+          </button>`)}
+        </div>
+      </div>`;
+    }
+
+    function MapNodePanel({ M, nodeId, onPick, onClear, setSel }) {
+      const n = M.nodes.find(x => x.id === nodeId);
+      if (!n) return null;
+      const conns = M.edges.filter(e => e.a === n.id || e.b === n.id)
+        .map(e => ({ node: M.nodes.find(x => x.id === (e.a === n.id ? e.b : e.a)), w: e.w }))
+        .filter(c => c.node).sort((a, b) => b.w - a.w).slice(0, 8);
+      const plats = {}; for (const it of n.items) plats[it.p.platform] = (plats[it.p.platform] || 0) + 1;
+      return html`<div>
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-mono uppercase tracking-[0.2em] mb-1" style=${{ color: MAP_TYPES[n.type].color }}>${MAP_TYPES[n.type].label}</div>
+            <div className="text-[15px] text-txt font-medium leading-tight">${n.name}</div>
+          </div>
+          <button onClick=${onClear} className="text-txt4 hover:text-txt text-[11px] font-mono shrink-0">Cerrar ×</button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          ${[['Posts', fmtFull(n.n), 'text-txt'], ['Índice', mapX(n.idx), ''], ['VTR', n.vtr != null ? mapPct(n.vtr) : '—', 'text-txt']].map(([l, v, c]) => html`
+            <div key=${l} className="rounded-lg bg-onSurface/[0.04] px-2.5 py-2">
+              <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-txt4">${l}</div>
+              <div className=${"font-mono tabular-nums text-[15px] " + c} style=${l === 'Índice' ? { color: mapIdxColor(n.idx) } : null}>${v}</div>
+            </div>`)}
+        </div>
+        <div className="text-[10.5px] text-txt4 mb-3">${Object.entries(plats).sort((a, b) => b[1] - a[1]).map(([p, c]) => p + ' ' + c).join(' · ')}</div>
+        <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-1.5">Conexiones</div>
+        <div className="space-y-0.5 mb-4">
+          ${conns.map(c => html`<button key=${c.node.id} onClick=${() => setSel(c.node.id)}
+              className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05]">
+            <span className="w-[7px] h-[7px] rounded-full shrink-0" style=${{ background: MAP_TYPES[c.node.type].color }}></span>
+            <span className="text-txt2 truncate text-left">${c.node.name}</span>
+            <span className="ml-auto text-txt4 font-mono text-[10px] tabular-nums">${c.w}</span>
+            <${MapBar} v=${c.node.idx} color=${mapIdxColor(c.node.idx)}/>
+          </button>`)}
+        </div>
+        <${MapFeed} items=${n.items} onPick=${onPick} title="Sus mejores posts"/>
+      </div>`;
+    }
+
+    function MapSeg({ value, onChange, options, label }) {
+      return html`<div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label=${label}>
+        ${options.map(([k, l]) => html`<button key=${k} onClick=${() => onChange(k)} role="radio" aria-checked=${value === k}
+          className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (value === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+      </div>`;
+    }
+
+    function ContentMapSection({ D, onPick }) {
+      const [scope, setScope] = useState('org');
+      const [colorMode, setColorMode] = useState('perf');
+      const [swMode, setSwMode] = useState('dur');
+      const [swColor, setSwColor] = useState('plat');
+      const [sel, setSel] = useState(null);
+      const [hover, setHover] = useState(null);
+      const posts = useMemo(() => (D.allPosts || []).filter(p => scope === 'all' || /org/i.test(String(p.strategy || ''))), [D.allPosts, scope]);
+      const M = useMemo(() => computeContentMap(posts), [posts]);
+      const recipes = useMemo(() => computeRecipes(M.items), [M]);
+      useEffect(() => { setSel(null); }, [M]);
+      const focusNode = sel || hover;
+      const focusSet = useMemo(() => {
+        if (!focusNode) return null;
+        const n = M.nodes.find(x => x.id === focusNode); return n ? new Set(n.items.map(it => it.i)) : null;
+      }, [focusNode, M]);
+      const outliers = M.items.filter(it => it.idx >= 1.5).length;
+      const lines = useMemo(() => {
+        const t0 = new Date(); const ts = (k) => { const d = new Date(t0.getTime() + k * 1000); return '[' + d.toTimeString().slice(0, 8) + ']'; };
+        const meds = Object.entries(M.platMed).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([p, v]) => p + ' ' + mapPct(v)).join(' · ');
+        const bestNode = [...M.nodes].filter(n => n.n >= 6).sort((a, b) => b.idx - a.idx)[0];
+        const worstNode = [...M.nodes].filter(n => n.n >= 6).sort((a, b) => a.idx - b.idx)[0];
+        const L = [
+          { s: `Cargando ${fmtFull(M.items.length)} posts con ER básico (${scope === 'org' ? 'orgánico' : 'orgánico y pauta'})` },
+          { s: `ER típico por plataforma: ${meds}` },
+          { s: `${M.nodes.length} nodos · ${M.edges.length} conexiones` },
+        ];
+        if (M.bestDur) L.push({ s: `Duración con mejor índice: ${M.bestDur.k} (${mapX(M.bestDur.idx)}, ${M.bestDur.n} videos)` });
+        if (bestNode) L.push({ s: `Arriba de lo esperado: ${bestNode.name} · ${MAP_TYPES[bestNode.type].label.toLowerCase()} · ${mapX(bestNode.idx)}` });
+        if (worstNode && worstNode !== bestNode) L.push({ s: `Debajo de lo esperado: ${worstNode.name} · ${MAP_TYPES[worstNode.type].label.toLowerCase()} · ${mapX(worstNode.idx)}` });
+        L.push({ s: 'Listo. Toca un nodo para ver sus conexiones y sus posts.' });
+        return L.map((l, k) => ({ ...l, t: ts(k) }));
+      }, [M, scope]);
+
+      if (M.items.length < 20) {
+        return html`<section id="sec-mapa" className="px-4 md:px-7 py-7 relative group">
+          <h2 className="text-[18px] font-medium text-txt mb-4">Mapa de contenido</h2>
+          <div className="rounded-xl bg-surface border border-line p-8 text-center text-txt3 text-sm">Hacen falta al menos 20 posts con ER básico en el filtro actual.</div>
+        </section>`;
+      }
+      const platShare = Object.entries(M.items.reduce((a, it) => { a[it.p.platform] = (a[it.p.platform] || 0) + 1; return a; }, {}))
+        .sort((a, b) => b[1] - a[1]);
+      return html`
+        <section id="sec-mapa" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-mapa" name="Mapa de contenido" />
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+            <div className="max-w-[640px]">
+              <h2 className="text-[18px] font-medium text-txt">Mapa de contenido</h2>
+              <p className="text-txt4 text-[12px] mt-1">Cada post se mide contra el post típico de su plataforma: 1× es lo normal, 2× es el doble de ER básico. Así un post de X y uno de TikTok se comparan en la misma escala. Respeta los filtros de arriba.</p>
+            </div>
+            <${MapSeg} label="Pauta" value=${scope} onChange=${setScope} options=${[['org', 'Orgánico'], ['all', 'Todo']]}/>
+          </div>
+
+          <div className="rounded-xl bg-surface border border-line px-5 py-4 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <${MapCounter} label="Posts" value=${M.items.length} fmtFn=${fmtFull}/>
+            <${MapCounter} label="Nodos" value=${M.nodes.length} fmtFn=${fmtFull}/>
+            <${MapCounter} label="Conexiones" value=${M.edges.length} fmtFn=${fmtFull}/>
+            <${MapCounter} label="Sobresalientes ≥1.5×" value=${M.items.length ? outliers / M.items.length * 100 : null} fmtFn=${(v) => Math.round(v) + '%'} tone="text-success"/>
+            <${MapCounter} label="Semana" value=${M.lastWeek} fmtFn=${(v) => 'S' + Math.round(v)} tone="text-accent"/>
+          </div>
+
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-4 mb-4">
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Red · quién aparece con quién</div>
+                <${MapSeg} label="Color de la red" value=${colorMode} onChange=${setColorMode} options=${[['perf', 'Rendimiento'], ['type', 'Tipo']]}/>
+              </div>
+              <${MapNetwork} M=${M} sel=${sel} setSel=${setSel} hover=${hover} setHover=${setHover} colorMode=${colorMode}/>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10.5px] text-txt3 mt-2">
+                ${colorMode === 'type'
+                  ? Object.entries(MAP_TYPES).map(([k, t]) => html`<span key=${k} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: t.color }}></span>${t.label}</span>`)
+                  : [[MAP_GOOD, 'Arriba de su plataforma (≥1.15×)'], ['rgb(var(--c-txt4))', 'En línea'], [MAP_BAD, 'Debajo (≤0.85×)']].map(([c, l]) => html`<span key=${l} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: c }}></span>${l}</span>`)}
+                <span className="text-txt4">Tamaño = posts · grosor = posts que comparten</span>
+              </div>
+            </div>
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              ${sel ? html`<${MapNodePanel} M=${M} nodeId=${sel} onPick=${onPick} onClear=${() => setSel(null)} setSel=${setSel}/>` : html`
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2">Nodos con mejor índice</div>
+                <div className="space-y-0.5 mb-5">
+                  ${[...M.nodes].filter(n => n.n >= 6).sort((a, b) => b.idx - a.idx).slice(0, 8).map(n => html`
+                    <button key=${n.id} onClick=${() => setSel(n.id)} onMouseEnter=${() => setHover(n.id)} onMouseLeave=${() => setHover(null)}
+                      className="w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 hover:bg-onSurface/[0.05]">
+                      <span className="w-[7px] h-[7px] rounded-full shrink-0" style=${{ background: MAP_TYPES[n.type].color }}></span>
+                      <span className="text-txt2 truncate text-left">${n.name}</span>
+                      <span className="ml-auto font-mono text-[10.5px] tabular-nums" style=${{ color: mapIdxColor(n.idx) }}>${mapX(n.idx)}</span>
+                      <${MapBar} v=${n.idx} color=${mapIdxColor(n.idx)}/>
+                    </button>`)}
+                </div>
+                <${MapFeed} items=${M.items} onPick=${onPick} title="Feed · posts sobresalientes"/>`}
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-4 mb-4">
+            <div className="rounded-xl bg-surface border border-line p-4 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4">Enjambre · cada punto es un post${focusSet ? html` · <span style=${{ color: MAP_HOT }}>${(M.nodes.find(x => x.id === focusNode) || {}).name}</span>` : ''}</div>
+                <div className="flex flex-wrap gap-2">
+                  <${MapSeg} label="Eje horizontal" value=${swMode} onChange=${setSwMode} options=${[['dur', 'Duración'], ['week', 'Semana']]}/>
+                  <${MapSeg} label="Color de los puntos" value=${swColor} onChange=${setSwColor} options=${[['plat', 'Plataforma'], ['infl', 'Influencer']]}/>
+                </div>
+              </div>
+              <${MapSwarm} M=${M} mode=${swMode} colorMode=${swColor} focusSet=${focusSet} onPick=${onPick}/>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10.5px] text-txt3 mt-1">
+                ${swColor === 'plat'
+                  ? platShare.map(([p, c]) => html`<span key=${p} className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: PLAT_COLORS[p] || '#888' }}></span>${p} <span className="text-txt4 font-mono">${Math.round(c / M.items.length * 100)}%</span></span>`)
+                  : html`<span className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full" style=${{ background: MAP_HOT }}></span>Con influencer</span><span className="inline-flex items-center gap-1.5"><span className="w-[8px] h-[8px] rounded-full bg-txt4/60"></span>Marca</span>`}
+                <span className="text-txt4">Arriba = más ER que su plataforma · toca un punto para abrir el post</span>
+              </div>
+            </div>
+            <${MapConsole} lines=${lines}/>
+          </div>
+
+          <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-txt4 mb-2 mt-6">Recetas que hoy funcionan</div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            ${recipes.map(r => html`<div key=${r.pl} className="rounded-xl bg-surface border border-line p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-[9px] h-[9px] rounded-full" style=${{ background: PLAT_COLORS[r.pl] || '#888' }}></span>
+                <span className="text-[13px] text-txt font-medium">${r.pl}</span>
+                <span className="ml-auto text-[10.5px] text-txt4 font-mono">ER típico ${mapPct(M.platMed[r.pl])}</span>
+              </div>
+              <div className="space-y-2 text-[12px]">
+                ${r.fmt && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Pieza</span><span className="text-txt2">${r.fmt.k}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.fmt.idx) }}>${mapX(r.fmt.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[44px] text-right">${r.fmt.n}</span></div>`}
+                ${r.dur && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Duración</span><span className="text-txt2">${r.dur.k}${r.dur.vtr != null && r.shortest && r.shortest.k !== r.dur.k && r.shortest.vtr != null ? html` <span className="text-txt4">· VTR ${mapPct(r.dur.vtr)} vs ${mapPct(r.shortest.vtr)} en ${r.shortest.k}</span>` : ''}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.dur.idx) }}>${mapX(r.dur.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[44px] text-right">${r.dur.n}</span></div>`}
+                ${r.day && html`<div className="flex items-baseline gap-2"><span className="text-txt4 w-[64px] shrink-0">Día</span><span className="text-txt2">${r.day.k}${r.worstDay && r.worstDay.k !== r.day.k ? html` <span className="text-txt4">· evitar ${r.worstDay.k.toLowerCase()} (${mapX(r.worstDay.idx)})</span>` : ''}</span><span className="ml-auto font-mono tabular-nums" style=${{ color: mapIdxColor(r.day.idx) }}>${mapX(r.day.idx)}</span><span className="text-txt4 font-mono text-[10px] w-[44px] text-right">${r.day.n}</span></div>`}
+              </div>
+            </div>`)}
+          </div>
+          <p className="text-[10.5px] text-txt4 mt-2">Mediana del índice de cada grupo; la última columna es el número de posts. Mínimo 8 posts por pieza y 6 por duración o día. Muestra qué acompaña a los mejores resultados, no prueba que lo cause.</p>
         </section>`;
     }
 
@@ -10349,6 +10960,7 @@
                 <${TopPostsTable}  D=${D} onPick=${setSelected} filters=${filters} benchmarks=${benchmarks} setFilters=${setFilters}/>
                 <${VtrSection}         D=${D} onPick=${setSelected}/>
                 <${InfluencersSection} D=${D} onPick=${setSelected}/>
+                <${ContentMapSection}  D=${D} onPick=${setSelected}/>
 
                 <${GroupBlock} id="analisis" label="Análisis" hint=${ttOnly ? "Mezcla, cadencia, horarios, promedios, comparativas, catálogo, TikTok creativo y simulador" : "Mezcla, cadencia, horarios, promedios, comparativas, catálogo y simulador"}
                   count=${ttOnly ? 8 : 7} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
