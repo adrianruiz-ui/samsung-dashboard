@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231428A0'/%3E%3Ccircle cx='50' cy='50' r='26' fill='none' stroke='white' stroke-width='7' stroke-dasharray='20 9'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <script>
     // Mismo tema que el dashboard (se comparte la preferencia guardada)
     (function () {
@@ -210,6 +210,19 @@
     .brk { animation: brkIn 520ms var(--ease-out) both; transform-origin: top; }
     @keyframes brkIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     .row { transition: background-color 200ms ease; }
+    .leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+    .leaders line { stroke: rgb(var(--c-txt3)); stroke-opacity: .55; stroke-width: 1; }
+    .leaders circle { fill: rgb(var(--c-txt2)); }
+    .chip { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; border-radius: 3px; padding: 5px 8px 6px; background: rgb(var(--c-ink) / .9); box-shadow: none; }
+    html.light .chip { background: rgb(var(--c-surface) / .96); box-shadow: 0 1px 6px rgba(10,10,15,.10); }
+    .chip b { font-family: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: 0; }
+    .chip span { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: rgb(var(--c-txt3)); margin-top: 1px; }
+    .chip.big b { font-size: 18px; }
+    .chip.big span { font-size: 10.5px; }
+    .chip:hover { background: rgb(var(--c-accent2)); color: #fff; }
+    .chip:hover span, .chip:hover b { color: #fff !important; }
+    .rowlabel, .tick { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; }
+    .rowlabel { border-radius: 3px; }
     @media (prefers-reduced-motion: reduce) { .chip, .rowlabel, .tip.in, .brk, .back { animation: none !important; } .bar span { transition: none !important; } }
   </style>
 </head>
@@ -261,6 +274,7 @@
         <div class="gl" id="gl" aria-label="Maqueta 3D de posts por campaña"></div>
         <div class="ticks" id="ticks"></div>
         <div class="rowlabels" id="rowlabels"></div>
+        <svg class="leaders" id="leaders" aria-hidden="true"></svg>
         <div class="chips" id="chips"></div>
         <div class="ov">
           <button class="back" id="back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Todas las campañas</button>
@@ -539,13 +553,14 @@
   // ============================================================
   const stage = document.getElementById('stage'), host = document.getElementById('gl');
   const chipsEl = document.getElementById('chips'), tip = document.getElementById('tip');
-  const ticksEl = document.getElementById('ticks'), rowsEl = document.getElementById('rowlabels');
+  const ticksEl = document.getElementById('ticks'), rowsEl = document.getElementById('rowlabels'), leadersEl = document.getElementById('leaders');
   const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const H = 150;                                   // altura máxima sobre (o bajo) la meta
   const SPAN = { vtr: 40, er: 6 };                 // puntos porcentuales que ocupan esa altura
   const EASE = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const EASE_OUT = t => 1 - Math.pow(1 - t, 4);
   let GL = false, renderer, scene, camera, controls, nodes, stems, threads, plane, rim, ruler, hemi, key;
+  let web = null, pulses = null, webIntro = 0, hoverC = null, tNow = 0;
   let tw = null, fly = null, dirty = true, shownFocus = null, view = 'persp', lastTouch = 0, chipItems = [], rowItems = [], tickItems = [];
   const dummy = new THREE.Object3D(), tmp = new THREE.Color(), tmp2 = new THREE.Color(), V = new THREE.Vector3();
   const tokColor = n => { const p = tok(n).split(/\s+/).map(Number); return new THREE.Color(p[0] / 255, p[1] / 255, p[2] / 255); };
@@ -590,6 +605,14 @@
     stems = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false }));
     threads = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7, depthWrite: false }));
     scene.add(stems); scene.add(threads);
+    // La telaraña: todos los hilos de producto y subcampaña, siempre visibles
+    web = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, vertexAlphas: true, transparent: true, depthWrite: false }));
+    web.renderOrder = 2; scene.add(web);
+    // Pulsos que recorren los hilos de lo que estás mirando
+    const dot = document.createElement('canvas'); dot.width = dot.height = 32;
+    const g2 = dot.getContext('2d'); g2.fillStyle = '#fff'; g2.beginPath(); g2.arc(16, 16, 14, 0, 7); g2.fill();
+    pulses = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, map: new THREE.CanvasTexture(dot), transparent: true, alphaTest: 0.4, depthWrite: false }));
+    pulses.renderOrder = 3; scene.add(pulses);
     const el = renderer.domElement;
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
@@ -610,6 +633,7 @@
     rim.material.color.copy(tokColor('--c-txt4'));
     ruler.children[0].material.color.copy(tokColor('--c-txt3'));
     threads.material.color.copy(tokColor('--c-accent'));
+    if (pulses) pulses.material.color.copy(tokColor('--c-txt'));
     hemi.color.set(0xffffff); hemi.groundColor.copy(light ? new THREE.Color(0x9a9aa6) : new THREE.Color(0x3a3a46));
     hemi.intensity = light ? 0.95 : 0.85; key.intensity = light ? 0.6 : 0.8;
     if (VIEW) { VIEW.posts.forEach(p => { if (p.a) { const c = targetColor(p); p.a.r = c.r; p.a.g = c.g; p.a.b = c.b; } }); dirty = true; writeStems(); }
@@ -694,8 +718,9 @@
   function writeInstances() {
     if (!nodes || !VIEW) return;
     VIEW.posts.forEach((p, i) => {
-      const a = p.a, s = Math.max(0.0001, a.s * (i === hover ? 1.45 : 1));
-      dummy.position.set(a.x, a.y, a.z); dummy.scale.set(s, s, s); dummy.updateMatrix();
+      const a = p.a, s = Math.max(0.0001, a.s * (i === hover ? 1.45 : 1) * (hoverC && p.c === hoverC ? 1.15 : 1));
+      const br = REDUCED ? 0 : Math.sin(tNow * 0.0011 + i * 1.7) * 1.4;
+      dummy.position.set(a.x, a.y + br, a.z); dummy.scale.set(s, s, s); dummy.updateMatrix();
       nodes.setMatrixAt(i, dummy.matrix);
       tmp2.setRGB(a.r, a.g, a.b); nodes.setColorAt(i, tmp2);
     });
@@ -717,6 +742,55 @@
     stems.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     stems.geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     stems.material.opacity = focus ? 0.8 : 0.4;
+  }
+  function buildWeb() {
+    if (!web || !VIEW) return;
+    // en orden cronológico de campaña, para que la telaraña se teja en la entrada
+    const ord = new Map(VIEW.clusters.map((c, i) => [c.n, i]));
+    VIEW.webLinks = VIEW.links.slice().sort((a, b) => Math.min(ord.get(a.source.c), ord.get(a.target.c)) - Math.min(ord.get(b.source.c), ord.get(b.target.c)));
+    const n = VIEW.webLinks.length;
+    web.geometry.dispose();
+    web.geometry = new THREE.BufferGeometry();
+    web.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3).setUsage(THREE.DynamicDrawUsage));
+    web.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 8), 4).setUsage(THREE.DynamicDrawUsage));
+  }
+  function writeWeb() {
+    if (!web || !VIEW || !VIEW.webLinks) return;
+    const P = web.geometry.attributes.position.array, C = web.geometry.attributes.color.array;
+    const act = focus || hoverC, light = document.documentElement.classList.contains('light');
+    const base = light ? 0.30 : 0.34, mix = tokColor('--c-txt'), m = light ? 0.1 : 0.38;
+    const lift = (x, y) => x + (y - x) * m;
+    VIEW.webLinks.forEach((l, k) => {
+      const a = l.source.a, b = l.target.a; if (!a || !b) return;
+      P.set([a.x, a.y, a.z, b.x, b.y, b.z], k * 6);
+      let al = base;
+      if (act) al = (l.source.c === act || l.target.c === act) ? (l.x ? 0.85 : 0.6) : 0.03;
+      else if (l.x) al = base * 0.8;
+      C.set([lift(a.r, mix.r), lift(a.g, mix.g), lift(a.b, mix.b), al, lift(b.r, mix.r), lift(b.g, mix.g), lift(b.b, mix.b), al], k * 8);
+    });
+    web.geometry.attributes.position.needsUpdate = true; web.geometry.attributes.color.needsUpdate = true;
+    const k = REDUCED ? 1 : Math.min(1, webIntro ? (tNow - webIntro) / 2600 : 1);
+    web.geometry.setDrawRange(0, Math.floor(VIEW.webLinks.length * 2 * EASE_OUT(k)));
+  }
+  function writePulses() {
+    if (!pulses || !VIEW || !VIEW.webLinks) return;
+    const act = focus || hoverC;
+    let ls = [];
+    if (hover != null) ls = VIEW.webLinks.filter(l => l.source.i === hover || l.target.i === hover);
+    else if (act) ls = VIEW.webLinks.filter(l => l.source.c === act || l.target.c === act);
+    if (REDUCED || !ls.length) { pulses.visible = false; return; }
+    pulses.visible = true;
+    const max = Math.min(ls.length, 220), pos = new Float32Array(max * 3), step = ls.length / max;
+    for (let j = 0; j < max; j++) {
+      const l = ls[Math.floor(j * step)], a = l.source.a, b = l.target.a;
+      // cada pulso va del post más antiguo al más reciente
+      const [p0, p1] = l.source.d <= l.target.d ? [a, b] : [b, a];
+      const f = ((tNow / 1600) + (j * 0.618)) % 1;
+      pos[j * 3] = p0.x + (p1.x - p0.x) * f; pos[j * 3 + 1] = p0.y + (p1.y - p0.y) * f; pos[j * 3 + 2] = p0.z + (p1.z - p0.z) * f;
+    }
+    pulses.geometry.dispose();
+    pulses.geometry = new THREE.BufferGeometry();
+    pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   }
   function setThreads() {
     if (!VIEW) return;
@@ -782,6 +856,8 @@
       el.style.setProperty('--d', (i * 45) + 'ms');
       el.setAttribute('aria-label', (focus ? 'Cerrar ' : 'Abrir ') + c.n);
       el.addEventListener('click', e => { e.stopPropagation(); setFocus(c.n); });
+      el.addEventListener('mouseenter', () => { if (!focus) { hoverC = c.n; dirty = true; } });
+      el.addEventListener('mouseleave', () => { if (hoverC === c.n) { hoverC = null; dirty = true; } });
       chipsEl.appendChild(el);
       chipItems.push({ el, c, w: el.offsetWidth, h: el.offsetHeight });
     });
@@ -820,6 +896,7 @@
       c.list.forEach(p => { if (p.a) top = Math.max(top, p.a.y + p.a.s); });
       const ax = focus ? c.box.cx : c.mx - VIEW.W / 2, az = focus ? c.box.cz : c.my - VIEW.W / 2;
       const s = toScreen(ax, top + (focus ? 46 : 24), az, w, h);
+      const an = toScreen(ax, top + 4, az, w, h); it.ax = an.x; it.ay = an.y;
       it.x = s.x; it.y = s.y - it.h / 2; it.back = s.back; items.push(it);
     });
     const clamp = it => { it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 52, it.y)); };
@@ -836,6 +913,14 @@
       if (!moved) break;
     }
     items.forEach(it => { it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)'; it.el.style.visibility = it.back ? 'hidden' : 'visible'; });
+    let svg = '';
+    if (!focus) items.forEach(it => {
+      if (it.back) return;
+      const ex = it.x, ey = it.y + it.h / 2;
+      if (Math.hypot(ex - it.ax, ey - it.ay) < 10) return;
+      svg += '<line x1="' + ex.toFixed(1) + '" y1="' + ey.toFixed(1) + '" x2="' + it.ax.toFixed(1) + '" y2="' + it.ay.toFixed(1) + '"/><circle cx="' + it.ax.toFixed(1) + '" cy="' + it.ay.toFixed(1) + '" r="2"/>';
+    });
+    leadersEl.innerHTML = svg;
     rowItems.forEach(it => {
       const s1 = toScreen(it.r.x, 0, it.r.z, w, h), s2 = toScreen(it.r.x2, 0, it.r.z2, w, h), s = s1.x <= s2.x ? s1 : s2;
       it.el.style.transform = 'translate(' + Math.max(8, s.x - it.w).toFixed(1) + 'px,' + (s.y - it.h / 2).toFixed(1) + 'px)';
@@ -858,7 +943,11 @@
     if (!VIEW || document.hidden) return;
     const moving = stepTween(now);
     stepFly(now);
-    if (moving || dirty) { writeInstances(); if (moving || dirty) { writeStems(); if (hover != null) setThreads(); } dirty = false; }
+    tNow = now;
+    writeInstances();
+    if (moving || dirty || webIntro) { writeStems(); writeWeb(); if (hover != null) setThreads(); if (webIntro && now - webIntro > 2700) webIntro = 0; }
+    writePulses();
+    dirty = false;
     // La rotación lenta solo cuando nadie la está usando
     controls.autoRotate = !REDUCED && !focus && view === 'persp' && !fly && pinned == null && hover == null && now - lastTouch > 9000;
     if (!fly) controls.update();
@@ -894,7 +983,8 @@
     nodes.castShadow = true; nodes.count = VIEW.posts.length;
     scene.add(nodes);
     VIEW.clusters.forEach(expandCluster);
-    shownFocus = null;
+    buildWeb(); webIntro = performance.now() + (old.size ? 0 : 500);
+    shownFocus = null; hoverC = null;
     // Entrada: el anillo se arma en orden cronológico, en el sentido de las manecillas
     const order = new Map(VIEW.clusters.map((c, i) => [c.n, i / Math.max(1, VIEW.clusters.length - 1)]));
     const first = !old.size;
@@ -1098,7 +1188,7 @@
     const el = document.getElementById('legend');
     el.innerHTML = lens === 'plat'
       ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('') + '<span>Tamaño = alcance</span>'
-      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Altura = distancia a la meta · el plano es la meta · tamaño = alcance</span>';
+      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Altura = distancia a la meta · el plano es la meta · tamaño = alcance · hilos = mismo producto o subcampaña</span>';
   }
   function renderNotes() {
     const v = VIEW.variants.map(a => '«' + a.slice(1).join('», «') + '» → «' + a[0] + '»').join('; ');
@@ -1139,7 +1229,7 @@
     PID = pid; renderPlatFilter();
     focus = null; hover = null; pinned = null; tip.hidden = true;
     if (!inPeriod(pid).some(p => PLATS.has(p.plat))) {
-      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
+      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
       $('state').hidden = false; $('state').innerHTML = '<div>No hay posts de ' + esc([...PLATS].join(', ')) + ' en este periodo.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
       document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
