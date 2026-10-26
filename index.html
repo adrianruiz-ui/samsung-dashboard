@@ -2397,6 +2397,15 @@
               ${!collapsed && html`<span>Exportar reporte</span>`}
             </button>
           </div>
+          <div className=${"px-4 mb-4 -mt-2 " + (collapsed ? "flex justify-center" : "")}>
+            <a href="mapa-3d.html"
+               className=${"inline-flex items-center gap-1.5 rounded-lg border border-line text-txt2 hover:text-txt hover:bg-onSurface/[0.04] hover:border-line2 transition-colors " +
+                 (collapsed ? "w-8 h-8 justify-center" : "px-2.5 py-1.5 text-[11px] w-full justify-center")}
+               title="Mapa de campañas: árbol 3D de posts contra VTR y ER básico" aria-label="Abrir el mapa de campañas">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22v-8M12 14l-4-4M12 14l4-4M12 10V6"/><circle cx="12" cy="5" r="2"/><circle cx="7" cy="9" r="2"/><circle cx="17" cy="9" r="2"/><path d="M8 22h8"/></svg>
+              ${!collapsed && html`<span>Mapa de campañas</span>`}
+            </a>
+          </div>
 
 
           <nav ref=${navRef} aria-label="Secciones del dashboard" className=${"flex-1 px-2 relative " + (collapsed ? "pt-2" : "")}>
