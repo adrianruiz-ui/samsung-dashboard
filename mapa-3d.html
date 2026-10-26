@@ -597,10 +597,13 @@
   const EASE = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const EASE_OUT = t => 1 - Math.pow(1 - t, 4);
   // Medidas del árbol (unidades de escena)
-  const TRUNK = 170, CAMP_R = 140, CAMP_Y = 245, SUB_R = 245, SUB_Y = 315;
-  const LEAF_Y0 = 345, LEAF_H = 330, LEAF_R0 = 270, LEAF_R1 = 420, KG = 0.42;   // KG = fracción de altura donde cae la meta
-  const Y_GOAL = LEAF_Y0 + LEAF_H * KG, CROWN = new THREE.Vector3(0, 400, 0);
-  let GL = false, renderer, scene, camera, controls, hemi, key, ground, disc, rim, ruler, branches, twigs, leaves, path, pulses, jtube = null, jcurve = null;
+  // La copa es un domo: la altura dentro de la copa es el KPI (KG = fracción donde cae la meta)
+  const TRUNK = 215, CY0 = 330, CY1 = 790, CYC = (CY0 + CY1) / 2, CRY = (CY1 - CY0) / 2, CRX = 390, KG = 0.42;
+  const LEAF_Y0 = CY0, LEAF_H = CY1 - CY0, LEAF_R1 = CRX;
+  const Y_GOAL = CY0 + (CY1 - CY0) * KG, CROWN = new THREE.Vector3(0, 330, 0), ROOT_R = 300;
+  const rMax = y => CRX * Math.sqrt(Math.max(0.05, 1 - Math.pow((y - CYC) / CRY, 2)));
+  const hash = n => { const v = Math.sin(n * 12.9898 + 4.1) * 43758.5453; return v - Math.floor(v); };
+  let GL = false, renderer, scene, camera, controls, hemi, key, ground, disc, rim, ruler, branches, twigs, leaves, path, pulses, jtube = null, jcurve = null, roots = null, rootLines = null;
   let tw = null, fly = null, dirty = true, view = 'persp', lastTouch = 0, tNow = 0, shownFocus = null, hoverC = null;
   let TREE = null, labelItems = [], tickItems = [];
   let UPTO = null, STEPS = [], playing = null, JOURNEY = null;
@@ -630,7 +633,7 @@
     camera.position.set(0, 1600, 2600);
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     Object.assign(controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 160, maxDistance: 3200, maxPolarAngle: Math.PI * 0.62,
-      rotateSpeed: 0.55, zoomSpeed: 0.8, panSpeed: 0.7, autoRotateSpeed: 0.32 });
+      rotateSpeed: 0.55, zoomSpeed: 0.8, panSpeed: 0.7, autoRotateSpeed: 0.22 });
     controls.target.copy(CROWN);
     controls.addEventListener('start', () => { lastTouch = performance.now(); hideHint(); });
     hemi = new THREE.HemisphereLight(0xffffff, 0x40404a, 0.9); scene.add(hemi);
@@ -643,10 +646,18 @@
     ground = new THREE.Mesh(new THREE.CircleGeometry(700, 96), new THREE.ShadowMaterial({ opacity: 0.3 }));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
     // La meta: disco de vidrio atravesando la copa
-    disc = new THREE.Mesh(new THREE.CircleGeometry(LEAF_R1 + 70, 128), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide }));
-    disc.rotation.x = -Math.PI / 2; disc.position.y = Y_GOAL; disc.renderOrder = 5; scene.add(disc);
-    rim = new THREE.Mesh(new THREE.RingGeometry(LEAF_R1 + 67, LEAF_R1 + 70, 128), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
-    rim.rotation.x = -Math.PI / 2; rim.position.y = Y_GOAL + 0.3; scene.add(rim);
+    // La meta: un halo punteado que atraviesa la copa
+    const hr = rMax(Y_GOAL) + 34, hp = [];
+    for (let i = 0; i <= 180; i++) { const t = i / 180 * Math.PI * 2; hp.push(new THREE.Vector3(hr * Math.cos(t), 0, hr * Math.sin(t))); }
+    disc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(hp), new THREE.LineDashedMaterial({ transparent: true, opacity: 0.8, dashSize: 10, gapSize: 8, depthWrite: false }));
+    disc.computeLineDistances(); disc.position.y = Y_GOAL; disc.renderOrder = 5; scene.add(disc);
+    rim = new THREE.Mesh(new THREE.RingGeometry(hr - 5, hr + 5, 180), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }));
+    rim.rotation.x = -Math.PI / 2; rim.position.y = Y_GOAL; scene.add(rim);
+    // Raíces: una barra por semana alrededor del tronco, unida a él
+    roots = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, transparent: true, opacity: 0.92 }), 240);
+    roots.setColorAt(0, new THREE.Color(1, 1, 1)); roots.count = 0; roots.castShadow = true; scene.add(roots);
+    rootLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, vertexAlphas: true, transparent: true, depthWrite: false }));
+    scene.add(rootLines);
     // Regla vertical al costado de la copa
     ruler = new THREE.Group();
     const rp = []; [0, 0.5, 1].forEach(f => { const y = LEAF_Y0 + LEAF_H * f - Y_GOAL; rp.push(-8, y, 0, 8, y, 0); }); rp.push(0, LEAF_Y0 - Y_GOAL, 0, 0, LEAF_Y0 + LEAF_H - Y_GOAL, 0);
@@ -685,9 +696,9 @@
     if (!scene) return;
     const light = document.documentElement.classList.contains('light');
     scene.fog.color.copy(tokColor('--c-surface'));
-    disc.material.color.copy(light ? tokColor('--c-accent2') : tokColor('--c-txt'));
-    disc.material.opacity = light ? 0.06 : 0.045;
-    rim.material.color.copy(tokColor('--c-txt2'));
+    disc.material.color.copy(tokColor('--c-txt2'));
+    rim.material.color.copy(tokColor('--c-txt')); rim.material.opacity = light ? 0.06 : 0.07;
+    if (TREE) writeRoots();
     ruler.children[0].material.color.copy(tokColor('--c-txt3'));
     path.material.color.copy(tokColor('--c-accent'));
     pulses.material.color.copy(tokColor('--c-txt'));
@@ -711,29 +722,33 @@
     VIEW.posts.forEach(p => { p.leaf = null; });
     groups.forEach((x, ci) => {
       const span = 2 * Math.PI * (x.list.length + 3) / tot, a0 = a + span * 0.06, a1 = a + span * 0.94; a += span;
-      x.a = (a0 + a1) / 2; x.ci = ci; x.reach = d3.sum(x.list, p => p.reach);
-      x.node = new THREE.Vector3(CAMP_R * Math.cos(x.a), CAMP_Y, CAMP_R * Math.sin(x.a));
+      x.a = (a0 + a1) / 2; x.ci = ci; x.reach = d3.sum(x.list, p => p.reach); x.st = stats(x.list, lz);
       L.camps.push(x);
       const bySub = d3.groups(x.list, p => p.sub || '—').map(([s, l]) => ({ s, l, d0: d3.min(l, p => +p.d) })).sort((p, q) => p.d0 - q.d0);
-      let sa = a0; const sw = (a1 - a0) / x.list.length;
-      bySub.forEach((sb, si) => {
+      let sa = a0; const sw = (a1 - a0) / x.list.length, subs = [];
+      bySub.forEach(sb => {
         const s0 = sa, s1 = sa + sw * sb.l.length; sa = s1;
         const sn = { s: sb.s, c: x.n, parent: x, a: (s0 + s1) / 2, reach: d3.sum(sb.l, p => p.reach), n: sb.l.length };
-        const sy = SUB_Y + ((si % 3) - 1) * 10;
-        sn.node = new THREE.Vector3(SUB_R * Math.cos(sn.a), sy, SUB_R * Math.sin(sn.a));
-        L.subs.push(sn);
+        let mr = 0, my = 0;
         sb.l.forEach((p, i) => {
           const la = sb.l.length === 1 ? sn.a : s0 + (s1 - s0) * (0.08 + 0.84 * i / (sb.l.length - 1));
-          const k = kOf(val(p, lz), L), jit = ((p.i * 37) % 11 - 5);
-          const r = LEAF_R0 + (LEAF_R1 - LEAF_R0) * (0.35 + 0.65 * k) + jit * 5;
-          p.leaf = { sub: sn, camp: x, k, pos: new THREE.Vector3(r * Math.cos(la), LEAF_Y0 + LEAF_H * k + jit * 0.6, r * Math.sin(la)), s: rs(p.reach) };
+          const k = kOf(val(p, lz), L), y = CY0 + (CY1 - CY0) * k + (hash(p.i) - 0.5) * 14;
+          const r = rMax(y) * (0.55 + 0.45 * Math.sqrt(hash(p.i + 7)));     // llena el domo, no solo su cáscara
+          p.leaf = { sub: sn, camp: x, k, pos: new THREE.Vector3(r * Math.cos(la), y, r * Math.sin(la)), s: rs(p.reach) };
+          mr += r; my += y;
         });
+        mr /= sb.l.length; my /= sb.l.length;
+        const sy = Math.max(TRUNK + 120, Math.min(CYC + 30, my - 80)), sr = Math.min(mr * 0.62, rMax(sy) * 0.8);
+        sn.node = new THREE.Vector3(sr * Math.cos(sn.a), sy, sr * Math.sin(sn.a));
+        subs.push(sn); L.subs.push(sn);
       });
+      const cy = Math.max(TRUNK + 60, d3.min(subs, q => q.node.y) - 60), cr = Math.min(150, d3.mean(subs, q => Math.hypot(q.node.x, q.node.z)) * 0.5);
+      x.node = new THREE.Vector3(cr * Math.cos(x.a), cy, cr * Math.sin(x.a));
     });
     return L;
   }
-  function curveCamp(x) { return new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, TRUNK - 6, 0), new THREE.Vector3(x.node.x * 0.25, TRUNK + 70, x.node.z * 0.25), x.node); }
-  function curveSub(s) { const m = s.parent.node.clone().lerp(s.node, 0.5); m.y += 26; return new THREE.QuadraticBezierCurve3(s.parent.node, m, s.node); }
+  function curveCamp(x) { return new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, TRUNK - 10, 0), new THREE.Vector3(x.node.x * 0.12, TRUNK + (x.node.y - TRUNK) * 0.75, x.node.z * 0.12), x.node); }
+  function curveSub(s) { const m = s.parent.node.clone().lerp(s.node, 0.3); m.y = s.parent.node.y + (s.node.y - s.parent.node.y) * 0.8; return new THREE.QuadraticBezierCurve3(s.parent.node, m, s.node); }
   function twigCurve(p) { const s = p.leaf.sub.node, e = p.leaf.pos, m = s.clone().lerp(e, 0.45); m.y = Math.max(s.y, e.y) * 0.9 + s.y * 0.1; return new THREE.QuadraticBezierCurve3(s, m, e); }
 
   // Ramas: tronco + campañas + subcampañas en una sola geometría
@@ -749,10 +764,10 @@
       for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base);
       base += p.count; geo.dispose();
     };
-    const tw = 16, trunk = new THREE.CylinderGeometry(7, tw, TRUNK, 20, 6, true); trunk.translate(0, TRUNK / 2, 0);
+    const tw = 30, trunk = new THREE.CylinderGeometry(12, tw, TRUNK, 24, 8, true); trunk.translate(0, TRUNK / 2, 0);
     add(trunk, 0, 0.22, -1, y => 0.22 * y / TRUNK);
-    const wC = d3.scaleSqrt().domain([0, d3.max(L.camps, x => x.reach) || 1]).range([1.8, 6.5]);
-    const wS = d3.scaleSqrt().domain([0, d3.max(L.subs, x => x.reach) || 1]).range([0.8, 2.6]);
+    const wC = d3.scaleSqrt().domain([0, d3.max(L.camps, x => x.reach) || 1]).range([2.4, 8.5]);
+    const wS = d3.scaleSqrt().domain([0, d3.max(L.subs, x => x.reach) || 1]).range([0.9, 3.2]);
     L.camps.forEach(x => add(new THREE.TubeGeometry(curveCamp(x), 18, wC(x.reach), 7, false), 0.2, 0.55, x.ci));
     L.subs.forEach(s => add(new THREE.TubeGeometry(curveSub(s), 10, wS(s.reach), 5, false), 0.55, 0.78, s.parent.ci));
     const geo = new THREE.BufferGeometry();
@@ -769,11 +784,13 @@
     if (!TREE || !branches.geometry.attributes.color) return;
     const c = branches.geometry.attributes.color.array, own = branches.geometry.userData.own;
     const light = document.documentElement.classList.contains('light');
-    const wood = light ? new THREE.Color(0x8c8c98) : new THREE.Color(0x8a8a97), dim = tokColor('--c-surface'), hi = tokColor('--c-txt');
+    const wood = light ? new THREE.Color(0x8c8c98) : new THREE.Color(0x8a8a97), dim = tokColor('--c-surface'), hi = tokColor('--c-txt'), good = tokColor('--c-success'), bad = tokColor('--c-bad');
     const act = focus || hoverC, ai = act ? (TREE.camps.find(x => x.n === act) || {}).ci : null;
     for (let i = 0; i < own.length; i++) {
       let col = wood;
-      if (ai != null && own[i] >= 0) col = own[i] === ai ? tmpC.copy(wood).lerp(hi, 0.35) : tmpC.copy(wood).lerp(dim, 0.82);
+      const cx = own[i] >= 0 ? TREE.camps[own[i]] : null;
+      if (cx && lens !== 'plat' && cx.st && cx.st.n) col = tmpC.copy(wood).lerp(cx.st.avg >= TREE.g ? good : bad, 0.3);
+      if (ai != null && own[i] >= 0) col = own[i] === ai ? tmpC.copy(col).lerp(hi, 0.3) : tmpC.copy(wood).lerp(dim, 0.82);
       if (JOURNEY && own[i] >= 0) col = tmpC.copy(wood).lerp(dim, 0.7);
       c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b;
     }
@@ -892,6 +909,47 @@
     jtube.renderOrder = 4; scene.add(jtube);
   }
 
+  // Raíces = línea de tiempo: cada semana es una barra en el suelo (cumple / no cumple), unida al tronco
+  let rootsKey = '';
+  function writeRoots() {
+    if (!roots || !VIEW || !STEPS.length) { if (roots) roots.count = 0; return; }
+    const lz = treeLens(), kpi = lens !== 'plat', n = STEPS.length, cur = UPTO ? STEPS.indexOf(UPTO) : n - 1;
+    const key = [VIEW.pid, VIEW.posts.length, lz, kpi, cur, focus, JOURNEY, document.documentElement.classList.contains('light')].join('|');
+    if (key === rootsKey) return;
+    rootsKey = key;
+    const rows = STEPS.map((st, i) => {
+      const from = i ? STEPS[i - 1] : new Date(0);
+      const ps = VIEW.posts.filter(p => p.d > from && p.d <= st && (!focus || p.c === focus) && (!JOURNEY || p.pr === JOURNEY));
+      if (!kpi) return { a: ps.length, b: 0 };
+      const e = ps.filter(p => eligible(p, lz));
+      return { a: e.filter(p => val(p, lz) >= KPI[lz].goal).length, b: e.filter(p => val(p, lz) < KPI[lz].goal).length };
+    });
+    const ymax = d3.max(rows, r => r.a + r.b) || 1, H = 70, a0 = -Math.PI / 2, da = 2 * Math.PI / n * 0.92;
+    const bw = Math.max(3, ROOT_R * da * 0.42), good = tokColor('--c-success'), bad = tokColor('--c-bad'), plain = tokColor('--c-accent2'), dim = tokColor('--c-surface'), wood = tokColor('--c-txt3');
+    let k = 0; const lp = [], lc = [];
+    rows.forEach((r, i) => {
+      const t = a0 + i * 2 * Math.PI / n, x = ROOT_R * Math.cos(t), z = ROOT_R * Math.sin(t), off = i > cur;
+      const seg = [[r.a, kpi ? good : plain, 0], [r.b, bad, r.a]];
+      seg.forEach(([v, col, base]) => {
+        if (!v) return;
+        dummy.position.set(x, base / ymax * H, z); dummy.rotation.set(0, -t, 0); dummy.scale.set(6, Math.max(1, v / ymax * H), bw); dummy.updateMatrix();
+        roots.setMatrixAt(k, dummy.matrix); roots.setColorAt(k, tmpC.copy(col).lerp(dim, off ? 0.8 : 0.15)); k++;
+      });
+      // raíz: del pie del tronco a la barra, curvada sobre el suelo
+      const al = off ? 0.06 : 0.28, m = { x: ROOT_R * 0.45 * Math.cos(t + 0.35), z: ROOT_R * 0.45 * Math.sin(t + 0.35) };
+      let px = 0, pz = 0;
+      for (let j = 1; j <= 6; j++) {
+        const u = j / 6, w = 1 - u, qx = 2 * w * u * m.x + u * u * x, qz = 2 * w * u * m.z + u * u * z;
+        lp.push(px, 0.6, pz, qx, 0.6, qz); lc.push(wood.r, wood.g, wood.b, al, wood.r, wood.g, wood.b, al); px = qx; pz = qz;
+      }
+    });
+    dummy.rotation.set(0, 0, 0);
+    roots.count = k; roots.instanceMatrix.needsUpdate = true; if (roots.instanceColor) roots.instanceColor.needsUpdate = true;
+    rootLines.geometry.dispose(); rootLines.geometry = new THREE.BufferGeometry();
+    rootLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+    rootLines.geometry.setAttribute('color', new THREE.Float32BufferAttribute(lc, 4));
+  }
+
   // ---------- cámara
   function flyTo(pos, target, dur) {
     fly = { t0: performance.now(), dur: REDUCED ? 1 : dur, p0: camera.position.clone(), t0v: controls.target.clone(), p1: pos, t1: target };
@@ -899,8 +957,8 @@
   }
   function overviewPose() {
     const az = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
-    if (view === 'top') return { pos: new THREE.Vector3(0.001, 2150, 0.01), target: new THREE.Vector3(0, 300, 0) };
-    const r = 1750, phi = 1.12;
+    if (view === 'top') return { pos: new THREE.Vector3(0.001, 2250, 0.01), target: new THREE.Vector3(0, 300, 0) };
+    const r = 2250, phi = 1.36;
     return { pos: new THREE.Vector3(Math.sin(phi) * Math.sin(az) * r, CROWN.y + Math.cos(phi) * r, Math.sin(phi) * Math.cos(az) * r), target: CROWN.clone() };
   }
   function focusPose(x) {
@@ -979,7 +1037,7 @@
     labelItems.forEach(it => {
       let s;
       if (it.kind === 'leaf') { const a = it.p.a; if (!a || a.s < 0.05) { it.el.style.visibility = 'hidden'; return; } s = toScreen(a.x, a.y, a.z, w, h); it.ax = s.x; it.ay = s.y; it.x = s.x + (s.x < w / 2 ? -1 : 1) * (it.w / 2 + 26); it.y = s.y - 22; }
-      else { const a = it.cx.a, r = focus ? CAMP_R : LEAF_R1 + 95; s = toScreen(r * Math.cos(a), focus ? CAMP_Y : LEAF_Y0 - 30, r * Math.sin(a), w, h); it.ax = null; it.x = s.x; it.y = s.y; }
+      else { const n = it.cx.node, a = it.cx.a, r = CRX * 0.98; s = focus ? toScreen(n.x, n.y - 16, n.z, w, h) : toScreen(r * Math.cos(a), CY0 + 40, r * Math.sin(a), w, h); it.ax = null; it.x = s.x; it.y = s.y; }
       it.back = s.back; it.el.style.visibility = s.back ? 'hidden' : 'visible'; items.push(it);
     });
     const clamp = it => {
@@ -1028,7 +1086,7 @@
     const moving = stepTween(now);
     stepFly(now);
     writeLeaves();
-    if (moving || dirty) { writeTwigs(); writePath(); writeJourney(); dirty = false; }
+    if (moving || dirty) { writeTwigs(); writePath(); writeJourney(); writeRoots(); dirty = false; }
     writePulses();
     controls.autoRotate = !REDUCED && !focus && view === 'persp' && !fly && pinned == null && hover == null && now - lastTouch > 8000;
     if (!fly) controls.update();
@@ -1296,19 +1354,19 @@
     const el = document.getElementById('legend'), lz = lens === 'plat' ? 'vtr' : lens;
     el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
       : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>') +
-      '<span>Hojas = ' + KPI[lz].unit + ' · más alto = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · disco de vidrio = meta ' + KPI[lz].goal + '% · tamaño = alcance</span>';
+      '<span>Hojas = ' + KPI[lz].unit + ' · más alto = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · halo punteado = meta ' + KPI[lz].goal + '% · color de rama = promedio de la campaña · raíces = posts por semana · tamaño = alcance</span>';
   }
   function renderNotes() {
     const v = VIEW.variants.map(a => '«' + a.slice(1).join('», «') + '» → «' + a[0] + '»').join('; ');
     document.getElementById('notes').innerHTML =
       '<h3>Cómo leerlo</h3><ul>' +
       '<li>El tronco es la cuenta, las ramas son campañas y subcampañas y cada hoja es un post. Las campañas rodean el tronco en orden cronológico, en el sentido de las manecillas del reloj.</li>' +
-      '<li>La altura de cada hoja es su KPI: los mejores contenidos quedan en la copa y están rotulados. El disco de vidrio es la meta; todo lo que queda arriba cumple.</li>' +
+      '<li>La altura de cada hoja es su KPI: los mejores contenidos quedan en la copa y están rotulados. El halo punteado es la meta; todo lo que queda arriba cumple. El color de cada rama es el promedio de su campaña contra la meta y su grosor, el alcance.</li>' +
       '<li>El lente VTR usa los videos de 0 a 30 s de todas las plataformas; el lente ER, los posts de feed de Instagram. Al cambiar de lente las hojas viajan a su nueva altura. El lente Plataforma colorea por red y conserva las alturas de VTR.</li>' +
       '<li>Al pasar el cursor por una hoja se ilumina su camino desde el tronco. Clic para fijar la ficha y abrir el post o su fila en el Sheet.</li>' +
       '<li>Clic en el nombre de una campaña (o en el ranking) para acercarte a su rama.</li>' +
       '<li>Una campaña que concentra más del 20% de los posts del periodo se separa por etapa.</li>' +
-      '<li>La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) las hojas brotan en orden de fecha y el KPI corre con ellas.</li>' +
+      '<li>Las raíces son el tiempo: una barra por semana alrededor del tronco, con lo que cumple y lo que no. La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) las hojas brotan en orden de fecha y el KPI corre con ellas.</li>' +
       '<li>«Viaje de un producto» enciende las hojas de ese producto y las une en orden de fecha.</li></ul>' +
       '<h3>Pendientes de captura en el periodo</h3><ul>' +
       '<li>' + fmtInt(VIEW.noCamp) + ' posts sin Campaña y ' + fmtInt(VIEW.noProd) + ' sin Producto.</li>' +
@@ -1364,7 +1422,7 @@
     focus = null; hover = null; pinned = null; tip.hidden = true;
     if (!inPeriod(pid).some(passes)) {
       VIEW = null; TREE = null; chipsEl.innerHTML = ''; ticksEl.innerHTML = ''; labelItems = []; tickItems = []; leadersEl.innerHTML = ''; $('jcard').hidden = true;
-      if (GL) { if (leaves) leaves.count = 0; branches.geometry.dispose(); branches.geometry = new THREE.BufferGeometry(); twigs.geometry.dispose(); twigs.geometry = new THREE.BufferGeometry(); path.visible = false; pulses.visible = false; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; sceneSetView.prev = null; }
+      if (GL) { if (leaves) leaves.count = 0; branches.geometry.dispose(); branches.geometry = new THREE.BufferGeometry(); twigs.geometry.dispose(); twigs.geometry = new THREE.BufferGeometry(); path.visible = false; pulses.visible = false; roots.count = 0; rootLines.geometry.dispose(); rootLines.geometry = new THREE.BufferGeometry(); rootsKey = ''; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; sceneSetView.prev = null; }
       $('state').hidden = false; $('state').innerHTML = '<div>No hay posts con esta selección en el periodo' + esc(filterLabel()) + '.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
       document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
