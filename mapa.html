@@ -145,6 +145,24 @@
     .bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
     .bar em { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: rgb(var(--c-txt) / .55); }
     .row .v { font-size: 12.5px; font-weight: 550; text-align: right; font-variant-numeric: tabular-nums; }
+    .pf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .pf button { border: 0; border-radius: 999px; padding: 6px 11px 6px 9px; background: rgb(var(--c-txt) / .06); color: rgb(var(--c-txt3)); font: 550 12.5px var(--font); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: background-color 160ms ease, color 160ms ease; }
+    .pf button:hover { background: rgb(var(--c-txt) / .1); color: rgb(var(--c-txt)); }
+    .pf button[aria-pressed="true"] { background: rgb(var(--c-surface)); color: rgb(var(--c-txt)); box-shadow: 0 1px 2px rgba(10,10,15,.14); }
+    html:not(.light) .pf button[aria-pressed="true"] { background: rgb(var(--c-txt) / .12); }
+    .pf button i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .pf button[aria-pressed="false"] i { background: transparent !important; box-shadow: inset 0 0 0 1.5px rgb(var(--c-txt4)); }
+    .pf button small { color: rgb(var(--c-txt4)); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .pf .lbl { font-size: 12px; color: rgb(var(--c-txt4)); margin-left: 4px; }
+    .brk { margin: 2px 0 8px; padding: 10px 10px 8px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .035); }
+    .brk .bt { font-size: 11.5px; color: rgb(var(--c-txt3)); margin-bottom: 6px; }
+    .brow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 56px; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+    .brow .nm { display: flex; align-items: center; gap: 7px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .brow .nm i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .brow .nm small { color: rgb(var(--c-txt4)); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .brow .v { text-align: right; font-weight: 550; font-variant-numeric: tabular-nums; }
+    .summary-brk { margin-top: 14px; }
+    .summary-brk .bt { font-size: 12px; font-weight: 600; color: rgb(var(--c-txt)); margin-bottom: 4px; }
     .thin { margin-top: 12px; color: rgb(var(--c-txt4)); font-size: 11.5px; }
     .notes { font-size: 12.5px; color: rgb(var(--c-txt3)); }
     .notes h3 { font-size: 13px; font-weight: 620; color: rgb(var(--c-txt)); margin: 0 0 6px; }
@@ -194,6 +212,8 @@
         </div>
       </div>
     </div>
+
+    <div class="pf" id="pf" role="group" aria-label="Plataformas"></div>
 
     <div class="grid">
       <div class="stage" id="stage">
@@ -363,7 +383,9 @@
   // MODELO DEL PERIODO
   // ============================================================
   let ALL = [], META = {}, VIEW = null;
-  let lens = 'vtr', focus = null, hover = null, pinned = null;
+  let lens = 'vtr', focus = null, hover = null, pinned = null, PID = null;
+  let PLATS = new Set(PLATFORMS);
+  try { const s = JSON.parse(localStorage.getItem('smx-mapa-plats') || 'null'); if (Array.isArray(s) && s.some(x => PLATFORMS.includes(x))) PLATS = new Set(s.filter(x => PLATFORMS.includes(x))); } catch (e) {}
   const fmtInt = n => Math.round(n).toLocaleString('en-US');
   const pct = (v, d) => v == null ? '—' : v.toFixed(d) + '%';
   const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -396,7 +418,7 @@
   }
 
   function buildView(pid) {
-    const posts = inPeriod(pid).sort((a, b) => a.d - b.d);
+    const posts = inPeriod(pid).filter(p => PLATS.has(p.plat)).sort((a, b) => a.d - b.d);
     // Campañas: unifica variantes de escritura (espacios, mayúsculas, acentos)
     const byFold = d3.group(posts.filter(p => p.camp), p => fold(p.camp));
     const canon = new Map(), variants = [];
@@ -503,6 +525,8 @@
       ctx.globalAlpha = on ? (c ? 0.92 : 0.6) : 0.1;
       ctx.fillStyle = c || na;
       ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), Math.max(1.1, p.rad * k), 0, 7); ctx.fill();
+      // En los lentes de KPI el color es cumple / no cumple: la plataforma va en el borde al aislar
+      if (lens !== 'plat' && dim && on && p.rad * k >= 2.2) { ctx.globalAlpha = 1; ctx.strokeStyle = PLAT_COLORS[p.plat]; ctx.lineWidth = 1.6; ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
     if (hover != null) { const p = VIEW.posts[hover]; ctx.strokeStyle = rgb('--c-txt'); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.rad * k + 3, 0, 7); ctx.stroke(); }
@@ -594,11 +618,30 @@
   // ============================================================
   // PANEL
   // ============================================================
+  function platBreak(list, title, cls) {
+    const by = d3.group(list, p => p.plat), rows = [];
+    if (lens === 'plat') {
+      const tot = d3.sum(list, p => p.reach) || 1;
+      PLATFORMS.forEach(pl => { const l = by.get(pl); if (l) rows.push({ pl, n: l.length + ' posts', w: d3.sum(l, p => p.reach) / tot, v: Math.round(d3.sum(l, p => p.reach) / tot * 100) + '%', col: PLAT_COLORS[pl] }); });
+      rows.sort((a, b) => b.w - a.w);
+    } else {
+      const K = KPI[lens], st = PLATFORMS.map(pl => ({ pl, s: stats(by.get(pl) || [], lens) })).filter(x => x.s.n);
+      const mx = Math.max(K.goal * 1.6, d3.max(st, x => x.s.avg) || 0);
+      st.sort((a, b) => b.s.avg - a.s.avg).forEach(x => rows.push({ pl: x.pl, n: x.s.ok + '/' + x.s.n, w: Math.min(1, x.s.avg / mx), goal: K.goal / mx, v: pct(x.s.avg, K.dec),
+        col: x.s.avg >= K.goal ? rgb('--c-success') : rgb('--c-bad'), cls: x.s.avg >= K.goal ? 'ok' : 'bad' }));
+    }
+    if (!rows.length) return '';
+    return '<div class="' + cls + '"><div class="bt">' + title + '</div>' + rows.map(r =>
+      '<div class="brow"><span class="nm"><i style="background:' + PLAT_COLORS[r.pl] + '"></i>' + r.pl + '<small>' + r.n + '</small></span>' +
+      '<span class="bar"><span style="width:' + (r.w * 100).toFixed(1) + '%;background:' + r.col + '"></span>' + (r.goal != null ? '<em style="left:calc(' + (r.goal * 100).toFixed(1) + '% - 1px)"></em>' : '') + '</span>' +
+      '<span class="v ' + (r.cls || '') + '">' + r.v + '</span></div>').join('') + '</div>';
+  }
   function renderSummary() {
     const el = document.getElementById('summary');
     if (lens === 'plat') {
       el.innerHTML = '<div class="eyebrow">Alcance total del periodo</div><div class="big"><span class="n">' + fmtInt(d3.sum(VIEW.posts, p => p.reach)) + '</span></div>' +
-        '<div class="sub"><strong>' + fmtInt(VIEW.posts.length) + ' posts</strong> en ' + VIEW.clusters.length + ' grupos. El color es la plataforma y el tamaño del punto, el alcance del post.</div>';
+        '<div class="sub"><strong>' + fmtInt(VIEW.posts.length) + ' posts</strong> en ' + VIEW.clusters.length + ' grupos. El color es la plataforma y el tamaño del punto, el alcance del post.</div>' +
+        (PLATS.size > 1 ? platBreak(VIEW.posts, 'Participación en el alcance', 'summary-brk') : '');
       return;
     }
     const K = KPI[lens], s = stats(VIEW.posts, lens);
@@ -607,20 +650,21 @@
     el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div>' +
       '<div class="big"><span class="n">' + pct(s.avg, K.dec) + '</span><span class="pill ' + (meets ? 'ok' : 'bad') + '">' + (meets ? 'Cumple' : 'No cumple') + '</span></div>' +
       '<div class="sub"><strong>' + s.ok + ' de ' + s.n + '</strong> ' + K.unit + ' (' + Math.round(s.ok / s.n * 100) + '%) quedan en la meta o arriba.</div>' +
-      '<div class="rule">' + K.rule + '</div>';
+      '<div class="rule">' + K.rule + '</div>' +
+      (PLATS.size > 1 ? platBreak(VIEW.posts, 'Por plataforma', 'summary-brk') : '');
   }
   function renderRank() {
     const box = document.getElementById('rank'), t = document.getElementById('rank-t'), h = document.getElementById('rank-h');
     box.innerHTML = '';
     let rows = [], small = [], none = [];
     if (lens === 'plat') {
-      t.textContent = 'Campañas por alcance'; h.textContent = 'Toca una campaña para aislarla en el mapa.';
+      t.textContent = 'Campañas por alcance'; h.textContent = 'Toca una campaña para aislarla en el mapa y ver su desglose por plataforma.';
       const mx = d3.max(VIEW.clusters, c => c.reach) || 1;
       rows = VIEW.clusters.slice().sort((a, b) => b.reach - a.reach).map(c => ({ c, w: c.reach / mx, col: rgb('--c-accent2'), v: fmtInt(c.reach), s: c.size + ' posts' }));
     } else {
       const K = KPI[lens];
       t.textContent = 'Campañas contra la meta';
-      h.textContent = 'Promedio de ' + K.unit + ' por campaña. La marca es la meta de ' + K.goal + '%. Toca una para aislarla.';
+      h.textContent = 'Promedio de ' + K.unit + ' por campaña. La marca es la meta de ' + K.goal + '%. Toca una para aislarla y ver su desglose por plataforma.';
       const all = VIEW.clusters.map(c => ({ c, s: stats(c.list, lens) }));
       const ev = all.filter(x => x.s.n >= 3), mx = Math.max(K.goal * 1.6, d3.max(ev, x => x.s.avg) || 0);
       rows = ev.sort((a, b) => b.s.avg - a.s.avg).map(x => ({ c: x.c, w: Math.min(1, x.s.avg / mx), goal: K.goal / mx, col: x.s.avg >= K.goal ? rgb('--c-success') : rgb('--c-bad'), v: pct(x.s.avg, K.dec), s: x.s.ok + '/' + x.s.n }));
@@ -633,7 +677,13 @@
       b.innerHTML = '<span class="nm">' + esc(r.c.n) + '<small>' + r.s + '</small></span><span class="bar"><span style="width:' + (r.w * 100).toFixed(1) + '%;background:' + r.col + '"></span>' +
         (r.goal != null ? '<em style="left:calc(' + (r.goal * 100).toFixed(1) + '% - 1px)"></em>' : '') + '</span><span class="v">' + r.v + '</span>';
       b.addEventListener('click', () => setFocus(r.c.n));
+      b.setAttribute('aria-expanded', String(focus === r.c.n));
       box.appendChild(b);
+      if (focus === r.c.n) {
+        const d = document.createElement('div');
+        d.innerHTML = platBreak(r.c.list, lens === 'plat' ? 'Alcance por plataforma' : 'Por plataforma · ' + KPI[lens].unit, 'brk') || '<div class="brk"><div class="bt">Sin datos por plataforma.</div></div>';
+        box.appendChild(d.firstChild);
+      }
     }
     const parts = [];
     if (small.length) parts.push('Muestra chica (menos de 3): ' + small.join(', ') + '.');
@@ -644,7 +694,7 @@
     const el = document.getElementById('legend');
     el.innerHTML = lens === 'plat'
       ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('') + '<span>Tamaño = alcance</span>'
-      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Tamaño = alcance · Líneas = mismo producto o subcampaña</span>';
+      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Tamaño = alcance · Líneas = mismo producto o subcampaña · Al aislar, el borde es la plataforma</span>';
   }
   function renderNotes() {
     const v = VIEW.variants.map(a => '«' + a.slice(1).join('», «') + '» → «' + a[0] + '»').join('; ');
@@ -661,10 +711,36 @@
       (META.errors.length ? '<li>No se pudo leer: ' + esc(META.errors.join(' · ')) + '</li>' : '') + '</ul>';
   }
   function refresh() {
+    if (!VIEW) return;
     renderLegend(); draw(); placeChips(); renderSummary(); renderRank(); renderLegend();
   }
+  function renderPlatFilter() {
+    const base = PID ? inPeriod(PID) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
+    const el = $('pf');
+    el.innerHTML = '<button data-p="*" aria-pressed="' + all + '">Todas<small>' + fmtInt(base.length) + '</small></button>' +
+      PLATFORMS.map(pl => '<button data-p="' + pl + '" aria-pressed="' + PLATS.has(pl) + '"' + (cnt.get(pl) ? '' : ' title="Sin posts en el periodo"') + '><i style="background:' + PLAT_COLORS[pl] + '"></i>' + pl + '<small>' + fmtInt(cnt.get(pl) || 0) + '</small></button>').join('') +
+      '<span class="lbl">' + (all ? 'Toca una plataforma para verla sola.' : 'Toca otras para sumarlas.') + '</span>';
+    el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      const pl = b.dataset.p;
+      if (pl === '*') PLATS = new Set(PLATFORMS);
+      else if (PLATS.size === PLATFORMS.length) PLATS = new Set([pl]);
+      else { PLATS.has(pl) ? PLATS.delete(pl) : PLATS.add(pl); if (!PLATS.size) PLATS = new Set(PLATFORMS); }
+      try { localStorage.setItem('smx-mapa-plats', JSON.stringify([...PLATS])); } catch (e) {}
+      setPeriod(PID);
+    }));
+  }
   function setPeriod(pid) {
-    VIEW = buildView(pid); focus = null; hover = null; pinned = null; tip.hidden = true;
+    PID = pid; renderPlatFilter();
+    focus = null; hover = null; pinned = null; tip.hidden = true;
+    if (!inPeriod(pid).some(p => PLATS.has(p.plat))) {
+      VIEW = null; chipsEl.innerHTML = ''; ctx.clearRect(0, 0, cv.width, cv.height);
+      $('state').hidden = false; $('state').innerHTML = '<div>No hay posts de ' + esc([...PLATS].join(', ')) + ' en este periodo.</div>';
+      ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
+      document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
+      return;
+    }
+    $('state').hidden = true;
+    VIEW = buildView(pid);
     document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
     renderNotes(); resize(); refresh();
     try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
