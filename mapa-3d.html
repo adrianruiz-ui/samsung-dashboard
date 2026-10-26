@@ -154,6 +154,12 @@
     .pf button[aria-pressed="false"] i { background: transparent !important; box-shadow: inset 0 0 0 1.5px rgb(var(--c-txt4)); }
     .pf button small { color: rgb(var(--c-txt4)); font-size: 11px; font-variant-numeric: tabular-nums; }
     .pf .lbl { font-size: 12px; color: rgb(var(--c-txt4)); margin-left: 4px; }
+    .filters { display: flex; flex-direction: column; gap: 10px; }
+    .ff { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+    .fgroup { display: inline-flex; align-items: center; gap: 8px; }
+    .fgroup > span { font-size: 12px; color: rgb(var(--c-txt3)); font-weight: 500; }
+    .fgroup .seg button small { color: rgb(var(--c-txt4)); font-size: 11px; margin-left: 5px; font-variant-numeric: tabular-nums; }
+    .fnote { font-size: 12px; color: rgb(var(--c-amber)); }
     .brk { margin: 2px 0 8px; padding: 10px 10px 8px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .035); }
     .brk .bt { font-size: 11.5px; color: rgb(var(--c-txt3)); margin-bottom: 6px; }
     .brow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 56px; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
@@ -267,7 +273,10 @@
       </div>
     </div>
 
-    <div class="pf" id="pf" role="group" aria-label="Plataformas"></div>
+    <div class="filters">
+      <div class="pf" id="pf" role="group" aria-label="Plataformas"></div>
+      <div class="ff" id="ff"></div>
+    </div>
 
     <div class="grid">
       <div class="stage" id="stage">
@@ -436,7 +445,7 @@
           stories: /stor/i.test(fmt || ''),
           camp: clean(g(row, 'Campaña')), sub: clean(g(row, 'Subcampaña')), stage: clean(g(row, 'Etapa')),
           prod: (clean(g(row, 'Producto')) || '').split('\n')[0].trim() || null,
-          pauta: clean(g(row, 'Tipo Pauta')),
+          pauta: clean(g(row, 'Tipo Pauta')), tipo: clean(g(row, 'Tipo Contenido')),
           reach: toNum(g(row, 'Alcance')) || 0, views: toNum(g(row, 'Views')),
           dur: toNum(g(row, 'Duración (seg)')), vtr: toNum(g(row, 'VTR %')), ber: toNum(g(row, 'ER Básico %')),
           infl: clean(g(row, 'Nombre Influencer')),
@@ -451,7 +460,13 @@
   // ============================================================
   let ALL = [], META = {}, VIEW = null;
   let lens = 'vtr', focus = null, hover = null, pinned = null, PID = null;
-  let PLATS = new Set(PLATFORMS);
+  let PLATS = new Set(PLATFORMS), PAUTA = 'all', TIPO = 'all';
+  try { PAUTA = localStorage.getItem('smx-mapa-pauta') || 'all'; TIPO = localStorage.getItem('smx-mapa-tipo') || 'all'; } catch (e) {}
+  // Normaliza «Paid», «Pauta», «Pagado» → Paid; «Orgánico», «Organico» → Orgánico
+  const pautaOf = p => !p.pauta ? null : /paid|pauta|pagad/i.test(p.pauta) ? 'Paid' : /org/i.test(p.pauta) ? 'Orgánico' : null;
+  const tipoOf = p => { const f = String(p.tipo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); return f.startsWith('loc') ? 'Local' : f.startsWith('glo') ? 'Global' : f.startsWith('reg') ? 'Regional' : null; };
+  const passPT = p => (PAUTA === 'all' || pautaOf(p) === PAUTA) && (TIPO === 'all' || tipoOf(p) === TIPO);
+  const passes = p => PLATS.has(p.plat) && passPT(p);
   try { const s = JSON.parse(localStorage.getItem('smx-mapa-plats') || 'null'); if (Array.isArray(s) && s.some(x => PLATFORMS.includes(x))) PLATS = new Set(s.filter(x => PLATFORMS.includes(x))); } catch (e) {}
   const fmtInt = n => Math.round(n).toLocaleString('en-US');
   const pct = (v, d) => v == null ? '—' : v.toFixed(d) + '%';
@@ -485,7 +500,7 @@
   }
 
   function buildView(pid) {
-    const posts = inPeriod(pid).filter(p => PLATS.has(p.plat)).sort((a, b) => a.d - b.d);
+    const posts = inPeriod(pid).filter(passes).sort((a, b) => a.d - b.d);
     // Campañas: unifica variantes de escritura (espacios, mayúsculas, acentos)
     const byFold = d3.group(posts.filter(p => p.camp), p => fold(p.camp));
     const canon = new Map(), variants = [];
@@ -1139,7 +1154,7 @@
     const K = KPI[lens], s = stats(VIEW.posts, lens);
     if (!s.n) { el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div><div class="sub">No hay ' + K.unit + ' en este periodo.</div>'; return; }
     const meets = s.avg >= K.goal;
-    el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div>' +
+    el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%' + esc(filterLabel()) + '</div>' +
       '<div class="big"><span class="n">' + pct(s.avg, K.dec) + '</span><span class="pill ' + (meets ? 'ok' : 'bad') + '">' + (meets ? 'Cumple' : 'No cumple') + '</span></div>' +
       '<div class="sub"><strong>' + s.ok + ' de ' + s.n + '</strong> ' + K.unit + ' (' + Math.round(s.ok / s.n * 100) + '%) quedan en la meta o arriba.</div>' +
       '<div class="rule">' + K.rule + '</div>' +
@@ -1211,7 +1226,7 @@
     renderLegend(); sceneUpdate(); renderSummary(); renderRank();
   }
   function renderPlatFilter() {
-    const base = PID ? inPeriod(PID) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
+    const base = PID ? inPeriod(PID).filter(passPT) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
     const el = $('pf');
     el.innerHTML = '<button data-p="*" aria-pressed="' + all + '">Todas<small>' + fmtInt(base.length) + '</small></button>' +
       PLATFORMS.map(pl => '<button data-p="' + pl + '" aria-pressed="' + PLATS.has(pl) + '"' + (cnt.get(pl) ? '' : ' title="Sin posts en el periodo"') + '><i style="background:' + PLAT_COLORS[pl] + '"></i>' + pl + '<small>' + fmtInt(cnt.get(pl) || 0) + '</small></button>').join('') +
@@ -1225,19 +1240,43 @@
       setPeriod(PID);
     }));
   }
+  function renderPTFilter() {
+    const base = PID ? inPeriod(PID).filter(p => PLATS.has(p.plat)) : [];
+    const grp = (label, key, cur, opts, of) => {
+      const cnt = d3.rollup(base.filter(p => key === 'pauta' ? (TIPO === 'all' || tipoOf(p) === TIPO) : (PAUTA === 'all' || pautaOf(p) === PAUTA)), v => v.length, of);
+      return '<div class="fgroup"><span>' + label + '</span><div class="seg" role="radiogroup" aria-label="' + label + '">' +
+        [['all', 'Todo']].concat(opts.map(o => [o, o])).map(([v, l]) => '<button role="radio" data-k="' + key + '" data-v="' + v + '" aria-checked="' + (cur === v) + '">' + l +
+          (v === 'all' ? '' : '<small>' + fmtInt(cnt.get(v) || 0) + '</small>') + '</button>').join('') + '</div></div>';
+    };
+    const sinDato = (PAUTA !== 'all' || TIPO !== 'all') ? base.filter(p => (PAUTA !== 'all' && !pautaOf(p)) || (TIPO !== 'all' && !tipoOf(p))).length : 0;
+    $('ff').innerHTML = grp('Pauta', 'pauta', PAUTA, ['Orgánico', 'Paid'], pautaOf) + grp('Contenido', 'tipo', TIPO, ['Local', 'Global', 'Regional'], tipoOf) +
+      (sinDato ? '<span class="fnote">' + fmtInt(sinDato) + ' posts sin ese dato capturado quedan fuera</span>' : '');
+    $('ff').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.k === 'pauta') PAUTA = b.dataset.v; else TIPO = b.dataset.v;
+      try { localStorage.setItem('smx-mapa-pauta', PAUTA); localStorage.setItem('smx-mapa-tipo', TIPO); } catch (e) {}
+      setPeriod(PID);
+    }));
+  }
+  function filterLabel() {
+    const f = [];
+    if (PLATS.size !== PLATFORMS.length) f.push([...PLATS].join(' + '));
+    if (PAUTA !== 'all') f.push(PAUTA);
+    if (TIPO !== 'all') f.push(TIPO);
+    return f.length ? ' · ' + f.join(' · ') : '';
+  }
   function setPeriod(pid) {
-    PID = pid; renderPlatFilter();
+    PID = pid; renderPlatFilter(); renderPTFilter();
     focus = null; hover = null; pinned = null; tip.hidden = true;
-    if (!inPeriod(pid).some(p => PLATS.has(p.plat))) {
+    if (!inPeriod(pid).some(passes)) {
       VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
-      $('state').hidden = false; $('state').innerHTML = '<div>No hay posts de ' + esc([...PLATS].join(', ')) + ' en este periodo.</div>';
+      $('state').hidden = false; $('state').innerHTML = '<div>No hay posts con esta selección en el periodo' + esc(filterLabel()) + '.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
       document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
       return;
     }
     $('state').hidden = true;
     VIEW = buildView(pid);
-    document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
+    document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts' + filterLabel() + ' · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
     renderNotes(); sceneSetView(); renderLegend(); renderSummary(); renderRank();
     try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
   }
