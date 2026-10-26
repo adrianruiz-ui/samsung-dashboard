@@ -154,6 +154,12 @@
     .pf button[aria-pressed="false"] i { background: transparent !important; box-shadow: inset 0 0 0 1.5px rgb(var(--c-txt4)); }
     .pf button small { color: rgb(var(--c-txt4)); font-size: 11px; font-variant-numeric: tabular-nums; }
     .pf .lbl { font-size: 12px; color: rgb(var(--c-txt4)); margin-left: 4px; }
+    .filters { display: flex; flex-direction: column; gap: 10px; }
+    .ff { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+    .fgroup { display: inline-flex; align-items: center; gap: 8px; }
+    .fgroup > span { font-size: 12px; color: rgb(var(--c-txt3)); font-weight: 500; }
+    .fgroup .seg button small { color: rgb(var(--c-txt4)); font-size: 11px; margin-left: 5px; font-variant-numeric: tabular-nums; }
+    .fnote { font-size: 12px; color: rgb(var(--c-amber)); }
     .brk { margin: 2px 0 8px; padding: 10px 10px 8px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .035); }
     .brk .bt { font-size: 11.5px; color: rgb(var(--c-txt3)); margin-bottom: 6px; }
     .brow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 56px; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
@@ -223,7 +229,55 @@
     .chip:hover span, .chip:hover b { color: #fff !important; }
     .rowlabel, .tick { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; }
     .rowlabel { border-radius: 3px; }
-    @media (prefers-reduced-motion: reduce) { .chip, .rowlabel, .tip.in, .brk, .back { animation: none !important; } .bar span { transition: none !important; } }
+    .ov-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .jsel { max-width: 260px; background-color: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
+    html.light .jsel { background-color: rgb(var(--c-surface2) / .9); }
+    .jsel.on { background-color: rgb(var(--c-accent2)); color: #fff; }
+    .jcard { position: absolute; top: 58px; left: 14px; z-index: 3; width: 260px; padding: 12px 14px; border-radius: 10px; background: rgb(var(--c-ink) / .82); backdrop-filter: blur(8px);
+             font-size: 12.5px; animation: chipIn 420ms var(--ease-out) both; }
+    html.light .jcard { background: rgb(var(--c-surface) / .95); box-shadow: 0 8px 28px rgba(10,10,15,.12); }
+    .jcard .jt { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: rgb(var(--c-txt3)); }
+    .jcard .jn { font-size: 16px; font-weight: 620; margin: 2px 0 8px; letter-spacing: -0.01em; }
+    .jcard dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
+    .jcard dt { color: rgb(var(--c-txt3)); } .jcard dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+    .jcard button { margin-top: 10px; border: 0; background: rgb(var(--c-txt) / .08); color: rgb(var(--c-txt2)); border-radius: 7px; padding: 6px 10px; font: 500 12px var(--font); cursor: pointer; }
+    .tl { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: center; gap: 12px; z-index: 3; }
+    .tl-play { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgb(var(--c-accent2)); cursor: pointer; display: grid; place-items: center; }
+    .tl-play svg { width: 14px; height: 14px; fill: #fff; }
+    .tl-track { position: relative; flex: 1; min-width: 0; padding-bottom: 14px; }
+    .tl-track input { width: 100%; margin: 0; appearance: none; -webkit-appearance: none; height: 18px; background: transparent; cursor: pointer; }
+    .tl-track input::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgb(var(--c-accent2)) var(--p, 100%), rgb(var(--c-txt) / .12) var(--p, 100%)); }
+    .tl-track input::-moz-range-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgb(var(--c-accent2)) var(--p, 100%), rgb(var(--c-txt) / .12) var(--p, 100%)); }
+    .tl-track input::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: rgb(var(--c-txt)); margin-top: -5px; border: 0; }
+    .tl-track input::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: rgb(var(--c-txt)); border: 0; }
+    .tl-months { position: absolute; left: 7px; right: 7px; bottom: 0; height: 12px; }
+    .tl-months span { position: absolute; transform: translateX(-50%); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--c-txt4)); }
+    .tl-lbl { flex: none; min-width: 150px; text-align: right; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--c-txt2)); font-variant-numeric: tabular-nums; }
+    @media (max-width: 600px) { .tl-lbl { min-width: 0; font-size: 10px; } .jcard { width: auto; right: 14px; } }
+    .legend { bottom: 92px; }
+    .ov-r { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .ov .vseg { margin-left: 0; }
+    .ov .mseg { background: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
+    html.light .ov .mseg { background: rgb(var(--c-surface2) / .9); }
+    .tree { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+    .treelabels { position: absolute; inset: 0; pointer-events: none; display: none; }
+    .treelabels > * { pointer-events: auto; }
+    .stage.treemode .tree, .stage.treemode .treelabels { display: block; }
+    .stage.treemode .gl, .stage.treemode .chips, .stage.treemode .ticks, .stage.treemode .rowlabels, .stage.treemode .leaders, .stage.treemode .vseg, .stage.treemode .hintdrag { display: none !important; }
+    .tree .tlab { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; letter-spacing: .06em; fill: rgb(var(--c-txt4)); }
+    .tree .tlab.goal { fill: rgb(var(--c-txt2)); font-weight: 600; }
+    .tree .t-lead line { stroke: rgb(var(--c-txt3)); stroke-opacity: .5; stroke-width: 1; }
+    .tree circle { transition: fill 300ms ease; }
+    .tchip { position: absolute; left: 0; top: 0; max-width: 240px; }
+    .tchip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .clab { position: absolute; left: 0; top: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: rgb(var(--c-txt2));
+            background: rgb(var(--c-surface) / .75); padding: 2px 6px; border-radius: 3px; cursor: pointer; white-space: nowrap; animation: chipIn 520ms var(--ease-out) both; }
+    .clab:hover { background: rgb(var(--c-accent2)); color: #fff; }
+    .tl-track { padding-top: 30px; }
+    .tl-hist { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 28px; overflow: visible; }
+    .hintdrag { bottom: 132px; }
+    .tip .jlink { display: block; margin-top: 8px; border: 0; background: none; padding: 0; color: rgb(var(--c-accent)); font: 600 12.5px var(--font); cursor: pointer; text-align: left; }
+    @media (prefers-reduced-motion: reduce) { .chip, .rowlabel, .tip.in, .brk, .back, .jcard { animation: none !important; } .bar span { transition: none !important; } }
   </style>
 </head>
 <body>
@@ -267,21 +321,41 @@
       </div>
     </div>
 
-    <div class="pf" id="pf" role="group" aria-label="Plataformas"></div>
+    <div class="filters">
+      <div class="pf" id="pf" role="group" aria-label="Plataformas"></div>
+      <div class="ff" id="ff"></div>
+    </div>
 
     <div class="grid">
       <div class="stage" id="stage">
         <div class="gl" id="gl" aria-label="Maqueta 3D de posts por campaña"></div>
+        <svg class="tree" id="tree" aria-label="Árbol de campañas: los mejores contenidos en la copa"></svg>
+        <div class="treelabels" id="treelabels"></div>
         <div class="ticks" id="ticks"></div>
         <div class="rowlabels" id="rowlabels"></div>
         <svg class="leaders" id="leaders" aria-hidden="true"></svg>
         <div class="chips" id="chips"></div>
         <div class="ov">
+          <div class="ov-l">
+          <select class="sel jsel" id="journey" aria-label="Viaje de un producto"><option value="">Viaje de un producto…</option></select>
           <button class="back" id="back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Todas las campañas</button>
+          </div>
+          <div class="ov-r">
+          <div class="seg mseg" role="radiogroup" aria-label="Visualización">
+            <button role="radio" data-mode="maqueta" aria-checked="true">Maqueta 3D</button>
+            <button role="radio" data-mode="arbol" aria-checked="false">Árbol</button>
+          </div>
           <div class="seg vseg" role="radiogroup" aria-label="Vista">
             <button role="radio" data-view="persp" aria-checked="true">Perspectiva</button>
             <button role="radio" data-view="top" aria-checked="false">Desde arriba</button>
           </div>
+          </div>
+        </div>
+        <div class="jcard" id="jcard" hidden></div>
+        <div class="tl" id="tl">
+          <button class="tl-play" id="tlplay" aria-label="Reproducir el periodo"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="tlicon" d="M7 4.5v15l13-7.5z"/></svg></button>
+          <div class="tl-track"><svg class="tl-hist" id="tlhist" aria-hidden="true"></svg><input type="range" id="tlrange" min="0" max="1" step="1" value="1" aria-label="Semana"><div class="tl-months" id="tlmonths"></div></div>
+          <div class="tl-lbl" id="tllbl">Todo el periodo</div>
         </div>
         <div class="hintdrag" id="hintdrag">Arrastra para girar · rueda o pellizco para acercar · clic en un post para abrir su campaña</div>
         <div class="legend" id="legend"></div>
@@ -436,7 +510,7 @@
           stories: /stor/i.test(fmt || ''),
           camp: clean(g(row, 'Campaña')), sub: clean(g(row, 'Subcampaña')), stage: clean(g(row, 'Etapa')),
           prod: (clean(g(row, 'Producto')) || '').split('\n')[0].trim() || null,
-          pauta: clean(g(row, 'Tipo Pauta')),
+          pauta: clean(g(row, 'Tipo Pauta')), tipo: clean(g(row, 'Tipo Contenido')),
           reach: toNum(g(row, 'Alcance')) || 0, views: toNum(g(row, 'Views')),
           dur: toNum(g(row, 'Duración (seg)')), vtr: toNum(g(row, 'VTR %')), ber: toNum(g(row, 'ER Básico %')),
           infl: clean(g(row, 'Nombre Influencer')),
@@ -451,7 +525,13 @@
   // ============================================================
   let ALL = [], META = {}, VIEW = null;
   let lens = 'vtr', focus = null, hover = null, pinned = null, PID = null;
-  let PLATS = new Set(PLATFORMS);
+  let PLATS = new Set(PLATFORMS), PAUTA = 'all', TIPO = 'all';
+  try { PAUTA = localStorage.getItem('smx-mapa-pauta') || 'all'; TIPO = localStorage.getItem('smx-mapa-tipo') || 'all'; } catch (e) {}
+  // Normaliza «Paid», «Pauta», «Pagado» → Paid; «Orgánico», «Organico» → Orgánico
+  const pautaOf = p => !p.pauta ? null : /paid|pauta|pagad/i.test(p.pauta) ? 'Paid' : /org/i.test(p.pauta) ? 'Orgánico' : null;
+  const tipoOf = p => { const f = String(p.tipo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); return f.startsWith('loc') ? 'Local' : f.startsWith('glo') ? 'Global' : f.startsWith('reg') ? 'Regional' : null; };
+  const passPT = p => (PAUTA === 'all' || pautaOf(p) === PAUTA) && (TIPO === 'all' || tipoOf(p) === TIPO);
+  const passes = p => PLATS.has(p.plat) && passPT(p);
   try { const s = JSON.parse(localStorage.getItem('smx-mapa-plats') || 'null'); if (Array.isArray(s) && s.some(x => PLATFORMS.includes(x))) PLATS = new Set(s.filter(x => PLATFORMS.includes(x))); } catch (e) {}
   const fmtInt = n => Math.round(n).toLocaleString('en-US');
   const pct = (v, d) => v == null ? '—' : v.toFixed(d) + '%';
@@ -485,7 +565,7 @@
   }
 
   function buildView(pid) {
-    const posts = inPeriod(pid).filter(p => PLATS.has(p.plat)).sort((a, b) => a.d - b.d);
+    const posts = inPeriod(pid).filter(passes).sort((a, b) => a.d - b.d);
     // Campañas: unifica variantes de escritura (espacios, mayúsculas, acentos)
     const byFold = d3.group(posts.filter(p => p.camp), p => fold(p.camp));
     const canon = new Map(), variants = [];
@@ -561,6 +641,9 @@
   const EASE_OUT = t => 1 - Math.pow(1 - t, 4);
   let GL = false, renderer, scene, camera, controls, nodes, stems, threads, plane, rim, ruler, hemi, key;
   let web = null, pulses = null, webIntro = 0, hoverC = null, tNow = 0;
+  let UPTO = null, STEPS = [], playing = null, JOURNEY = null, jtube = null, jcurve = null;
+  const vis = p => !UPTO || p.d <= UPTO;
+  const curPosts = () => VIEW ? VIEW.posts.filter(vis) : [];
   let tw = null, fly = null, dirty = true, shownFocus = null, view = 'persp', lastTouch = 0, chipItems = [], rowItems = [], tickItems = [];
   const dummy = new THREE.Object3D(), tmp = new THREE.Color(), tmp2 = new THREE.Color(), V = new THREE.Vector3();
   const tokColor = n => { const p = tok(n).split(/\s+/).map(Number); return new THREE.Color(p[0] / 255, p[1] / 255, p[2] / 255); };
@@ -618,7 +701,7 @@
     el.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', onUp);
     el.addEventListener('pointerleave', () => { if (pinned == null && hover != null) { hover = null; tip.hidden = true; dirty = true; setThreads(); } });
-    window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null)) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); } });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null || JOURNEY)) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); else if (JOURNEY) setJourney(null); } });
     themeGL();
     GL = true;
     requestAnimationFrame(frame);
@@ -653,6 +736,7 @@
   function targetColor(p) {
     const c = baseColor(p).clone();
     if (focus && p.c !== focus) c.lerp(tokColor('--c-surface'), 0.9);
+    if (JOURNEY && p.pr !== JOURNEY) c.lerp(tokColor('--c-surface'), 0.86);
     return c;
   }
   function targetOf(p) {
@@ -661,7 +745,10 @@
     const x = inF ? p.ex : p.x - VIEW.W / 2, z = inF ? p.ez : p.y - VIEW.W / 2;
     let s = p.rad * (evalOk ? 1 : 0.62);
     if (inF) s = evalOk ? Math.min(Math.max(s * 1.15, 3.5), 9.5) : Math.min(Math.max(s, 2.5), 5); else if (out) s *= 0.5;
+    if (JOURNEY) s = p.pr === JOURNEY ? Math.max(s * 1.25, 3.2) : s * 0.6;
     const c = targetColor(p);
+    // Línea de tiempo: lo que aún no se publica espera sobre el plano, sin tamaño
+    if (!vis(p)) return { x, y: 0, z, s: 0, r: c.r, g: c.g, b: c.b };
     return { x, y: heightOf(p), z, s, r: c.r, g: c.g, b: c.b };
   }
   // Campaña abierta: un renglón por plataforma, los posts en orden de fecha
@@ -764,7 +851,9 @@
       const a = l.source.a, b = l.target.a; if (!a || !b) return;
       P.set([a.x, a.y, a.z, b.x, b.y, b.z], k * 6);
       let al = base;
-      if (act) al = (l.source.c === act || l.target.c === act) ? (l.x ? 0.85 : 0.6) : 0.03;
+      if (!vis(l.source) || !vis(l.target)) al = 0;
+      else if (JOURNEY) al = (l.source.pr === JOURNEY && l.target.pr === JOURNEY) ? 0.35 : 0.02;
+      else if (act) al = (l.source.c === act || l.target.c === act) ? (l.x ? 0.85 : 0.6) : 0.03;
       else if (l.x) al = base * 0.8;
       C.set([lift(a.r, mix.r), lift(a.g, mix.g), lift(a.b, mix.b), al, lift(b.r, mix.r), lift(b.g, mix.g), lift(b.b, mix.b), al], k * 8);
     });
@@ -776,8 +865,19 @@
     if (!pulses || !VIEW || !VIEW.webLinks) return;
     const act = focus || hoverC;
     let ls = [];
+    if (JOURNEY && hover == null) {
+      // el viaje: varias cabezas recorren la trayectoria del producto
+      if (!jcurve || REDUCED) { pulses.visible = false; return; }
+      const nh = 7, pos = new Float32Array(nh * 3);
+      for (let j = 0; j < nh; j++) { const q = jcurve.getPointAt(((tNow / 9000) + j / nh) % 1); pos[j * 3] = q.x; pos[j * 3 + 1] = q.y; pos[j * 3 + 2] = q.z; }
+      pulses.visible = true; pulses.material.size = 7;
+      pulses.geometry.dispose(); pulses.geometry = new THREE.BufferGeometry(); pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      return;
+    }
+    pulses.material.size = 5;
     if (hover != null) ls = VIEW.webLinks.filter(l => l.source.i === hover || l.target.i === hover);
     else if (act) ls = VIEW.webLinks.filter(l => l.source.c === act || l.target.c === act);
+    ls = ls.filter(l => vis(l.source) && vis(l.target));
     if (REDUCED || !ls.length) { pulses.visible = false; return; }
     pulses.visible = true;
     const max = Math.min(ls.length, 220), pos = new Float32Array(max * 3), step = ls.length / max;
@@ -791,6 +891,21 @@
     pulses.geometry.dispose();
     pulses.geometry = new THREE.BufferGeometry();
     pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  }
+  function writeJourney() {
+    if (jtube) { scene.remove(jtube); jtube.geometry.dispose(); jtube = null; }
+    jcurve = null;
+    if (!JOURNEY || !VIEW) return;
+    const pts = [];
+    VIEW.posts.filter(p => p.pr === JOURNEY && vis(p) && p.a).sort((a, b) => a.d - b.d).forEach(p => {
+      const v = new THREE.Vector3(p.a.x, p.a.y, p.a.z);
+      if (!pts.length || pts[pts.length - 1].distanceTo(v) > 0.5) pts.push(v);
+    });
+    if (pts.length < 2) return;
+    jcurve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    jtube = new THREE.Mesh(new THREE.TubeGeometry(jcurve, Math.min(900, pts.length * 10), 1.5, 6, false),
+      new THREE.MeshBasicMaterial({ color: tokColor('--c-accent'), transparent: true, opacity: 0.9, depthWrite: false }));
+    jtube.renderOrder = 4; scene.add(jtube);
   }
   function setThreads() {
     if (!VIEW) return;
@@ -836,9 +951,10 @@
     return { x: (V.x + 1) / 2 * w, y: (1 - V.y) / 2 * h, back: V.z > 1 };
   }
   function chipHtml(c) {
-    if (lens === 'plat') return '<b>' + fmtInt(c.reach) + '</b><span>' + esc(c.n) + ' · ' + c.size + ' posts</span>';
-    const s = stats(c.list, lens);
-    if (!s.n) return '<b>—</b><span>' + esc(c.n) + '</span>';
+    const list = c.list.filter(p => vis(p) && (!JOURNEY || p.pr === JOURNEY));
+    if (lens === 'plat') return '<b>' + fmtInt(d3.sum(list, p => p.reach)) + '</b><span>' + esc(c.n) + ' · ' + list.length + ' posts</span>';
+    const s = stats(list, lens);
+    if (!s.n) return '<b>' + (JOURNEY ? fmtInt(list.length) + ' posts' : '—') + '</b><span>' + esc(c.n) + '</span>';
     return '<b class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</b><span>' + esc(c.n) + ' · ' + s.ok + '/' + s.n + '</span>';
   }
   function renderChips() {
@@ -847,8 +963,11 @@
     if (!VIEW) return;
     const b = stage.getBoundingClientRect(), nTop = b.width < 600 ? 5 : 9;
     const hc = hover != null ? VIEW.posts[hover].c : null;
-    const show = focus ? VIEW.clusters.filter(c => c.n === focus)
-      : VIEW.clusters.filter(c => (VIEW.top.slice(0, nTop).includes(c.n) && (lens === 'plat' || stats(c.list, lens).n >= 3)) || c.n === hc);
+    const vl = c => c.list.filter(p => vis(p) && (!JOURNEY || p.pr === JOURNEY));
+    let show;
+    if (focus) show = VIEW.clusters.filter(c => c.n === focus);
+    else if (JOURNEY) show = VIEW.clusters.map(c => [c, vl(c).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).slice(0, nTop).map(x => x[0]);
+    else show = VIEW.clusters.filter(c => vl(c).length && ((VIEW.top.slice(0, nTop).includes(c.n) && (lens === 'plat' || stats(vl(c), lens).n >= 3)) || c.n === hc));
     show.forEach((c, i) => {
       const el = document.createElement('button');
       el.className = 'chip' + (focus ? ' big' : '');
@@ -889,17 +1008,22 @@
     });
   }
   function placeOverlays() {
-    const b = stage.getBoundingClientRect(), w = b.width, h = b.height, bottom = h - (document.getElementById('legend').offsetHeight + 22);
+    const b = stage.getBoundingClientRect(), w = b.width, h = b.height, bottom = h - (document.getElementById('legend').offsetHeight + document.getElementById('tl').offsetHeight + 44);
     const items = [];
     chipItems.forEach(it => {
       const c = it.c; let top = 0;
-      c.list.forEach(p => { if (p.a) top = Math.max(top, p.a.y + p.a.s); });
+      c.list.forEach(p => { if (p.a && vis(p)) top = Math.max(top, p.a.y + p.a.s); });
       const ax = focus ? c.box.cx : c.mx - VIEW.W / 2, az = focus ? c.box.cz : c.my - VIEW.W / 2;
       const s = toScreen(ax, top + (focus ? 46 : 24), az, w, h);
       const an = toScreen(ax, top + 4, az, w, h); it.ax = an.x; it.ay = an.y;
       it.x = s.x; it.y = s.y - it.h / 2; it.back = s.back; items.push(it);
     });
-    const clamp = it => { it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 52, it.y)); };
+    const jc = document.getElementById('jcard'), jb = jc.hidden ? null : { r: jc.offsetLeft + jc.offsetWidth + 10, b: jc.offsetTop + jc.offsetHeight + 8 };
+    const clamp = it => {
+      it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 52, it.y));
+      // fuera de la ficha del viaje
+      if (jb && it.y - it.h / 2 < jb.b && it.x - it.w / 2 < jb.r) it.x = Math.min(w - it.w / 2 - 8, jb.r + it.w / 2);
+    };
     items.forEach(clamp);
     for (let k = 0; k < 24; k++) {
       let moved = false;
@@ -941,11 +1065,12 @@
   function frame(now) {
     requestAnimationFrame(frame);
     if (!VIEW || document.hidden) return;
+    if (MODE === 'arbol') { stepTween(now); return; }
     const moving = stepTween(now);
     stepFly(now);
     tNow = now;
     writeInstances();
-    if (moving || dirty || webIntro) { writeStems(); writeWeb(); if (hover != null) setThreads(); if (webIntro && now - webIntro > 2700) webIntro = 0; }
+    if (moving || dirty || webIntro) { writeStems(); writeWeb(); writeJourney(); if (hover != null) setThreads(); if (webIntro && now - webIntro > 2700) webIntro = 0; }
     writePulses();
     dirty = false;
     // La rotación lenta solo cuando nadie la está usando
@@ -960,6 +1085,8 @@
     placeOverlays();
   }
   function resize() {
+    if (VIEW && MODE === 'arbol') { renderTree(false); }
+    if (VIEW) renderHist();
     if (!GL) return;
     const b = stage.getBoundingClientRect();
     renderer.setSize(b.width, b.height, false);
@@ -1034,6 +1161,7 @@
     if (!hit || hit.instanceId == null) return null;
     const p = VIEW.posts[hit.instanceId];
     if (focus && p.c !== focus) return null;
+    if (!vis(p) || (JOURNEY && p.pr !== JOURNEY)) return null;
     return p;
   }
   function onMove(e) {
@@ -1073,7 +1201,8 @@
       '<dt>VTR</dt><dd>' + kv(p.vtr, 'vtr') + '</dd><dt>ER básico</dt><dd>' + kv(p.ber, 'er') + '</dd>' +
       (p.infl ? '<dt>Influencer</dt><dd>' + esc(p.infl) + '</dd>' : '') + '</dl>' +
       (pin ? '<div class="links">' + (p.link && /^https?:/i.test(p.link) ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener">Abrir post ↗</a>' : '') +
-        (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' en el Sheet ↗</a>' : '') + '</div>'
+        (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' en el Sheet ↗</a>' : '') + '</div>' +
+        (p.pr && JOURNEY !== p.pr ? '<button class="jlink" data-pr="' + esc(p.pr) + '">Ver el viaje de ' + esc(p.pr) + ' →</button>' : '')
         : '<div class="hint">' + (focus ? 'Clic para fijar y abrir el post' : 'Clic para abrir su campaña') + '</div>');
     tip.hidden = false; tip.classList.toggle('pin', !!pin);
     tip.classList.remove('in'); void tip.offsetWidth; tip.classList.add('in');
@@ -1087,11 +1216,246 @@
     tip.style.transform = 'translate(' + Math.max(10, x).toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
   }
   function setFocus(c) {
+    if (JOURNEY && c !== focus) { JOURNEY = null; syncJourneyUI(); }
     focus = focus === c ? null : c; pinned = null; hover = null; tip.hidden = true;
     if (GL) { setThreads(); }
     refresh();
   }
 
+  // ============================================================
+  // ÁRBOL — tronco = cuenta, ramas = campañas y subcampañas, hojas = posts.
+  // Cada hoja se aleja del tronco según su KPI: los mejores quedan en la copa.
+  // ============================================================
+  const treeSvg = d3.select('#tree'), treeLbl = document.getElementById('treelabels');
+  let MODE = 'maqueta';
+  try { MODE = localStorage.getItem('smx-mapa-mode') || 'maqueta'; } catch (e) {}
+  let treeHoverC = null, treeGeo = null;
+  const TT = () => d3.transition().duration(REDUCED ? 0 : 850).ease(d3.easeCubicInOut);
+  const treeLens = () => lens === 'plat' ? 'vtr' : lens;           // en Plataforma: altura por VTR, color por plataforma
+  const leafColor = p => lens === 'plat' ? PLAT_COLORS[p.plat] : (val(p, lens) >= KPI[lens].goal ? rgb('--c-success') : rgb('--c-bad'));
+
+  function setMode(m) {
+    MODE = m;
+    try { localStorage.setItem('smx-mapa-mode', m); } catch (e) {}
+    document.querySelectorAll('.mseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
+    stage.classList.toggle('treemode', m === 'arbol');
+    tip.hidden = true; pinned = null; hover = null;
+    renderLegend();
+    if (m === 'arbol') renderTree(true); else { treeSvg.selectAll('*').remove(); treeLbl.innerHTML = ''; resize(); sceneUpdate(); }
+  }
+
+  function treeLayout() {
+    const b = stage.getBoundingClientRect(), W = b.width, Hs = b.height;
+    const bottom = Hs - (document.getElementById('tl').offsetHeight + document.getElementById('legend').offsetHeight + 34);
+    const top = 64, narrow = W < 640;
+    const avail = bottom - top;
+    const trunkH = Math.max(36, avail * 0.13);
+    const R = Math.max(80, Math.min(avail - trunkH - 6, (W - (narrow ? 40 : 330)) / 2));
+    const F = { x: W / 2, y: bottom - trunkH };
+    const A = narrow ? 1.25 : 1.42;                                // apertura de la copa (radianes desde la vertical)
+    const lz = treeLens(), leaves = VIEW.posts.filter(p => vis(p) && eligible(p, lz));
+    const g = KPI[lz].goal, vals = leaves.map(p => val(p, lz)).sort(d3.ascending);
+    const vmax = Math.max(g * 1.7, d3.quantile(vals, 0.97) || g * 2);
+    const r0 = R * 0.46, rg = r0 + (R - r0) * 0.45;
+    const rOf = v => v <= g ? r0 + (rg - r0) * Math.max(0, v) / g : rg + (R - rg) * Math.min(1, (v - g) / (vmax - g));
+    // sectores: campañas en orden cronológico, la abierta toma la mitad de la copa
+    const groups = VIEW.clusters.map(c => ({ c, n: c.n, list: c.list.filter(p => vis(p) && eligible(p, lz)) })).filter(x => x.list.length);
+    const tot = d3.sum(groups, x => x.list.length + 2) || 1;
+    groups.forEach(x => { x.w = x.list.length + 2; });
+    if (focus) { const f = groups.find(x => x.n === focus); if (f) f.w = Math.max(f.w, (tot - f.w) * 1.1); }
+    const W2 = d3.sum(groups, x => x.w) || 1;
+    let a = -A;
+    const twigs = [], subs = [], camps = [];
+    groups.forEach(x => {
+      const span = 2 * A * x.w / W2, a0 = a + span * 0.04, a1 = a + span * 0.96; a += span;
+      x.a = (a0 + a1) / 2; x.a0 = a0; x.a1 = a1;
+      x.reach = d3.sum(x.list, p => p.reach);
+      camps.push(x);
+      const bySub = d3.groups(x.list, p => p.sub || '—').map(([s, l]) => ({ s, l: l.sort((p, q) => p.d - q.d), d0: d3.min(l, p => +p.d) })).sort((p, q) => p.d0 - q.d0);
+      let sa = a0; const sw = (a1 - a0) / x.list.length;
+      bySub.forEach(sb => {
+        const s0 = sa, s1 = sa + sw * sb.l.length; sa = s1;
+        const node = { key: x.n + '|' + sb.s, c: x.n, s: sb.s, a: (s0 + s1) / 2, reach: d3.sum(sb.l, p => p.reach), parent: x };
+        subs.push(node);
+        sb.l.forEach((p, i) => {
+          const la = sb.l.length === 1 ? node.a : s0 + (s1 - s0) * (0.12 + 0.76 * i / (sb.l.length - 1));
+          twigs.push({ p, key: p.plat + '|' + p.row, a: la, r: rOf(val(p, lz)), parent: node });
+        });
+      });
+    });
+    return { W, Hs, F, R, r0, rg, r1: R * 0.17, r2: R * 0.32, A, bottom, camps, subs, twigs, lz, g, vmax, rOf, narrow, trunkH };
+  }
+
+  const polar = (F, a, r) => [F.x + r * Math.sin(a), F.y - r * Math.cos(a)];
+  function branchPath(F, a0, r0, a1, r1) {
+    // curva que sale en la dirección de la rama madre y llega en la de la hija
+    const [x0, y0] = polar(F, a0, r0), [x1, y1] = polar(F, a1, r1), rm = (r0 + r1) / 2;
+    const [cx0, cy0] = polar(F, a0, rm), [cx1, cy1] = polar(F, a1, rm);
+    return 'M' + x0.toFixed(1) + ',' + y0.toFixed(1) + 'C' + cx0.toFixed(1) + ',' + cy0.toFixed(1) + ' ' + cx1.toFixed(1) + ',' + cy1.toFixed(1) + ' ' + x1.toFixed(1) + ',' + y1.toFixed(1);
+  }
+
+  function renderTree(grow) {
+    if (MODE !== 'arbol' || !VIEW) return;
+    const L = treeGeo = treeLayout(), F = L.F;
+    treeSvg.attr('viewBox', '0 0 ' + L.W + ' ' + L.Hs);
+    const act = focus || treeHoverC;
+    const wC = d3.scaleSqrt().domain([0, d3.max(L.camps, x => x.reach) || 1]).range([1.4, 9]);
+    const wS = d3.scaleSqrt().domain([0, d3.max(L.subs, x => x.reach) || 1]).range([0.8, 4]);
+    const rL = d3.scaleSqrt().domain([0, d3.quantile(L.twigs.map(t => t.p.reach).sort(d3.ascending), 0.97) || 1]).range([2, 7.5]).clamp(true);
+    const on = c => !act || c === act;
+    const jOn = p => !JOURNEY || p.pr === JOURNEY;
+    const T = TT();
+
+    // capas
+    const layer = n => { let s = treeSvg.select('g.' + n); if (s.empty()) s = treeSvg.append('g').attr('class', n); return s; };
+    const gArc = layer('t-arcs'), gTrunk = layer('t-trunk'), gBr = layer('t-br'), gTw = layer('t-tw'), gLf = layer('t-lf');
+
+    // escala: arcos de referencia y la meta
+    const ticks = [0.5, 1, 1.5].map(f => L.g * f).concat([L.vmax]).filter((v, i, arr) => v <= L.vmax && arr.indexOf(v) === i);
+    const arcD = r => { const [x0, y0] = polar(F, -L.A - 0.05, r), [x1, y1] = polar(F, L.A + 0.05, r); return 'M' + x0 + ',' + y0 + 'A' + r + ',' + r + ' 0 0 1 ' + x1 + ',' + y1; };
+    const arcs = ticks.map(v => ({ v, r: L.rOf(v), goal: v === L.g }));
+    gArc.selectAll('path').data(arcs, d => d.v).join(
+      e => e.append('path').attr('fill', 'none').attr('d', d => arcD(d.r)).attr('opacity', 0),
+      u => u, x => x.remove())
+      .attr('stroke', d => d.goal ? rgb('--c-txt2') : rgb('--c-txt4'))
+      .attr('stroke-width', d => d.goal ? 2 : 1).attr('stroke-opacity', d => d.goal ? 0.55 : 0.18)
+      .attr('stroke-dasharray', d => d.goal ? null : '2 5')
+      .transition(T).attr('d', d => arcD(d.r)).attr('opacity', 1);
+    gArc.selectAll('text').data(arcs, d => d.v).join('text')
+      .attr('class', d => 'tlab' + (d.goal ? ' goal' : ''))
+      .text(d => (d.goal ? 'META ' : '') + (Math.round(d.v * 10) / 10) + '%')
+      .attr('text-anchor', 'end')
+      .attr('text-anchor', 'start')
+      .transition(T).attr('x', d => polar(F, -L.A * 0.72, d.r)[0] + 6).attr('y', d => polar(F, -L.A * 0.72, d.r)[1] - 5);
+
+    // tronco
+    const tw = Math.max(10, Math.min(26, L.R * 0.05));
+    gTrunk.selectAll('path').data([0]).join('path').attr('fill', rgb('--c-txt3')).attr('fill-opacity', 0.55)
+      .transition(T).attr('d', 'M' + (F.x - tw / 2) + ',' + (L.bottom + 2) + 'C' + (F.x - tw * 0.32) + ',' + (F.y + L.trunkH * 0.4) + ' ' + (F.x - tw * 0.18) + ',' + (F.y + 6) + ' ' + (F.x - 2) + ',' + F.y +
+        'L' + (F.x + 2) + ',' + F.y + 'C' + (F.x + tw * 0.18) + ',' + (F.y + 6) + ' ' + (F.x + tw * 0.32) + ',' + (F.y + L.trunkH * 0.4) + ' ' + (F.x + tw / 2) + ',' + (L.bottom + 2) + 'Z');
+
+    // ramas: campaña y subcampaña
+    const brData = L.camps.map(x => ({ key: 'c|' + x.n, c: x.n, d: branchPath(F, 0, 0, x.a, L.r1) + branchPath(F, x.a, L.r1, x.a, L.r2 * 0.92).replace('M', 'L'), w: wC(x.reach) }))
+      .concat(L.subs.map(s => ({ key: 's|' + s.key, c: s.c, d: branchPath(F, s.parent.a, L.r2 * 0.92, s.a, L.r0 * 0.86), w: wS(s.reach) })));
+    gBr.selectAll('path').data(brData, d => d.key).join(
+      e => e.append('path').attr('fill', 'none').attr('stroke-linecap', 'round').attr('d', d => d.d)
+        .attr('stroke-dasharray', function () { return grow ? this.getTotalLength() : null; }).attr('stroke-dashoffset', function () { return grow ? this.getTotalLength() : null; }),
+      u => u, x => x.transition(T).attr('stroke-opacity', 0).remove())
+      .attr('stroke', rgb('--c-txt2'))
+      .on('mouseenter', (e, d) => { if (!focus) { treeHoverC = d.c; renderTree(false); } })
+      .on('mouseleave', () => { if (treeHoverC) { treeHoverC = null; renderTree(false); } })
+      .on('click', (e, d) => { e.stopPropagation(); setFocus(d.c); })
+      .transition(T).delay((d, i) => grow && !REDUCED ? 120 + i * 6 : 0)
+      .attr('d', d => d.d).attr('stroke-width', d => d.w).attr('stroke-dashoffset', 0)
+      .attr('stroke-opacity', d => JOURNEY ? 0.12 : on(d.c) ? 0.55 : 0.1)
+      .on('end', function () { this.removeAttribute('stroke-dasharray'); this.removeAttribute('stroke-dashoffset'); });
+
+    // ramitas a cada hoja
+    gTw.selectAll('path').data(L.twigs, d => d.key).join(
+      e => e.append('path').attr('fill', 'none').attr('stroke-opacity', 0).attr('d', d => branchPath(F, d.parent.a, L.r0 * 0.86, d.a, L.r0 * 0.86)),
+      u => u, x => x.transition(T).attr('stroke-opacity', 0).remove())
+      .attr('stroke', d => JOURNEY && d.p.pr === JOURNEY ? rgb('--c-accent') : rgb('--c-txt3'))
+      .attr('stroke-width', d => JOURNEY && d.p.pr === JOURNEY ? 1.4 : 0.7)
+      .transition(T).delay((d, i) => grow && !REDUCED ? 500 + (i % 60) * 8 : 0)
+      .attr('d', d => branchPath(F, d.parent.a, L.r0 * 0.86, d.a, d.r))
+      .attr('stroke-opacity', d => !jOn(d.p) ? 0.04 : JOURNEY ? 0.9 : on(d.p.c) ? 0.28 : 0.05);
+
+    // hojas
+    gLf.selectAll('circle').data(L.twigs, d => d.key).join(
+      e => e.append('circle').attr('r', 0).attr('cx', d => polar(F, d.a, L.r0 * 0.86)[0]).attr('cy', d => polar(F, d.a, L.r0 * 0.86)[1]),
+      u => u, x => x.transition(T).attr('r', 0).remove())
+      .attr('fill', d => leafColor(d.p))
+      .style('cursor', 'pointer')
+      .on('mouseenter', (e, d) => { if (pinned != null) return; hover = d.p.i; showTip(d.p, false); const [x, y] = polar(F, d.a, d.r); placeTip(x, y); })
+      .on('mouseleave', () => { if (pinned == null) { hover = null; tip.hidden = true; } })
+      .on('click', (e, d) => { e.stopPropagation(); pinned = d.p.i; hover = d.p.i; showTip(d.p, true); const [x, y] = polar(F, d.a, d.r); placeTip(x, y); })
+      .transition(T).delay((d, i) => grow && !REDUCED ? 650 + (i % 80) * 7 : 0)
+      .attr('cx', d => polar(F, d.a, d.r)[0]).attr('cy', d => polar(F, d.a, d.r)[1])
+      .attr('r', d => rL(d.p.reach) * (jOn(d.p) ? 1 : 0.6))
+      .attr('fill-opacity', d => !jOn(d.p) ? 0.12 : on(d.p.c) ? 0.92 : 0.18);
+
+    treeLabels(L, grow);
+  }
+
+  // etiquetas: los mejores contenidos en la copa y el nombre de cada campaña
+  function treeLabels(L, grow) {
+    treeLbl.innerHTML = '';
+    const F = L.F, items = [];
+    const pool = L.twigs.filter(t => (!focus || t.p.c === focus) && (!JOURNEY || t.p.pr === JOURNEY));
+    const best = pool.slice().sort((a, b) => val(b.p, L.lz) - val(a.p, L.lz)).slice(0, L.narrow ? 4 : 8);
+    best.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = 'chip tchip'; el.style.setProperty('--d', (grow ? 1100 : 0) + i * 60 + 'ms');
+      el.innerHTML = '<b class="ok">' + pct(val(t.p, L.lz), KPI[L.lz].dec) + '</b><span>' + esc([t.p.fmt, t.p.pr || t.p.c, t.p.plat].filter(Boolean).join(' · ')) + '</span>';
+      el.addEventListener('click', e => { e.stopPropagation(); pinned = t.p.i; hover = t.p.i; showTip(t.p, true); const [x, y] = polar(F, t.a, t.r); placeTip(x, y); });
+      treeLbl.appendChild(el);
+      const [x, y] = polar(F, t.a, t.r), side = t.a < 0 ? -1 : 1;
+      items.push({ el, w: el.offsetWidth, h: el.offsetHeight, ax: x, ay: y, side, x: side < 0 ? Math.min(x - 24, F.x - L.R * 0.2) : Math.max(x + 24, F.x + L.R * 0.2), y: y - 18 });
+    });
+    // nombres de campaña sobre su rama
+    if (!JOURNEY) L.camps.slice().sort((a, b) => b.list.length - a.list.length).slice(0, focus ? 1 : (L.narrow ? 3 : 6)).forEach(x => {
+      if (focus && x.n !== focus) return;
+      const el = document.createElement('div');
+      el.className = 'clab'; el.textContent = x.n + ' · ' + x.list.length;
+      el.addEventListener('click', e => { e.stopPropagation(); setFocus(x.n); });
+      treeLbl.appendChild(el);
+      const [x0, y0] = polar(F, x.a, L.r0 * 0.78);
+      items.push({ el, w: el.offsetWidth, h: el.offsetHeight, x: x0, y: y0 });
+    });
+    // separar etiquetas
+    const top = 58, bottom = L.bottom - 8;
+    const clamp = it => { it.x = Math.min(L.W - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(top + it.h / 2, it.y)); };
+    items.forEach(clamp);
+    for (let k = 0; k < 60; k++) {
+      let moved = false;
+      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+        const A = items[i], B = items[j], dx = (A.w + B.w) / 2 + 6 - Math.abs(A.x - B.x), dy = (A.h + B.h) / 2 + 4 - Math.abs(A.y - B.y);
+        if (dx <= 0 || dy <= 0) continue;
+        moved = true;
+        const s = (A.y <= B.y ? -1 : 1) * dy / 2;
+        if (!A.fixed) A.y += B.fixed ? 2 * s : s; if (!B.fixed) B.y -= A.fixed ? 2 * s : s;
+        clamp(A); clamp(B);
+      }
+      if (!moved) break;
+    }
+    let svg = '';
+    items.forEach(it => {
+      it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)';
+      if (it.ax != null) svg += '<line x1="' + it.ax.toFixed(1) + '" y1="' + it.ay.toFixed(1) + '" x2="' + (it.x + (it.side < 0 ? it.w / 2 : -it.w / 2)).toFixed(1) + '" y2="' + it.y.toFixed(1) + '"/>';
+    });
+    let lead = treeSvg.select('g.t-lead'); if (lead.empty()) lead = treeSvg.append('g').attr('class', 't-lead');
+    lead.html(svg);
+  }
+
+  // ---------- histograma semanal bajo la línea de tiempo
+  function renderHist() {
+    const svg = d3.select('#tlhist');
+    if (!VIEW || !STEPS.length) { svg.selectAll('*').remove(); return; }
+    const box = document.getElementById('tlhist').getBoundingClientRect(), W = box.width, Hh = box.height;
+    const n = STEPS.length, x = i => 7 + (W - 14) * (n > 1 ? i / (n - 1) : 0.5), bw = Math.max(2, (W - 14) / Math.max(1, n) * 0.62);
+    const lz = treeLens(), kpi = lens !== 'plat';
+    const rows = STEPS.map((s, i) => {
+      const from = i ? STEPS[i - 1] : new Date(0);
+      const ps = VIEW.posts.filter(p => p.d > from && p.d <= s);
+      if (!kpi) return { i, a: ps.length, b: 0 };
+      const e = ps.filter(p => eligible(p, lz));
+      return { i, a: e.filter(p => val(p, lz) >= KPI[lz].goal).length, b: e.filter(p => val(p, lz) < KPI[lz].goal).length };
+    });
+    const ymax = d3.max(rows, r => r.a + r.b) || 1, y = v => v / ymax * (Hh - 2);
+    const cur = +document.getElementById('tlrange').value;
+    svg.attr('viewBox', '0 0 ' + W + ' ' + Hh);
+    const g = svg.selectAll('g.col').data(rows, d => d.i).join(e => { const g = e.append('g').attr('class', 'col'); g.append('rect').attr('class', 'ra'); g.append('rect').attr('class', 'rb'); g.append('rect').attr('class', 'hit'); return g; });
+    g.attr('opacity', d => d.i <= cur ? 1 : 0.28);
+    g.select('.ra').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1)
+      .attr('fill', kpi ? rgb('--c-success') : rgb('--c-accent2'))
+      .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a)).attr('height', d => y(d.a));
+    g.select('.rb').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', rgb('--c-bad'))
+      .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a) - y(d.b)).attr('height', d => y(d.b));
+    g.select('.hit').attr('x', d => x(d.i) - Math.max(bw, 8) / 2).attr('width', Math.max(bw, 8)).attr('y', 0).attr('height', Hh).attr('fill', 'transparent').style('cursor', 'pointer')
+      .on('click', (e, d) => { setPlay(false); setUpto(d.i, false); })
+      .selectAll('title').data(d => [d]).join('title')
+      .text(d => (d.i < n - 1 ? 'Semana al ' + fdate(STEPS[d.i]) : 'Última semana') + ' · ' + (kpi ? d.a + ' cumplen, ' + d.b + ' no' : d.a + ' posts'));
+  }
   // ============================================================
   // PANEL
   // ============================================================
@@ -1128,22 +1492,22 @@
     requestAnimationFrame(step);
   }
   function renderSummary() {
-    const el = document.getElementById('summary');
+    const el = document.getElementById('summary'), VP = curPosts();
     if (lens === 'plat') {
-      el.innerHTML = '<div class="eyebrow">Alcance total del periodo</div><div class="big"><span class="n">' + fmtInt(d3.sum(VIEW.posts, p => p.reach)) + '</span></div>' +
-        '<div class="sub"><strong>' + fmtInt(VIEW.posts.length) + ' posts</strong> en ' + VIEW.clusters.length + ' grupos. El color es la plataforma y el tamaño del punto, el alcance del post.</div>' +
-        (PLATS.size > 1 ? platBreak(VIEW.posts, 'Participación en el alcance', 'summary-brk') : '');
-      countUp(el.querySelector('.n'), d3.sum(VIEW.posts, p => p.reach), 0, ''); growBars(el);
+      el.innerHTML = '<div class="eyebrow">Alcance total del periodo</div><div class="big"><span class="n">' + fmtInt(d3.sum(VP, p => p.reach)) + '</span></div>' +
+        '<div class="sub"><strong>' + fmtInt(VP.length) + ' posts</strong> en ' + VIEW.clusters.length + ' grupos. El color es la plataforma y el tamaño del punto, el alcance del post.</div>' +
+        (PLATS.size > 1 ? platBreak(VP, 'Participación en el alcance', 'summary-brk') : '');
+      countUp(el.querySelector('.n'), d3.sum(VP, p => p.reach), 0, ''); growBars(el);
       return;
     }
-    const K = KPI[lens], s = stats(VIEW.posts, lens);
+    const K = KPI[lens], s = stats(VP, lens);
     if (!s.n) { el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div><div class="sub">No hay ' + K.unit + ' en este periodo.</div>'; return; }
     const meets = s.avg >= K.goal;
-    el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div>' +
+    el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%' + esc(filterLabel()) + '</div>' +
       '<div class="big"><span class="n">' + pct(s.avg, K.dec) + '</span><span class="pill ' + (meets ? 'ok' : 'bad') + '">' + (meets ? 'Cumple' : 'No cumple') + '</span></div>' +
       '<div class="sub"><strong>' + s.ok + ' de ' + s.n + '</strong> ' + K.unit + ' (' + Math.round(s.ok / s.n * 100) + '%) quedan en la meta o arriba.</div>' +
       '<div class="rule">' + K.rule + '</div>' +
-      (PLATS.size > 1 ? platBreak(VIEW.posts, 'Por plataforma', 'summary-brk') : '');
+      (PLATS.size > 1 ? platBreak(VP, 'Por plataforma', 'summary-brk') : '');
     countUp(el.querySelector('.n'), s.avg, K.dec, '%'); growBars(el);
   }
   function renderRank() {
@@ -1186,6 +1550,13 @@
   }
   function renderLegend() {
     const el = document.getElementById('legend');
+    if (MODE === 'arbol') {
+      const lz = lens === 'plat' ? 'vtr' : lens;
+      el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
+        : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>') +
+        '<span>Hojas = ' + KPI[lz].unit + ' · más lejos del tronco = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · arco marcado = meta · grosor y tamaño = alcance</span>';
+      return;
+    }
     el.innerHTML = lens === 'plat'
       ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('') + '<span>Tamaño = alcance</span>'
       : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Altura = distancia a la meta · el plano es la meta · tamaño = alcance · hilos = mismo producto o subcampaña</span>';
@@ -1197,8 +1568,11 @@
       '<li>Cada esfera es un post. Las campañas van alrededor del anillo en orden cronológico, en el sentido de las manecillas del reloj.</li>' +
       '<li>El plano es la meta. En los lentes de KPI, lo que cumple flota arriba y lo que no se hunde; la altura es la distancia a la meta. Los posts que no aplican quedan sobre el plano, en gris.</li>' +
       '<li>Al abrir una campaña, sus posts se acomodan en un renglón por plataforma, en orden de fecha.</li>' +
+      '<li>Vista «Árbol»: el tronco es la cuenta, las ramas son campañas y subcampañas y cada hoja es un post. Entre más lejos del tronco, mejor su VTR (o su ER en el lente de Instagram): los mejores contenidos quedan en la copa y están rotulados. El arco marcado es la meta.</li>' +
       '<li>Una campaña que concentra más del 20% de los posts del periodo se separa por etapa.</li>' +
       '<li>Al pasar el cursor sobre un post se dibujan los hilos a los posts del mismo producto o subcampaña.</li>' +
+      '<li>La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) el mapa se arma solo y el KPI corre con él.</li>' +
+      '<li>«Viaje de un producto» dibuja la trayectoria de un producto en orden de fecha a través de las campañas. Con play, se ve cómo viajó durante el año.</li>' +
       '<li>Se rotulan las campañas más grandes (9 en pantalla ancha, 5 en el teléfono); todas están en el ranking.</li></ul>' +
       '<h3>Pendientes de captura en el periodo</h3><ul>' +
       '<li>' + fmtInt(VIEW.noCamp) + ' posts sin Campaña y ' + fmtInt(VIEW.noProd) + ' sin Producto.</li>' +
@@ -1209,9 +1583,10 @@
   function refresh() {
     if (!VIEW) return;
     renderLegend(); sceneUpdate(); renderSummary(); renderRank();
+    if (MODE === 'arbol') renderTree(false);
   }
   function renderPlatFilter() {
-    const base = PID ? inPeriod(PID) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
+    const base = PID ? inPeriod(PID).filter(passPT) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
     const el = $('pf');
     el.innerHTML = '<button data-p="*" aria-pressed="' + all + '">Todas<small>' + fmtInt(base.length) + '</small></button>' +
       PLATFORMS.map(pl => '<button data-p="' + pl + '" aria-pressed="' + PLATS.has(pl) + '"' + (cnt.get(pl) ? '' : ' title="Sin posts en el periodo"') + '><i style="background:' + PLAT_COLORS[pl] + '"></i>' + pl + '<small>' + fmtInt(cnt.get(pl) || 0) + '</small></button>').join('') +
@@ -1225,23 +1600,144 @@
       setPeriod(PID);
     }));
   }
+  function renderPTFilter() {
+    const base = PID ? inPeriod(PID).filter(p => PLATS.has(p.plat)) : [];
+    const grp = (label, key, cur, opts, of) => {
+      const cnt = d3.rollup(base.filter(p => key === 'pauta' ? (TIPO === 'all' || tipoOf(p) === TIPO) : (PAUTA === 'all' || pautaOf(p) === PAUTA)), v => v.length, of);
+      return '<div class="fgroup"><span>' + label + '</span><div class="seg" role="radiogroup" aria-label="' + label + '">' +
+        [['all', 'Todo']].concat(opts.map(o => [o, o])).map(([v, l]) => '<button role="radio" data-k="' + key + '" data-v="' + v + '" aria-checked="' + (cur === v) + '">' + l +
+          (v === 'all' ? '' : '<small>' + fmtInt(cnt.get(v) || 0) + '</small>') + '</button>').join('') + '</div></div>';
+    };
+    const sinDato = (PAUTA !== 'all' || TIPO !== 'all') ? base.filter(p => (PAUTA !== 'all' && !pautaOf(p)) || (TIPO !== 'all' && !tipoOf(p))).length : 0;
+    $('ff').innerHTML = grp('Pauta', 'pauta', PAUTA, ['Orgánico', 'Paid'], pautaOf) + grp('Contenido', 'tipo', TIPO, ['Local', 'Global', 'Regional'], tipoOf) +
+      (sinDato ? '<span class="fnote">' + fmtInt(sinDato) + ' posts sin ese dato capturado quedan fuera</span>' : '');
+    $('ff').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.k === 'pauta') PAUTA = b.dataset.v; else TIPO = b.dataset.v;
+      try { localStorage.setItem('smx-mapa-pauta', PAUTA); localStorage.setItem('smx-mapa-tipo', TIPO); } catch (e) {}
+      setPeriod(PID);
+    }));
+  }
+  function filterLabel() {
+    const f = [];
+    if (PLATS.size !== PLATFORMS.length) f.push([...PLATS].join(' + '));
+    if (PAUTA !== 'all') f.push(PAUTA);
+    if (TIPO !== 'all') f.push(TIPO);
+    return f.length ? ' · ' + f.join(' · ') : '';
+  }
   function setPeriod(pid) {
-    PID = pid; renderPlatFilter();
+    PID = pid; setPlay(false); UPTO = null; renderPlatFilter(); renderPTFilter();
     focus = null; hover = null; pinned = null; tip.hidden = true;
-    if (!inPeriod(pid).some(p => PLATS.has(p.plat))) {
-      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
-      $('state').hidden = false; $('state').innerHTML = '<div>No hay posts de ' + esc([...PLATS].join(', ')) + ' en este periodo.</div>';
+    if (!inPeriod(pid).some(passes)) {
+      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; $('jcard').hidden = true; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
+      $('state').hidden = false; $('state').innerHTML = '<div>No hay posts con esta selección en el periodo' + esc(filterLabel()) + '.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
       document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
       return;
     }
     $('state').hidden = true;
     VIEW = buildView(pid);
-    document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
+    document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts' + filterLabel() + ' · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
+    buildSteps(); fillJourney();
     renderNotes(); sceneSetView(); renderLegend(); renderSummary(); renderRank();
+    stage.classList.toggle('treemode', MODE === 'arbol');
+    if (MODE === 'arbol') renderTree(true);
     try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
   }
 
+  // ============================================================
+  // LÍNEA DE TIEMPO Y VIAJE DE UN PRODUCTO
+  // ============================================================
+  const MESL = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function buildSteps() {
+    STEPS = [];
+    if (!VIEW) return;
+    // cortes semanales (domingo a sábado), igual que el reporte
+    let d = new Date(VIEW.from); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + 6); d.setHours(23, 59, 59, 999);
+    while (d < VIEW.to) { STEPS.push(new Date(d)); d = new Date(d.getTime() + 7 * 864e5); }
+    STEPS.push(new Date(VIEW.to.getTime() + 1));
+    const r = $('tlrange'); r.max = String(STEPS.length - 1); r.value = String(STEPS.length - 1);
+    // meses bajo la barra
+    const span = STEPS[STEPS.length - 1] - STEPS[0] || 1, m = $('tlmonths'); let html = '';
+    const c = new Date(VIEW.from.getFullYear(), VIEW.from.getMonth() + 1, 1);
+    while (c < VIEW.to) { html += '<span style="left:' + ((c - STEPS[0]) / span * 100).toFixed(2) + '%">' + MESL[c.getMonth()] + '</span>'; c.setMonth(c.getMonth() + 1); }
+    m.innerHTML = STEPS.length > 3 ? html : '';
+    paintRange(); renderHist();
+  }
+  function paintRange() {
+    const r = $('tlrange'), k = +r.max ? +r.value / +r.max : 1;
+    r.style.setProperty('--p', (k * 100).toFixed(1) + '%');
+    const lbl = $('tllbl');
+    if (!UPTO) { lbl.textContent = 'Todo el periodo · ' + fmtInt(VIEW ? VIEW.posts.length : 0) + ' posts'; return; }
+    const n = curPosts().length, wk = week(UPTO);
+    lbl.textContent = 'Hasta S' + wk + ' · ' + UPTO.getDate() + ' ' + MESL[UPTO.getMonth()] + ' · ' + fmtInt(n) + ' posts';
+  }
+  let sumTimer = 0;
+  function setUpto(i, fromPlay) {
+    if (!VIEW) return;
+    const last = STEPS.length - 1;
+    UPTO = i >= last ? null : STEPS[i];
+    $('tlrange').value = String(i);
+    paintRange();
+    animateTo(fromPlay ? 520 : 380, null);
+    dirty = true;
+    renderChips(); renderJourneyCard(); renderHist();
+    if (MODE === 'arbol') renderTree(false);
+    // el KPI corre con la línea de tiempo, sin saturar el panel
+    if (!sumTimer) sumTimer = setTimeout(() => { sumTimer = 0; renderSummary(); }, fromPlay ? 0 : 160);
+  }
+  function setPlay(on) {
+    if (playing) { clearInterval(playing); playing = null; }
+    $('tlicon').setAttribute('d', on ? 'M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z' : 'M7 4.5v15l13-7.5z');
+    $('tlplay').setAttribute('aria-label', on ? 'Pausar' : 'Reproducir el periodo');
+    if (!on) return;
+    lastTouch = performance.now() - 9000;          // que la maqueta gire mientras corre
+    let i = +$('tlrange').value;
+    if (i >= STEPS.length - 1) i = 0;
+    setUpto(i, true);
+    playing = setInterval(() => {
+      i++;
+      setUpto(i, true);
+      if (i >= STEPS.length - 1) setPlay(false);
+    }, REDUCED ? 900 : 560);
+  }
+  function fillJourney() {
+    const sel = $('journey');
+    if (!VIEW) { sel.innerHTML = '<option value="">Viaje de un producto…</option>'; return; }
+    const cnt = d3.rollups(VIEW.posts.filter(p => p.pr), v => [v.length, new Set(v.map(p => p.c)).size], p => p.pr).sort((a, b) => b[1][0] - a[1][0]);
+    if (JOURNEY && !cnt.some(x => x[0] === JOURNEY)) JOURNEY = null;
+    sel.innerHTML = '<option value="">Viaje de un producto…</option>' + cnt.map(([pr, [n, k]]) =>
+      '<option value="' + esc(pr) + '"' + (pr === JOURNEY ? ' selected' : '') + '>' + esc(pr) + ' · ' + n + ' posts · ' + k + ' camp.</option>').join('');
+    syncJourneyUI();
+  }
+  function syncJourneyUI() {
+    const sel = $('journey'); sel.value = JOURNEY || ''; sel.classList.toggle('on', !!JOURNEY);
+    renderJourneyCard();
+  }
+  function renderJourneyCard() {
+    const el = $('jcard');
+    if (!JOURNEY || !VIEW) { el.hidden = true; return; }
+    const all = VIEW.posts.filter(p => p.pr === JOURNEY), L = all.filter(vis);
+    const camps = new Set(L.map(p => p.c)).size, plats = new Set(L.map(p => p.plat)).size;
+    let kpi = '';
+    if (lens !== 'plat') { const s = stats(L, lens); kpi = '<dt>' + KPI[lens].label + '</dt><dd>' + (s.n ? '<span class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</span> · ' + s.ok + '/' + s.n : 'no aplica') + '</dd>'; }
+    el.innerHTML = '<div class="jt">Viaje de producto</div><div class="jn">' + esc(JOURNEY) + '</div><dl>' +
+      '<dt>Posts</dt><dd>' + fmtInt(L.length) + (L.length !== all.length ? ' de ' + fmtInt(all.length) : '') + '</dd>' +
+      '<dt>Campañas</dt><dd>' + camps + '</dd><dt>Plataformas</dt><dd>' + plats + '</dd>' +
+      '<dt>Alcance</dt><dd>' + fmtInt(d3.sum(L, p => p.reach)) + '</dd>' + kpi +
+      (L.length ? '<dt>Primer post</dt><dd>' + fdate(d3.min(L, p => p.d)) + '</dd><dt>Último</dt><dd>' + fdate(d3.max(L, p => p.d)) + '</dd>' : '') +
+      '</dl><button id="jclose">Cerrar viaje</button>';
+    el.hidden = false;
+    $('jclose').onclick = () => setJourney(null);
+  }
+  function setJourney(pr) {
+    JOURNEY = pr || null;
+    pinned = null; hover = null; tip.hidden = true;
+    if (focus) { focus = null; }
+    syncJourneyUI();
+    if (GL) { setThreads(); sceneUpdate(); }
+    if (MODE === 'arbol') renderTree(false);
+    renderSummary(); renderRank();
+  }
   // ============================================================
   // ARRANQUE
   // ============================================================
@@ -1286,18 +1782,27 @@
   $('reload').addEventListener('click', start);
   $('period').addEventListener('change', e => setPeriod(e.target.value));
   $('back').addEventListener('click', () => { if (focus) setFocus(focus); });
+  document.querySelectorAll('.mseg button').forEach(b => b.addEventListener('click', () => { if (MODE !== b.dataset.mode) setMode(b.dataset.mode); }));
+  document.querySelectorAll('.mseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === MODE)));
+  stage.classList.toggle('treemode', MODE === 'arbol');
+  document.getElementById('tree').addEventListener('click', () => { if (pinned != null) { pinned = null; hover = null; tip.hidden = true; } else if (focus) setFocus(focus); });
+  $('tlplay').addEventListener('click', () => { hideHint(); setPlay(!playing); });
+  $('tlrange').addEventListener('input', e => { setPlay(false); hideHint(); setUpto(+e.target.value, false); });
+  $('journey').addEventListener('change', e => setJourney(e.target.value));
+  tip.addEventListener('click', e => { const b = e.target.closest('.jlink'); if (b) setJourney(b.dataset.pr); });
+  window.addEventListener('keydown', e => { if (e.key === ' ' && e.target === document.body && VIEW) { e.preventDefault(); setPlay(!playing); } });
   document.querySelectorAll('.vseg button').forEach(b => b.addEventListener('click', () => { lastTouch = performance.now(); hideHint(); setView(b.dataset.view); }));
-  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.seg button[data-lens]').forEach(b => b.addEventListener('click', () => {
     lens = b.dataset.lens;
-    document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
-    pinned = null; hover = null; tip.hidden = true; refresh();
+    document.querySelectorAll('.seg button[data-lens]').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+    pinned = null; hover = null; tip.hidden = true; refresh(); renderJourneyCard(); renderHist();
   }));
   $('theme').addEventListener('click', () => {
     const light = !document.documentElement.classList.contains('light');
     document.documentElement.classList.toggle('light', light);
     try { localStorage.setItem('smx-theme', light ? 'light' : 'dark'); } catch (e) {}
     document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#F8F7F2' : '#0A0A0F');
-    themeGL(); if (VIEW) { renderLegend(); renderSummary(); renderRank(); renderChips(); }
+    themeGL(); if (VIEW) { renderLegend(); renderSummary(); renderRank(); renderChips(); renderHist(); if (MODE === 'arbol') renderTree(false); }
   });
   new ResizeObserver(resize).observe(stage);
   if (authLoad()) start(); else showLogin();
