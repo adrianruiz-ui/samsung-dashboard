@@ -220,7 +220,7 @@
     @keyframes brkIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     .row { transition: background-color 200ms ease; }
     .leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-    .leaders line { stroke: rgb(var(--c-txt3)); stroke-opacity: .55; stroke-width: 1; }
+    .leaders line { stroke: rgb(var(--c-txt3)); stroke-opacity: .55; stroke-width: 1; shape-rendering: geometricPrecision; }
     .leaders circle { fill: rgb(var(--c-txt2)); }
     .chip { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; border-radius: 3px; padding: 5px 8px 6px; background: rgb(var(--c-ink) / .9); box-shadow: none; }
     html.light .chip { background: rgb(var(--c-surface) / .96); box-shadow: 0 1px 6px rgba(10,10,15,.10); }
@@ -1069,19 +1069,31 @@
       }
       if (!moved) break;
     }
-    let svg = '';
+    // Posiciones suavizadas y redondeadas al píxel: sin saltos entre cuadros ni líneas que titilen
+    const R2 = v => Math.round(v * 2) / 2, segs = [];
     items.forEach(it => {
-      it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)';
-      if (it.ax != null && !it.back) {
-        const ex = it.x + (it.ax < it.x ? -it.w / 2 : it.w / 2), ey = it.y;
-        svg += '<line x1="' + ex.toFixed(1) + '" y1="' + ey.toFixed(1) + '" x2="' + it.ax.toFixed(1) + '" y2="' + it.ay.toFixed(1) + '"/><circle cx="' + it.ax.toFixed(1) + '" cy="' + it.ay.toFixed(1) + '" r="2"/>';
-      }
+      if (it.sx == null || Math.abs(it.sx - it.x) > 160 || Math.abs(it.sy - it.y) > 160) { it.sx = it.x; it.sy = it.y; }
+      else { it.sx += (it.x - it.sx) * 0.25; it.sy += (it.y - it.sy) * 0.25; }
+      const tx = Math.round(it.sx - it.w / 2), ty = Math.round(it.sy - it.h / 2), tr = 'translate(' + tx + 'px,' + ty + 'px)';
+      if (it.tr !== tr) { it.el.style.transform = tr; it.tr = tr; }
+      if (it.ax != null && !it.back) segs.push([R2(it.sx + (it.ax < it.sx ? -it.w / 2 : it.w / 2)), R2(it.sy), R2(it.ax), R2(it.ay)]);
     });
-    leadersEl.innerHTML = svg;
+    const key = segs.join(';');
+    if (key !== leadersEl.dataset.k) {
+      leadersEl.dataset.k = key;
+      const NS = 'http://www.w3.org/2000/svg';
+      while (leadersEl.childNodes.length < segs.length * 2) { leadersEl.appendChild(document.createElementNS(NS, 'line')); const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', '2'); leadersEl.appendChild(c); }
+      while (leadersEl.childNodes.length > segs.length * 2) leadersEl.removeChild(leadersEl.lastChild);
+      segs.forEach((g, i) => {
+        const l = leadersEl.childNodes[i * 2], c = leadersEl.childNodes[i * 2 + 1];
+        l.setAttribute('x1', g[0]); l.setAttribute('y1', g[1]); l.setAttribute('x2', g[2]); l.setAttribute('y2', g[3]);
+        c.setAttribute('cx', g[2]); c.setAttribute('cy', g[3]);
+      });
+    }
     // regla: siempre del lado izquierdo de la copa respecto a la cámara
     tickItems.forEach(it => {
       const y = LEAF_Y0 + LEAF_H * it.k, s = toScreen(ruler.position.x, y, ruler.position.z, w, h);
-      it.el.style.transform = 'translate(' + (s.x - it.el.offsetWidth - 14).toFixed(1) + 'px,' + (s.y - 8).toFixed(1) + 'px)';
+      it.el.style.transform = 'translate(' + Math.round(s.x - it.el.offsetWidth - 14) + 'px,' + Math.round(s.y - 8) + 'px)';
       it.el.style.visibility = s.back || focus ? 'hidden' : 'visible';
     });
     if (!tip.hidden) {
@@ -1450,7 +1462,7 @@
     PID = pid; setPlay(false); UPTO = null; renderPlatFilter(); renderPTFilter();
     focus = null; hover = null; pinned = null; tip.hidden = true;
     if (!inPeriod(pid).some(passes)) {
-      VIEW = null; TREE = null; chipsEl.innerHTML = ''; ticksEl.innerHTML = ''; labelItems = []; tickItems = []; leadersEl.innerHTML = ''; $('jcard').hidden = true;
+      VIEW = null; TREE = null; chipsEl.innerHTML = ''; ticksEl.innerHTML = ''; labelItems = []; tickItems = []; leadersEl.innerHTML = ''; leadersEl.dataset.k = ''; $('jcard').hidden = true;
       if (GL) { if (leaves) leaves.count = 0; branches.geometry.dispose(); branches.geometry = new THREE.BufferGeometry(); twigs.geometry.dispose(); twigs.geometry = new THREE.BufferGeometry(); path.visible = false; pulses.visible = false; roots.count = 0; rootLines.geometry.dispose(); rootLines.geometry = new THREE.BufferGeometry(); rootsKey = ''; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; sceneSetView.prev = null; }
       $('state').hidden = false; $('state').innerHTML = '<div>No hay posts con esta selección en el periodo' + esc(filterLabel()) + '.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
