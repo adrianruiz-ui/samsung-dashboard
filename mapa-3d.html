@@ -229,7 +229,35 @@
     .chip:hover span, .chip:hover b { color: #fff !important; }
     .rowlabel, .tick { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; }
     .rowlabel { border-radius: 3px; }
-    @media (prefers-reduced-motion: reduce) { .chip, .rowlabel, .tip.in, .brk, .back { animation: none !important; } .bar span { transition: none !important; } }
+    .ov-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .jsel { max-width: 260px; background-color: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
+    html.light .jsel { background-color: rgb(var(--c-surface2) / .9); }
+    .jsel.on { background-color: rgb(var(--c-accent2)); color: #fff; }
+    .jcard { position: absolute; top: 58px; left: 14px; z-index: 3; width: 260px; padding: 12px 14px; border-radius: 10px; background: rgb(var(--c-ink) / .82); backdrop-filter: blur(8px);
+             font-size: 12.5px; animation: chipIn 420ms var(--ease-out) both; }
+    html.light .jcard { background: rgb(var(--c-surface) / .95); box-shadow: 0 8px 28px rgba(10,10,15,.12); }
+    .jcard .jt { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: rgb(var(--c-txt3)); }
+    .jcard .jn { font-size: 16px; font-weight: 620; margin: 2px 0 8px; letter-spacing: -0.01em; }
+    .jcard dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
+    .jcard dt { color: rgb(var(--c-txt3)); } .jcard dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+    .jcard button { margin-top: 10px; border: 0; background: rgb(var(--c-txt) / .08); color: rgb(var(--c-txt2)); border-radius: 7px; padding: 6px 10px; font: 500 12px var(--font); cursor: pointer; }
+    .tl { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: center; gap: 12px; z-index: 3; }
+    .tl-play { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgb(var(--c-accent2)); cursor: pointer; display: grid; place-items: center; }
+    .tl-play svg { width: 14px; height: 14px; fill: #fff; }
+    .tl-track { position: relative; flex: 1; min-width: 0; padding-bottom: 14px; }
+    .tl-track input { width: 100%; margin: 0; appearance: none; -webkit-appearance: none; height: 18px; background: transparent; cursor: pointer; }
+    .tl-track input::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgb(var(--c-accent2)) var(--p, 100%), rgb(var(--c-txt) / .12) var(--p, 100%)); }
+    .tl-track input::-moz-range-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgb(var(--c-accent2)) var(--p, 100%), rgb(var(--c-txt) / .12) var(--p, 100%)); }
+    .tl-track input::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: rgb(var(--c-txt)); margin-top: -5px; border: 0; }
+    .tl-track input::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: rgb(var(--c-txt)); border: 0; }
+    .tl-months { position: absolute; left: 7px; right: 7px; bottom: 0; height: 12px; }
+    .tl-months span { position: absolute; transform: translateX(-50%); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--c-txt4)); }
+    .tl-lbl { flex: none; min-width: 150px; text-align: right; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--c-txt2)); font-variant-numeric: tabular-nums; }
+    @media (max-width: 600px) { .tl-lbl { min-width: 0; font-size: 10px; } .jcard { width: auto; right: 14px; } }
+    .legend { bottom: 62px; }
+    .hintdrag { bottom: 100px; }
+    .tip .jlink { display: block; margin-top: 8px; border: 0; background: none; padding: 0; color: rgb(var(--c-accent)); font: 600 12.5px var(--font); cursor: pointer; text-align: left; }
+    @media (prefers-reduced-motion: reduce) { .chip, .rowlabel, .tip.in, .brk, .back, .jcard { animation: none !important; } .bar span { transition: none !important; } }
   </style>
 </head>
 <body>
@@ -286,11 +314,20 @@
         <svg class="leaders" id="leaders" aria-hidden="true"></svg>
         <div class="chips" id="chips"></div>
         <div class="ov">
+          <div class="ov-l">
+          <select class="sel jsel" id="journey" aria-label="Viaje de un producto"><option value="">Viaje de un producto…</option></select>
           <button class="back" id="back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Todas las campañas</button>
+          </div>
           <div class="seg vseg" role="radiogroup" aria-label="Vista">
             <button role="radio" data-view="persp" aria-checked="true">Perspectiva</button>
             <button role="radio" data-view="top" aria-checked="false">Desde arriba</button>
           </div>
+        </div>
+        <div class="jcard" id="jcard" hidden></div>
+        <div class="tl" id="tl">
+          <button class="tl-play" id="tlplay" aria-label="Reproducir el periodo"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="tlicon" d="M7 4.5v15l13-7.5z"/></svg></button>
+          <div class="tl-track"><input type="range" id="tlrange" min="0" max="1" step="1" value="1" aria-label="Semana"><div class="tl-months" id="tlmonths"></div></div>
+          <div class="tl-lbl" id="tllbl">Todo el periodo</div>
         </div>
         <div class="hintdrag" id="hintdrag">Arrastra para girar · rueda o pellizco para acercar · clic en un post para abrir su campaña</div>
         <div class="legend" id="legend"></div>
@@ -576,6 +613,9 @@
   const EASE_OUT = t => 1 - Math.pow(1 - t, 4);
   let GL = false, renderer, scene, camera, controls, nodes, stems, threads, plane, rim, ruler, hemi, key;
   let web = null, pulses = null, webIntro = 0, hoverC = null, tNow = 0;
+  let UPTO = null, STEPS = [], playing = null, JOURNEY = null, jtube = null, jcurve = null;
+  const vis = p => !UPTO || p.d <= UPTO;
+  const curPosts = () => VIEW ? VIEW.posts.filter(vis) : [];
   let tw = null, fly = null, dirty = true, shownFocus = null, view = 'persp', lastTouch = 0, chipItems = [], rowItems = [], tickItems = [];
   const dummy = new THREE.Object3D(), tmp = new THREE.Color(), tmp2 = new THREE.Color(), V = new THREE.Vector3();
   const tokColor = n => { const p = tok(n).split(/\s+/).map(Number); return new THREE.Color(p[0] / 255, p[1] / 255, p[2] / 255); };
@@ -633,7 +673,7 @@
     el.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', onUp);
     el.addEventListener('pointerleave', () => { if (pinned == null && hover != null) { hover = null; tip.hidden = true; dirty = true; setThreads(); } });
-    window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null)) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); } });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null || JOURNEY)) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); else if (JOURNEY) setJourney(null); } });
     themeGL();
     GL = true;
     requestAnimationFrame(frame);
@@ -668,6 +708,7 @@
   function targetColor(p) {
     const c = baseColor(p).clone();
     if (focus && p.c !== focus) c.lerp(tokColor('--c-surface'), 0.9);
+    if (JOURNEY && p.pr !== JOURNEY) c.lerp(tokColor('--c-surface'), 0.86);
     return c;
   }
   function targetOf(p) {
@@ -676,7 +717,10 @@
     const x = inF ? p.ex : p.x - VIEW.W / 2, z = inF ? p.ez : p.y - VIEW.W / 2;
     let s = p.rad * (evalOk ? 1 : 0.62);
     if (inF) s = evalOk ? Math.min(Math.max(s * 1.15, 3.5), 9.5) : Math.min(Math.max(s, 2.5), 5); else if (out) s *= 0.5;
+    if (JOURNEY) s = p.pr === JOURNEY ? Math.max(s * 1.25, 3.2) : s * 0.6;
     const c = targetColor(p);
+    // Línea de tiempo: lo que aún no se publica espera sobre el plano, sin tamaño
+    if (!vis(p)) return { x, y: 0, z, s: 0, r: c.r, g: c.g, b: c.b };
     return { x, y: heightOf(p), z, s, r: c.r, g: c.g, b: c.b };
   }
   // Campaña abierta: un renglón por plataforma, los posts en orden de fecha
@@ -779,7 +823,9 @@
       const a = l.source.a, b = l.target.a; if (!a || !b) return;
       P.set([a.x, a.y, a.z, b.x, b.y, b.z], k * 6);
       let al = base;
-      if (act) al = (l.source.c === act || l.target.c === act) ? (l.x ? 0.85 : 0.6) : 0.03;
+      if (!vis(l.source) || !vis(l.target)) al = 0;
+      else if (JOURNEY) al = (l.source.pr === JOURNEY && l.target.pr === JOURNEY) ? 0.35 : 0.02;
+      else if (act) al = (l.source.c === act || l.target.c === act) ? (l.x ? 0.85 : 0.6) : 0.03;
       else if (l.x) al = base * 0.8;
       C.set([lift(a.r, mix.r), lift(a.g, mix.g), lift(a.b, mix.b), al, lift(b.r, mix.r), lift(b.g, mix.g), lift(b.b, mix.b), al], k * 8);
     });
@@ -791,8 +837,19 @@
     if (!pulses || !VIEW || !VIEW.webLinks) return;
     const act = focus || hoverC;
     let ls = [];
+    if (JOURNEY && hover == null) {
+      // el viaje: varias cabezas recorren la trayectoria del producto
+      if (!jcurve || REDUCED) { pulses.visible = false; return; }
+      const nh = 7, pos = new Float32Array(nh * 3);
+      for (let j = 0; j < nh; j++) { const q = jcurve.getPointAt(((tNow / 9000) + j / nh) % 1); pos[j * 3] = q.x; pos[j * 3 + 1] = q.y; pos[j * 3 + 2] = q.z; }
+      pulses.visible = true; pulses.material.size = 7;
+      pulses.geometry.dispose(); pulses.geometry = new THREE.BufferGeometry(); pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      return;
+    }
+    pulses.material.size = 5;
     if (hover != null) ls = VIEW.webLinks.filter(l => l.source.i === hover || l.target.i === hover);
     else if (act) ls = VIEW.webLinks.filter(l => l.source.c === act || l.target.c === act);
+    ls = ls.filter(l => vis(l.source) && vis(l.target));
     if (REDUCED || !ls.length) { pulses.visible = false; return; }
     pulses.visible = true;
     const max = Math.min(ls.length, 220), pos = new Float32Array(max * 3), step = ls.length / max;
@@ -806,6 +863,21 @@
     pulses.geometry.dispose();
     pulses.geometry = new THREE.BufferGeometry();
     pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  }
+  function writeJourney() {
+    if (jtube) { scene.remove(jtube); jtube.geometry.dispose(); jtube = null; }
+    jcurve = null;
+    if (!JOURNEY || !VIEW) return;
+    const pts = [];
+    VIEW.posts.filter(p => p.pr === JOURNEY && vis(p) && p.a).sort((a, b) => a.d - b.d).forEach(p => {
+      const v = new THREE.Vector3(p.a.x, p.a.y, p.a.z);
+      if (!pts.length || pts[pts.length - 1].distanceTo(v) > 0.5) pts.push(v);
+    });
+    if (pts.length < 2) return;
+    jcurve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    jtube = new THREE.Mesh(new THREE.TubeGeometry(jcurve, Math.min(900, pts.length * 10), 1.5, 6, false),
+      new THREE.MeshBasicMaterial({ color: tokColor('--c-accent'), transparent: true, opacity: 0.9, depthWrite: false }));
+    jtube.renderOrder = 4; scene.add(jtube);
   }
   function setThreads() {
     if (!VIEW) return;
@@ -851,9 +923,10 @@
     return { x: (V.x + 1) / 2 * w, y: (1 - V.y) / 2 * h, back: V.z > 1 };
   }
   function chipHtml(c) {
-    if (lens === 'plat') return '<b>' + fmtInt(c.reach) + '</b><span>' + esc(c.n) + ' · ' + c.size + ' posts</span>';
-    const s = stats(c.list, lens);
-    if (!s.n) return '<b>—</b><span>' + esc(c.n) + '</span>';
+    const list = c.list.filter(p => vis(p) && (!JOURNEY || p.pr === JOURNEY));
+    if (lens === 'plat') return '<b>' + fmtInt(d3.sum(list, p => p.reach)) + '</b><span>' + esc(c.n) + ' · ' + list.length + ' posts</span>';
+    const s = stats(list, lens);
+    if (!s.n) return '<b>' + (JOURNEY ? fmtInt(list.length) + ' posts' : '—') + '</b><span>' + esc(c.n) + '</span>';
     return '<b class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</b><span>' + esc(c.n) + ' · ' + s.ok + '/' + s.n + '</span>';
   }
   function renderChips() {
@@ -862,8 +935,11 @@
     if (!VIEW) return;
     const b = stage.getBoundingClientRect(), nTop = b.width < 600 ? 5 : 9;
     const hc = hover != null ? VIEW.posts[hover].c : null;
-    const show = focus ? VIEW.clusters.filter(c => c.n === focus)
-      : VIEW.clusters.filter(c => (VIEW.top.slice(0, nTop).includes(c.n) && (lens === 'plat' || stats(c.list, lens).n >= 3)) || c.n === hc);
+    const vl = c => c.list.filter(p => vis(p) && (!JOURNEY || p.pr === JOURNEY));
+    let show;
+    if (focus) show = VIEW.clusters.filter(c => c.n === focus);
+    else if (JOURNEY) show = VIEW.clusters.map(c => [c, vl(c).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).slice(0, nTop).map(x => x[0]);
+    else show = VIEW.clusters.filter(c => vl(c).length && ((VIEW.top.slice(0, nTop).includes(c.n) && (lens === 'plat' || stats(vl(c), lens).n >= 3)) || c.n === hc));
     show.forEach((c, i) => {
       const el = document.createElement('button');
       el.className = 'chip' + (focus ? ' big' : '');
@@ -904,17 +980,22 @@
     });
   }
   function placeOverlays() {
-    const b = stage.getBoundingClientRect(), w = b.width, h = b.height, bottom = h - (document.getElementById('legend').offsetHeight + 22);
+    const b = stage.getBoundingClientRect(), w = b.width, h = b.height, bottom = h - (document.getElementById('legend').offsetHeight + document.getElementById('tl').offsetHeight + 44);
     const items = [];
     chipItems.forEach(it => {
       const c = it.c; let top = 0;
-      c.list.forEach(p => { if (p.a) top = Math.max(top, p.a.y + p.a.s); });
+      c.list.forEach(p => { if (p.a && vis(p)) top = Math.max(top, p.a.y + p.a.s); });
       const ax = focus ? c.box.cx : c.mx - VIEW.W / 2, az = focus ? c.box.cz : c.my - VIEW.W / 2;
       const s = toScreen(ax, top + (focus ? 46 : 24), az, w, h);
       const an = toScreen(ax, top + 4, az, w, h); it.ax = an.x; it.ay = an.y;
       it.x = s.x; it.y = s.y - it.h / 2; it.back = s.back; items.push(it);
     });
-    const clamp = it => { it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 52, it.y)); };
+    const jc = document.getElementById('jcard'), jb = jc.hidden ? null : { r: jc.offsetLeft + jc.offsetWidth + 10, b: jc.offsetTop + jc.offsetHeight + 8 };
+    const clamp = it => {
+      it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 52, it.y));
+      // fuera de la ficha del viaje
+      if (jb && it.y - it.h / 2 < jb.b && it.x - it.w / 2 < jb.r) it.x = Math.min(w - it.w / 2 - 8, jb.r + it.w / 2);
+    };
     items.forEach(clamp);
     for (let k = 0; k < 24; k++) {
       let moved = false;
@@ -960,7 +1041,7 @@
     stepFly(now);
     tNow = now;
     writeInstances();
-    if (moving || dirty || webIntro) { writeStems(); writeWeb(); if (hover != null) setThreads(); if (webIntro && now - webIntro > 2700) webIntro = 0; }
+    if (moving || dirty || webIntro) { writeStems(); writeWeb(); writeJourney(); if (hover != null) setThreads(); if (webIntro && now - webIntro > 2700) webIntro = 0; }
     writePulses();
     dirty = false;
     // La rotación lenta solo cuando nadie la está usando
@@ -1049,6 +1130,7 @@
     if (!hit || hit.instanceId == null) return null;
     const p = VIEW.posts[hit.instanceId];
     if (focus && p.c !== focus) return null;
+    if (!vis(p) || (JOURNEY && p.pr !== JOURNEY)) return null;
     return p;
   }
   function onMove(e) {
@@ -1088,7 +1170,8 @@
       '<dt>VTR</dt><dd>' + kv(p.vtr, 'vtr') + '</dd><dt>ER básico</dt><dd>' + kv(p.ber, 'er') + '</dd>' +
       (p.infl ? '<dt>Influencer</dt><dd>' + esc(p.infl) + '</dd>' : '') + '</dl>' +
       (pin ? '<div class="links">' + (p.link && /^https?:/i.test(p.link) ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener">Abrir post ↗</a>' : '') +
-        (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' en el Sheet ↗</a>' : '') + '</div>'
+        (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' en el Sheet ↗</a>' : '') + '</div>' +
+        (p.pr && JOURNEY !== p.pr ? '<button class="jlink" data-pr="' + esc(p.pr) + '">Ver el viaje de ' + esc(p.pr) + ' →</button>' : '')
         : '<div class="hint">' + (focus ? 'Clic para fijar y abrir el post' : 'Clic para abrir su campaña') + '</div>');
     tip.hidden = false; tip.classList.toggle('pin', !!pin);
     tip.classList.remove('in'); void tip.offsetWidth; tip.classList.add('in');
@@ -1102,6 +1185,7 @@
     tip.style.transform = 'translate(' + Math.max(10, x).toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
   }
   function setFocus(c) {
+    if (JOURNEY && c !== focus) { JOURNEY = null; syncJourneyUI(); }
     focus = focus === c ? null : c; pinned = null; hover = null; tip.hidden = true;
     if (GL) { setThreads(); }
     refresh();
@@ -1143,22 +1227,22 @@
     requestAnimationFrame(step);
   }
   function renderSummary() {
-    const el = document.getElementById('summary');
+    const el = document.getElementById('summary'), VP = curPosts();
     if (lens === 'plat') {
-      el.innerHTML = '<div class="eyebrow">Alcance total del periodo</div><div class="big"><span class="n">' + fmtInt(d3.sum(VIEW.posts, p => p.reach)) + '</span></div>' +
-        '<div class="sub"><strong>' + fmtInt(VIEW.posts.length) + ' posts</strong> en ' + VIEW.clusters.length + ' grupos. El color es la plataforma y el tamaño del punto, el alcance del post.</div>' +
-        (PLATS.size > 1 ? platBreak(VIEW.posts, 'Participación en el alcance', 'summary-brk') : '');
-      countUp(el.querySelector('.n'), d3.sum(VIEW.posts, p => p.reach), 0, ''); growBars(el);
+      el.innerHTML = '<div class="eyebrow">Alcance total del periodo</div><div class="big"><span class="n">' + fmtInt(d3.sum(VP, p => p.reach)) + '</span></div>' +
+        '<div class="sub"><strong>' + fmtInt(VP.length) + ' posts</strong> en ' + VIEW.clusters.length + ' grupos. El color es la plataforma y el tamaño del punto, el alcance del post.</div>' +
+        (PLATS.size > 1 ? platBreak(VP, 'Participación en el alcance', 'summary-brk') : '');
+      countUp(el.querySelector('.n'), d3.sum(VP, p => p.reach), 0, ''); growBars(el);
       return;
     }
-    const K = KPI[lens], s = stats(VIEW.posts, lens);
+    const K = KPI[lens], s = stats(VP, lens);
     if (!s.n) { el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div><div class="sub">No hay ' + K.unit + ' en este periodo.</div>'; return; }
     const meets = s.avg >= K.goal;
     el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%' + esc(filterLabel()) + '</div>' +
       '<div class="big"><span class="n">' + pct(s.avg, K.dec) + '</span><span class="pill ' + (meets ? 'ok' : 'bad') + '">' + (meets ? 'Cumple' : 'No cumple') + '</span></div>' +
       '<div class="sub"><strong>' + s.ok + ' de ' + s.n + '</strong> ' + K.unit + ' (' + Math.round(s.ok / s.n * 100) + '%) quedan en la meta o arriba.</div>' +
       '<div class="rule">' + K.rule + '</div>' +
-      (PLATS.size > 1 ? platBreak(VIEW.posts, 'Por plataforma', 'summary-brk') : '');
+      (PLATS.size > 1 ? platBreak(VP, 'Por plataforma', 'summary-brk') : '');
     countUp(el.querySelector('.n'), s.avg, K.dec, '%'); growBars(el);
   }
   function renderRank() {
@@ -1214,6 +1298,8 @@
       '<li>Al abrir una campaña, sus posts se acomodan en un renglón por plataforma, en orden de fecha.</li>' +
       '<li>Una campaña que concentra más del 20% de los posts del periodo se separa por etapa.</li>' +
       '<li>Al pasar el cursor sobre un post se dibujan los hilos a los posts del mismo producto o subcampaña.</li>' +
+      '<li>La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) el mapa se arma solo y el KPI corre con él.</li>' +
+      '<li>«Viaje de un producto» dibuja la trayectoria de un producto en orden de fecha a través de las campañas. Con play, se ve cómo viajó durante el año.</li>' +
       '<li>Se rotulan las campañas más grandes (9 en pantalla ancha, 5 en el teléfono); todas están en el ranking.</li></ul>' +
       '<h3>Pendientes de captura en el periodo</h3><ul>' +
       '<li>' + fmtInt(VIEW.noCamp) + ' posts sin Campaña y ' + fmtInt(VIEW.noProd) + ' sin Producto.</li>' +
@@ -1265,10 +1351,10 @@
     return f.length ? ' · ' + f.join(' · ') : '';
   }
   function setPeriod(pid) {
-    PID = pid; renderPlatFilter(); renderPTFilter();
+    PID = pid; setPlay(false); UPTO = null; renderPlatFilter(); renderPTFilter();
     focus = null; hover = null; pinned = null; tip.hidden = true;
     if (!inPeriod(pid).some(passes)) {
-      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
+      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; $('jcard').hidden = true; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
       $('state').hidden = false; $('state').innerHTML = '<div>No hay posts con esta selección en el periodo' + esc(filterLabel()) + '.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
       document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
@@ -1277,10 +1363,103 @@
     $('state').hidden = true;
     VIEW = buildView(pid);
     document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts' + filterLabel() + ' · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
+    buildSteps(); fillJourney();
     renderNotes(); sceneSetView(); renderLegend(); renderSummary(); renderRank();
     try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
   }
 
+  // ============================================================
+  // LÍNEA DE TIEMPO Y VIAJE DE UN PRODUCTO
+  // ============================================================
+  const MESL = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function buildSteps() {
+    STEPS = [];
+    if (!VIEW) return;
+    // cortes semanales (domingo a sábado), igual que el reporte
+    let d = new Date(VIEW.from); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + 6); d.setHours(23, 59, 59, 999);
+    while (d < VIEW.to) { STEPS.push(new Date(d)); d = new Date(d.getTime() + 7 * 864e5); }
+    STEPS.push(new Date(VIEW.to.getTime() + 1));
+    const r = $('tlrange'); r.max = String(STEPS.length - 1); r.value = String(STEPS.length - 1);
+    // meses bajo la barra
+    const span = STEPS[STEPS.length - 1] - STEPS[0] || 1, m = $('tlmonths'); let html = '';
+    const c = new Date(VIEW.from.getFullYear(), VIEW.from.getMonth() + 1, 1);
+    while (c < VIEW.to) { html += '<span style="left:' + ((c - STEPS[0]) / span * 100).toFixed(2) + '%">' + MESL[c.getMonth()] + '</span>'; c.setMonth(c.getMonth() + 1); }
+    m.innerHTML = STEPS.length > 3 ? html : '';
+    paintRange();
+  }
+  function paintRange() {
+    const r = $('tlrange'), k = +r.max ? +r.value / +r.max : 1;
+    r.style.setProperty('--p', (k * 100).toFixed(1) + '%');
+    const lbl = $('tllbl');
+    if (!UPTO) { lbl.textContent = 'Todo el periodo · ' + fmtInt(VIEW ? VIEW.posts.length : 0) + ' posts'; return; }
+    const n = curPosts().length, wk = week(UPTO);
+    lbl.textContent = 'Hasta S' + wk + ' · ' + UPTO.getDate() + ' ' + MESL[UPTO.getMonth()] + ' · ' + fmtInt(n) + ' posts';
+  }
+  let sumTimer = 0;
+  function setUpto(i, fromPlay) {
+    if (!VIEW) return;
+    const last = STEPS.length - 1;
+    UPTO = i >= last ? null : STEPS[i];
+    $('tlrange').value = String(i);
+    paintRange();
+    animateTo(fromPlay ? 520 : 380, null);
+    dirty = true;
+    renderChips(); renderJourneyCard();
+    // el KPI corre con la línea de tiempo, sin saturar el panel
+    if (!sumTimer) sumTimer = setTimeout(() => { sumTimer = 0; renderSummary(); }, fromPlay ? 0 : 160);
+  }
+  function setPlay(on) {
+    if (playing) { clearInterval(playing); playing = null; }
+    $('tlicon').setAttribute('d', on ? 'M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z' : 'M7 4.5v15l13-7.5z');
+    $('tlplay').setAttribute('aria-label', on ? 'Pausar' : 'Reproducir el periodo');
+    if (!on) return;
+    lastTouch = performance.now() - 9000;          // que la maqueta gire mientras corre
+    let i = +$('tlrange').value;
+    if (i >= STEPS.length - 1) i = 0;
+    setUpto(i, true);
+    playing = setInterval(() => {
+      i++;
+      setUpto(i, true);
+      if (i >= STEPS.length - 1) setPlay(false);
+    }, REDUCED ? 900 : 560);
+  }
+  function fillJourney() {
+    const sel = $('journey');
+    if (!VIEW) { sel.innerHTML = '<option value="">Viaje de un producto…</option>'; return; }
+    const cnt = d3.rollups(VIEW.posts.filter(p => p.pr), v => [v.length, new Set(v.map(p => p.c)).size], p => p.pr).sort((a, b) => b[1][0] - a[1][0]);
+    if (JOURNEY && !cnt.some(x => x[0] === JOURNEY)) JOURNEY = null;
+    sel.innerHTML = '<option value="">Viaje de un producto…</option>' + cnt.map(([pr, [n, k]]) =>
+      '<option value="' + esc(pr) + '"' + (pr === JOURNEY ? ' selected' : '') + '>' + esc(pr) + ' · ' + n + ' posts · ' + k + ' camp.</option>').join('');
+    syncJourneyUI();
+  }
+  function syncJourneyUI() {
+    const sel = $('journey'); sel.value = JOURNEY || ''; sel.classList.toggle('on', !!JOURNEY);
+    renderJourneyCard();
+  }
+  function renderJourneyCard() {
+    const el = $('jcard');
+    if (!JOURNEY || !VIEW) { el.hidden = true; return; }
+    const all = VIEW.posts.filter(p => p.pr === JOURNEY), L = all.filter(vis);
+    const camps = new Set(L.map(p => p.c)).size, plats = new Set(L.map(p => p.plat)).size;
+    let kpi = '';
+    if (lens !== 'plat') { const s = stats(L, lens); kpi = '<dt>' + KPI[lens].label + '</dt><dd>' + (s.n ? '<span class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</span> · ' + s.ok + '/' + s.n : 'no aplica') + '</dd>'; }
+    el.innerHTML = '<div class="jt">Viaje de producto</div><div class="jn">' + esc(JOURNEY) + '</div><dl>' +
+      '<dt>Posts</dt><dd>' + fmtInt(L.length) + (L.length !== all.length ? ' de ' + fmtInt(all.length) : '') + '</dd>' +
+      '<dt>Campañas</dt><dd>' + camps + '</dd><dt>Plataformas</dt><dd>' + plats + '</dd>' +
+      '<dt>Alcance</dt><dd>' + fmtInt(d3.sum(L, p => p.reach)) + '</dd>' + kpi +
+      (L.length ? '<dt>Primer post</dt><dd>' + fdate(d3.min(L, p => p.d)) + '</dd><dt>Último</dt><dd>' + fdate(d3.max(L, p => p.d)) + '</dd>' : '') +
+      '</dl><button id="jclose">Cerrar viaje</button>';
+    el.hidden = false;
+    $('jclose').onclick = () => setJourney(null);
+  }
+  function setJourney(pr) {
+    JOURNEY = pr || null;
+    pinned = null; hover = null; tip.hidden = true;
+    if (focus) { focus = null; }
+    syncJourneyUI();
+    if (GL) { setThreads(); sceneUpdate(); }
+    renderSummary(); renderRank();
+  }
   // ============================================================
   // ARRANQUE
   // ============================================================
@@ -1325,11 +1504,16 @@
   $('reload').addEventListener('click', start);
   $('period').addEventListener('change', e => setPeriod(e.target.value));
   $('back').addEventListener('click', () => { if (focus) setFocus(focus); });
+  $('tlplay').addEventListener('click', () => { hideHint(); setPlay(!playing); });
+  $('tlrange').addEventListener('input', e => { setPlay(false); hideHint(); setUpto(+e.target.value, false); });
+  $('journey').addEventListener('change', e => setJourney(e.target.value));
+  tip.addEventListener('click', e => { const b = e.target.closest('.jlink'); if (b) setJourney(b.dataset.pr); });
+  window.addEventListener('keydown', e => { if (e.key === ' ' && e.target === document.body && VIEW) { e.preventDefault(); setPlay(!playing); } });
   document.querySelectorAll('.vseg button').forEach(b => b.addEventListener('click', () => { lastTouch = performance.now(); hideHint(); setView(b.dataset.view); }));
   document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
     lens = b.dataset.lens;
     document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
-    pinned = null; hover = null; tip.hidden = true; refresh();
+    pinned = null; hover = null; tip.hidden = true; refresh(); renderJourneyCard();
   }));
   $('theme').addEventListener('click', () => {
     const light = !document.documentElement.classList.contains('light');
