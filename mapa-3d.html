@@ -159,6 +159,9 @@
     .fgroup { display: inline-flex; align-items: center; gap: 8px; }
     .fgroup > span { font-size: 12px; color: rgb(var(--c-txt3)); font-weight: 500; }
     .fgroup .seg button small { color: rgb(var(--c-txt4)); font-size: 11px; margin-left: 5px; font-variant-numeric: tabular-nums; }
+    .igk { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .04); font-size: 13px; color: rgb(var(--c-txt2)); }
+    .igk b { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .igk small { flex-basis: 100%; font-size: 12px; color: rgb(var(--c-txt3)); }
     .fnote { font-size: 12px; color: rgb(var(--c-amber)); }
     .brk { margin: 2px 0 8px; padding: 10px 10px 8px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .035); }
     .brk .bt { font-size: 11.5px; color: rgb(var(--c-txt3)); margin-bottom: 6px; }
@@ -310,7 +313,7 @@
         <select class="sel" id="period" aria-label="Periodo"></select>
         <div class="seg" role="radiogroup" aria-label="Lente">
           <button role="radio" data-lens="vtr" aria-checked="true">VTR ≥ 25%</button>
-          <button role="radio" data-lens="er" aria-checked="false">ER IG ≥ 5%</button>
+          <button role="radio" data-lens="er" aria-checked="false">ER básico</button>
           <button role="radio" data-lens="plat" aria-checked="false">Plataforma</button>
         </div>
       </div>
@@ -378,7 +381,8 @@
   // KPIs de cuenta (mismas reglas que el dashboard y el script semanal)
   const KPI = {
     vtr: { goal: 25, dec: 1, label: 'VTR promedio', unit: 'videos de 0 a 30 s', rule: 'Videos de 0 a 30 s con VTR en todas las plataformas (incluye Shorts), sin Stories. Promedio simple por video.' },
-    er: { goal: 5, dec: 2, label: 'ER básico Instagram', unit: 'posts de feed de Instagram', rule: 'Instagram, toda la cuenta, solo feed (sin Stories). Promedio simple por post.' },
+    er: { goal: 5, dec: 2, label: 'ER básico', unit: 'posts sin Stories', rule: 'Todas las plataformas, sin Stories. Promedio simple por post. La meta de 5% solo aplica a Instagram (toda la cuenta, solo feed); el resto de las plataformas se muestra sin meta.' },
+    erig: { goal: 5, dec: 2, label: 'ER básico Instagram', unit: 'posts de feed de Instagram', rule: 'Instagram, toda la cuenta, solo feed (sin Stories). Promedio simple por post.' },
   };
   const PLAT_COLORS = { Facebook: '#4F8CFF', Instagram: '#E3579F', YouTube: '#FF6B3D', TikTok: '#26C7C7', X: '#A3ADBA', LinkedIn: '#3AA6D8', Threads: '#A98BFF' };
   const WEEK1 = new Date(2025, 11, 28);
@@ -532,13 +536,21 @@
 
   function eligible(p, lz) {
     if (lz === 'vtr') return !p.stories && (p.vtr || 0) > 0 && (p.dur || 0) > 0 && p.dur <= 30;
-    if (lz === 'er') return p.plat === 'Instagram' && !p.stories && p.reach > 0 && p.ber != null;
+    if (lz === 'er') return !p.stories && p.reach > 0 && p.ber != null;
+    if (lz === 'erig') return p.plat === 'Instagram' && !p.stories && p.reach > 0 && p.ber != null;
     return false;
   }
   const val = (p, lz) => lz === 'vtr' ? p.vtr : p.ber;
+  // La meta de ER básico (5%) solo aplica a Instagram; en las demás plataformas el ER se muestra sin meta
+  const hasGoal = (p, lz) => lz !== 'er' || p.plat === 'Instagram';
+  const erMixed = () => lens === 'er' && [...PLATS].some(pl => pl !== 'Instagram');
+  const meetsP = (p, lz) => val(p, lz) >= KPI[lz].goal;
+  // clase ok/bad de un promedio: solo si todo lo que promedia tiene meta
+  const tcls = (s, lz) => s && s.n && s.g === s.n ? (s.avg >= KPI[lz].goal ? 'ok' : 'bad') : '';
   function stats(list, lz) {
     const e = list.filter(p => eligible(p, lz));
-    return { n: e.length, avg: e.length ? d3.mean(e, p => val(p, lz)) : null, ok: e.filter(p => val(p, lz) >= KPI[lz].goal).length };
+    const gl = e.filter(p => hasGoal(p, lz));
+    return { n: e.length, avg: e.length ? d3.mean(e, p => val(p, lz)) : null, ok: gl.filter(p => meetsP(p, lz)).length, g: gl.length };
   }
 
   function periods() {
@@ -722,7 +734,7 @@
     VIEW.posts.forEach(p => { p.leaf = null; });
     groups.forEach((x, ci) => {
       const span = 2 * Math.PI * (x.list.length + 3) / tot, a0 = a + span * 0.06, a1 = a + span * 0.94; a += span;
-      x.a = (a0 + a1) / 2; x.ci = ci; x.reach = d3.sum(x.list, p => p.reach); x.st = stats(x.list, lz);
+      x.a = (a0 + a1) / 2; x.ci = ci; x.reach = d3.sum(x.list, p => p.reach); x.st = stats(x.list, lz === 'er' ? 'erig' : lz);
       L.camps.push(x);
       const bySub = d3.groups(x.list, p => p.sub || '—').map(([s, l]) => ({ s, l, d0: d3.min(l, p => +p.d) })).sort((p, q) => p.d0 - q.d0);
       let sa = a0; const sw = (a1 - a0) / x.list.length, subs = [];
@@ -800,7 +812,8 @@
   // ---------- hojas
   function leafColorBase(p) {
     if (lens === 'plat') return tmpC.set(PLAT_COLORS[p.plat]);
-    return tmpC.copy(val(p, lens) >= KPI[lens].goal ? tokColor('--c-success') : tokColor('--c-bad'));
+    if (!hasGoal(p, lens)) return tmpC.copy(tokColor('--c-accent'));
+    return tmpC.copy(meetsP(p, lens) ? tokColor('--c-success') : tokColor('--c-bad'));
   }
   function leafTarget(p) {
     const L = p.leaf;
@@ -920,16 +933,16 @@
     const rows = STEPS.map((st, i) => {
       const from = i ? STEPS[i - 1] : new Date(0);
       const ps = VIEW.posts.filter(p => p.d > from && p.d <= st && (!focus || p.c === focus) && (!JOURNEY || p.pr === JOURNEY));
-      if (!kpi) return { a: ps.length, b: 0 };
-      const e = ps.filter(p => eligible(p, lz));
-      return { a: e.filter(p => val(p, lz) >= KPI[lz].goal).length, b: e.filter(p => val(p, lz) < KPI[lz].goal).length };
+      if (!kpi) return { a: ps.length, b: 0, c: 0 };
+      const e = ps.filter(p => eligible(p, lz)), gl = e.filter(p => hasGoal(p, lz));
+      return { a: gl.filter(p => meetsP(p, lz)).length, b: gl.length - gl.filter(p => meetsP(p, lz)).length, c: e.length - gl.length };
     });
-    const ymax = d3.max(rows, r => r.a + r.b) || 1, H = 70, a0 = -Math.PI / 2, da = 2 * Math.PI / n * 0.92;
+    const ymax = d3.max(rows, r => r.a + r.b + r.c) || 1, H = 70, a0 = -Math.PI / 2, da = 2 * Math.PI / n * 0.92;
     const bw = Math.max(3, ROOT_R * da * 0.42), good = tokColor('--c-success'), bad = tokColor('--c-bad'), plain = tokColor('--c-accent2'), dim = tokColor('--c-surface'), wood = tokColor('--c-txt3');
     let k = 0; const lp = [], lc = [];
     rows.forEach((r, i) => {
       const t = a0 + i * 2 * Math.PI / n, x = ROOT_R * Math.cos(t), z = ROOT_R * Math.sin(t), off = i > cur;
-      const seg = [[r.a, kpi ? good : plain, 0], [r.b, bad, r.a]];
+      const seg = [[r.a, kpi ? good : plain, 0], [r.b, bad, r.a], [r.c, tokColor('--c-accent'), r.a + r.b]];
       seg.forEach(([v, col, base]) => {
         if (!v) return;
         dummy.position.set(x, base / ymax * H, z); dummy.rotation.set(0, -t, 0); dummy.scale.set(6, Math.max(1, v / ymax * H), bw); dummy.updateMatrix();
@@ -995,7 +1008,7 @@
     pool.sort((a, b) => val(b, lz) - val(a, lz)).slice(0, narrow ? 4 : 7).forEach((p, i) => {
       const el = document.createElement('button');
       el.className = 'chip tchip'; el.style.setProperty('--d', (i * 60) + 'ms');
-      el.innerHTML = '<b class="' + (val(p, lz) >= KPI[lz].goal ? 'ok' : 'bad') + '">' + pct(val(p, lz), KPI[lz].dec) + '</b><span>' + esc([p.fmt, p.pr || p.c, p.plat].filter(Boolean).join(' · ')) + '</span>';
+      el.innerHTML = '<b class="' + (hasGoal(p, lz) ? (meetsP(p, lz) ? 'ok' : 'bad') : '') + '">' + pct(val(p, lz), KPI[lz].dec) + '</b><span>' + esc([p.fmt, p.pr || p.c, p.plat].filter(Boolean).join(' · ')) + '</span>';
       el.addEventListener('click', e => { e.stopPropagation(); pinned = p.i; hover = p.i; dirty = true; showTip(p, true); });
       el.addEventListener('mouseenter', () => { if (pinned == null) { hover = p.i; dirty = true; } });
       el.addEventListener('mouseleave', () => { if (pinned == null && hover === p.i) { hover = null; dirty = true; } });
@@ -1008,7 +1021,7 @@
       camps.forEach(x => {
         const s = stats(x.list.filter(vis), lz), el = document.createElement('button');
         el.className = 'clab';
-        el.innerHTML = esc(x.n) + (s.n ? ' · <span class="' + (s.avg >= KPI[lz].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lz].dec) + '</span>' : '');
+        el.innerHTML = esc(x.n) + (s.n ? ' · <span class="' + tcls(s, lz) + '">' + pct(s.avg, KPI[lz].dec) + '</span>' : '');
         el.addEventListener('click', e => { e.stopPropagation(); setFocus(x.n); });
         el.addEventListener('mouseenter', () => { if (!focus) { hoverC = x.n; paintBranches(); } });
         el.addEventListener('mouseleave', () => { if (hoverC === x.n) { hoverC = null; paintBranches(); } });
@@ -1025,7 +1038,7 @@
     [[0, 0], [KG, L.g], [1, L.vmax]].forEach(([k, v]) => {
       const el = document.createElement('div');
       el.className = 'tick' + (k === KG ? ' goal' : '');
-      el.textContent = k === KG ? 'Meta ' + v + '%' : (k === 1 ? '≥ ' : '') + (Math.round(v * 10) / 10) + '%';
+      el.textContent = k === KG ? (lz === 'er' ? 'Meta IG ' : 'Meta ') + v + '%' : (k === 1 ? '≥ ' : '') + (Math.round(v * 10) / 10) + '%';
       ticksEl.appendChild(el); tickItems.push({ el, k });
     });
   }
@@ -1198,7 +1211,7 @@
 
   // ---------- ficha del post
   function showTip(p, pin) {
-    const kv = (v, lz) => eligible(p, lz) ? '<span class="' + (v >= KPI[lz].goal ? 'ok' : 'bad') + '">' + pct(v, KPI[lz].dec) + '</span>' : (v != null ? pct(v, KPI[lz].dec) + ' · no aplica' : '—');
+    const kv = (v, lz) => eligible(p, lz) ? '<span class="' + (hasGoal(p, lz) ? (v >= KPI[lz].goal ? 'ok' : 'bad') : '') + '">' + pct(v, KPI[lz].dec) + (hasGoal(p, lz) ? '' : ' · sin meta') + '</span>' : (v != null ? pct(v, KPI[lz].dec) + ' · no aplica' : '—');
     const sheet = SHEET_GIDS[p.plat] ? 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/edit#gid=' + SHEET_GIDS[p.plat] + '&range=A' + p.row : null;
     tip.innerHTML = '<div class="t"><i style="background:' + PLAT_COLORS[p.plat] + '"></i>' + esc(p.plat) + ' · ' + esc(p.fmt || 'Sin formato') + '</div>' +
       '<div class="m">' + fdate(p.d) + ' · S' + week(p.d) + ' · ' + esc(p.c) + '</div>' +
@@ -1239,23 +1252,25 @@
     const rows = STEPS.map((s, i) => {
       const from = i ? STEPS[i - 1] : new Date(0);
       const ps = VIEW.posts.filter(p => p.d > from && p.d <= s);
-      if (!kpi) return { i, a: ps.length, b: 0 };
-      const e = ps.filter(p => eligible(p, lz));
-      return { i, a: e.filter(p => val(p, lz) >= KPI[lz].goal).length, b: e.filter(p => val(p, lz) < KPI[lz].goal).length };
+      if (!kpi) return { i, a: ps.length, b: 0, c: 0 };
+      const e = ps.filter(p => eligible(p, lz)), gl = e.filter(p => hasGoal(p, lz)), ok = gl.filter(p => meetsP(p, lz)).length;
+      return { i, a: ok, b: gl.length - ok, c: e.length - gl.length };
     });
-    const ymax = d3.max(rows, r => r.a + r.b) || 1, y = v => v / ymax * (Hh - 2);
+    const ymax = d3.max(rows, r => r.a + r.b + r.c) || 1, y = v => v / ymax * (Hh - 2);
     const cur = +document.getElementById('tlrange').value;
     svg.attr('viewBox', '0 0 ' + W + ' ' + Hh);
-    const g = svg.selectAll('g.col').data(rows, d => d.i).join(e => { const g = e.append('g').attr('class', 'col'); g.append('rect').attr('class', 'ra'); g.append('rect').attr('class', 'rb'); g.append('rect').attr('class', 'hit'); return g; });
+    const g = svg.selectAll('g.col').data(rows, d => d.i).join(e => { const g = e.append('g').attr('class', 'col'); g.append('rect').attr('class', 'ra'); g.append('rect').attr('class', 'rb'); g.append('rect').attr('class', 'rc'); g.append('rect').attr('class', 'hit'); return g; });
     g.attr('opacity', d => d.i <= cur ? 1 : 0.28);
     g.select('.ra').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', kpi ? rgb('--c-success') : rgb('--c-accent2'))
       .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a)).attr('height', d => y(d.a));
     g.select('.rb').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', rgb('--c-bad'))
       .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a) - y(d.b)).attr('height', d => y(d.b));
+    g.select('.rc').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', rgb('--c-accent', 0.55))
+      .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a) - y(d.b) - y(d.c)).attr('height', d => y(d.c));
     g.select('.hit').attr('x', d => x(d.i) - Math.max(bw, 8) / 2).attr('width', Math.max(bw, 8)).attr('y', 0).attr('height', Hh).attr('fill', 'transparent').style('cursor', 'pointer')
       .on('click', (e, d) => { setPlay(false); setUpto(d.i, false); })
       .selectAll('title').data(d => [d]).join('title')
-      .text(d => (d.i < n - 1 ? 'Semana al ' + fdate(STEPS[d.i]) : 'Última semana') + ' · ' + (kpi ? d.a + ' cumplen, ' + d.b + ' no' : d.a + ' posts'));
+      .text(d => (d.i < n - 1 ? 'Semana al ' + fdate(STEPS[d.i]) : 'Última semana') + ' · ' + (kpi ? d.a + ' cumplen, ' + d.b + ' no' + (d.c ? ', ' + d.c + ' sin meta' : '') : d.a + ' posts'));
   }
 
   // ============================================================
@@ -1270,8 +1285,8 @@
     } else {
       const K = KPI[lens], st = PLATFORMS.map(pl => ({ pl, s: stats(by.get(pl) || [], lens) })).filter(x => x.s.n);
       const mx = Math.max(K.goal * 1.6, d3.max(st, x => x.s.avg) || 0);
-      st.sort((a, b) => b.s.avg - a.s.avg).forEach(x => rows.push({ pl: x.pl, n: x.s.ok + '/' + x.s.n, w: Math.min(1, x.s.avg / mx), goal: K.goal / mx, v: pct(x.s.avg, K.dec),
-        col: x.s.avg >= K.goal ? rgb('--c-success') : rgb('--c-bad'), cls: x.s.avg >= K.goal ? 'ok' : 'bad' }));
+      st.sort((a, b) => b.s.avg - a.s.avg).forEach(x => { const c = tcls(x.s, lens); rows.push({ pl: x.pl, n: c ? x.s.ok + '/' + x.s.n : x.s.n + ' posts · sin meta', w: Math.min(1, x.s.avg / mx), goal: c ? K.goal / mx : null, v: pct(x.s.avg, K.dec),
+        col: c === 'ok' ? rgb('--c-success') : c === 'bad' ? rgb('--c-bad') : rgb('--c-accent', 0.7), cls: c }); });
     }
     if (!rows.length) return '';
     return '<div class="' + cls + '"><div class="bt">' + title + '</div>' + rows.map(r =>
@@ -1304,11 +1319,22 @@
     }
     const K = KPI[lens], s = stats(VP, lens);
     if (!s.n) { el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%</div><div class="sub">No hay ' + K.unit + ' en este periodo.</div>'; return; }
+    if (lens === 'er' && s.g !== s.n) {
+      const ig = stats(VP, 'erig'), c = tcls(ig, 'erig'), np = new Set(VP.filter(p => eligible(p, 'er')).map(p => p.plat)).size;
+      el.innerHTML = '<div class="eyebrow">ER básico promedio · todas las plataformas' + esc(filterLabel()) + '</div>' +
+        '<div class="big"><span class="n">' + pct(s.avg, K.dec) + '</span></div>' +
+        '<div class="sub"><strong>' + fmtInt(s.n) + ' posts</strong> sin Stories en ' + np + (np === 1 ? ' plataforma' : ' plataformas') + '. Solo Instagram tiene meta.</div>' +
+        (ig.n ? '<div class="igk"><span>Instagram · meta 5%</span><b class="' + c + '">' + pct(ig.avg, 2) + '</b><span class="pill ' + c + '">' + (c === 'ok' ? 'Cumple' : 'No cumple') + '</span><small>' + ig.ok + ' de ' + ig.n + ' posts de feed en la meta o arriba</small></div>' : '') +
+        '<div class="rule">' + K.rule + '</div>' +
+        (PLATS.size > 1 ? platBreak(VP, 'Por plataforma', 'summary-brk') : '');
+      countUp(el.querySelector('.n'), s.avg, K.dec, '%'); growBars(el);
+      return;
+    }
     const meets = s.avg >= K.goal;
-    el.innerHTML = '<div class="eyebrow">' + K.label + ' · meta ' + K.goal + '%' + esc(filterLabel()) + '</div>' +
+    el.innerHTML = '<div class="eyebrow">' + K.label + (lens === 'er' ? ' Instagram' : '') + ' · meta ' + K.goal + '%' + esc(filterLabel()) + '</div>' +
       '<div class="big"><span class="n">' + pct(s.avg, K.dec) + '</span><span class="pill ' + (meets ? 'ok' : 'bad') + '">' + (meets ? 'Cumple' : 'No cumple') + '</span></div>' +
-      '<div class="sub"><strong>' + s.ok + ' de ' + s.n + '</strong> ' + K.unit + ' (' + Math.round(s.ok / s.n * 100) + '%) quedan en la meta o arriba.</div>' +
-      '<div class="rule">' + K.rule + '</div>' +
+      '<div class="sub"><strong>' + s.ok + ' de ' + s.n + '</strong> ' + (lens === 'er' ? KPI.erig.unit : K.unit) + ' (' + Math.round(s.ok / s.n * 100) + '%) quedan en la meta o arriba.</div>' +
+      '<div class="rule">' + (lens === 'er' ? KPI.erig.rule : K.rule) + '</div>' +
       (PLATS.size > 1 ? platBreak(VP, 'Por plataforma', 'summary-brk') : '');
     countUp(el.querySelector('.n'), s.avg, K.dec, '%'); growBars(el);
   }
@@ -1322,11 +1348,13 @@
       rows = VIEW.clusters.slice().sort((a, b) => b.reach - a.reach).map(c => ({ c, w: c.reach / mx, col: rgb('--c-accent2'), v: fmtInt(c.reach), s: c.size + ' posts' }));
     } else {
       const K = KPI[lens];
-      t.textContent = 'Campañas contra la meta';
-      h.textContent = 'Promedio de ' + K.unit + ' por campaña. La marca es la meta de ' + K.goal + '%. Toca una para abrirla en el mapa y ver su desglose por plataforma.';
+      t.textContent = erMixed() ? 'Campañas por ER básico' : 'Campañas contra la meta';
+      h.textContent = erMixed()
+        ? 'ER básico promedio por campaña, con las plataformas seleccionadas. La meta de 5% solo aplica a Instagram: la marca y el color aparecen cuando la campaña es solo de Instagram. Toca una para ver su desglose por plataforma.'
+        : 'Promedio de ' + K.unit + ' por campaña. La marca es la meta de ' + K.goal + '%. Toca una para abrirla en el mapa y ver su desglose por plataforma.';
       const all = VIEW.clusters.map(c => ({ c, s: stats(c.list, lens) }));
       const ev = all.filter(x => x.s.n >= 3), mx = Math.max(K.goal * 1.6, d3.max(ev, x => x.s.avg) || 0);
-      rows = ev.sort((a, b) => b.s.avg - a.s.avg).map(x => ({ c: x.c, w: Math.min(1, x.s.avg / mx), goal: K.goal / mx, col: x.s.avg >= K.goal ? rgb('--c-success') : rgb('--c-bad'), v: pct(x.s.avg, K.dec), s: x.s.ok + '/' + x.s.n }));
+      rows = ev.sort((a, b) => b.s.avg - a.s.avg).map(x => { const c = tcls(x.s, lens); return { c: x.c, w: Math.min(1, x.s.avg / mx), goal: c ? K.goal / mx : null, col: c === 'ok' ? rgb('--c-success') : c === 'bad' ? rgb('--c-bad') : rgb('--c-accent', 0.7), v: pct(x.s.avg, K.dec), s: c ? x.s.ok + '/' + x.s.n : x.s.n + ' posts' }; });
       small = all.filter(x => x.s.n > 0 && x.s.n < 3).map(x => x.c.n);
       none = all.filter(x => !x.s.n).map(x => x.c.n);
     }
@@ -1347,14 +1375,15 @@
     growBars(box);
     const parts = [];
     if (small.length) parts.push('Muestra chica (menos de 3): ' + small.join(', ') + '.');
-    if (none.length) parts.push('Sin ' + KPI[lens].unit + ': ' + none.join(', ') + '.');
+    if (none.length) parts.push((lens === 'er' ? 'Sin ER básico capturado' : 'Sin ' + KPI[lens].unit) + ': ' + none.join(', ') + '.');
     if (parts.length) { const d = document.createElement('div'); d.className = 'thin'; d.textContent = parts.join(' '); box.appendChild(d); }
   }
   function renderLegend() {
     const el = document.getElementById('legend'), lz = lens === 'plat' ? 'vtr' : lens;
     el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
-      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>') +
-      '<span>Hojas = ' + KPI[lz].unit + ' · más alto = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · halo punteado = meta ' + KPI[lz].goal + '% · color de rama = promedio de la campaña · raíces = posts por semana · tamaño = alcance</span>';
+      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>' +
+        (erMixed() ? '<span><i style="background:' + rgb('--c-accent') + '"></i>Sin meta (no es Instagram)</span>' : '')) +
+      '<span>Hojas = ' + KPI[lz].unit + ' · más alto = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · halo punteado = meta ' + (lz === 'er' ? 'IG ' : '') + KPI[lz].goal + '% · color de rama = promedio de la campaña · raíces = posts por semana · tamaño = alcance</span>';
   }
   function renderNotes() {
     const v = VIEW.variants.map(a => '«' + a.slice(1).join('», «') + '» → «' + a[0] + '»').join('; ');
@@ -1362,7 +1391,7 @@
       '<h3>Cómo leerlo</h3><ul>' +
       '<li>El tronco es la cuenta, las ramas son campañas y subcampañas y cada hoja es un post. Las campañas rodean el tronco en orden cronológico, en el sentido de las manecillas del reloj.</li>' +
       '<li>La altura de cada hoja es su KPI: los mejores contenidos quedan en la copa y están rotulados. El halo punteado es la meta; todo lo que queda arriba cumple. El color de cada rama es el promedio de su campaña contra la meta y su grosor, el alcance.</li>' +
-      '<li>El lente VTR usa los videos de 0 a 30 s de todas las plataformas; el lente ER, los posts de feed de Instagram. Al cambiar de lente las hojas viajan a su nueva altura. El lente Plataforma colorea por red y conserva las alturas de VTR.</li>' +
+      '<li>El lente VTR usa los videos de 0 a 30 s de todas las plataformas. El lente ER básico usa los posts de todas las plataformas (sin Stories); solo Instagram tiene meta de 5%, así que sus hojas se pintan cumple / no cumple y las demás van en azul, sin meta. Al cambiar de lente las hojas viajan a su nueva altura. El lente Plataforma colorea por red y conserva las alturas de VTR.</li>' +
       '<li>Al pasar el cursor por una hoja se ilumina su camino desde el tronco. Clic para fijar la ficha y abrir el post o su fila en el Sheet.</li>' +
       '<li>Clic en el nombre de una campaña (o en el ranking) para acercarte a su rama.</li>' +
       '<li>Una campaña que concentra más del 20% de los posts del periodo se separa por etapa.</li>' +
@@ -1510,7 +1539,7 @@
     const all = VIEW.posts.filter(p => p.pr === JOURNEY), L = all.filter(vis);
     const camps = new Set(L.map(p => p.c)).size, plats = new Set(L.map(p => p.plat)).size;
     let kpi = '';
-    if (lens !== 'plat') { const s = stats(L, lens); kpi = '<dt>' + KPI[lens].label + '</dt><dd>' + (s.n ? '<span class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</span> · ' + s.ok + '/' + s.n : 'no aplica') + '</dd>'; }
+    if (lens !== 'plat') { const s = stats(L, lens); kpi = '<dt>' + KPI[lens].label + '</dt><dd>' + (s.n ? '<span class="' + tcls(s, lens) + '">' + pct(s.avg, KPI[lens].dec) + '</span>' + (tcls(s, lens) ? ' · ' + s.ok + '/' + s.n : ' · ' + s.n + ' posts') : 'no aplica') + '</dd>'; }
     el.innerHTML = '<div class="jt">Viaje de producto</div><div class="jn">' + esc(JOURNEY) + '</div><dl>' +
       '<dt>Posts</dt><dd>' + fmtInt(L.length) + (L.length !== all.length ? ' de ' + fmtInt(all.length) : '') + '</dd>' +
       '<dt>Campañas</dt><dd>' + camps + '</dd><dt>Plataformas</dt><dd>' + plats + '</dd>' +
