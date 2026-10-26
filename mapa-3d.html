@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0A0A0F" />
-  <title>Samsung MX — Mapa de campañas 3D</title>
+  <title>Samsung MX — Árbol de campañas</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231428A0'/%3E%3Ccircle cx='50' cy='50' r='26' fill='none' stroke='white' stroke-width='7' stroke-dasharray='20 9'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -259,11 +259,6 @@
     .ov .vseg { margin-left: 0; }
     .ov .mseg { background: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
     html.light .ov .mseg { background: rgb(var(--c-surface2) / .9); }
-    .tree { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
-    .treelabels { position: absolute; inset: 0; pointer-events: none; display: none; }
-    .treelabels > * { pointer-events: auto; }
-    .stage.treemode .tree, .stage.treemode .treelabels { display: block; }
-    .stage.treemode .gl, .stage.treemode .chips, .stage.treemode .ticks, .stage.treemode .rowlabels, .stage.treemode .leaders, .stage.treemode .vseg, .stage.treemode .hintdrag { display: none !important; }
     .tree .tlab { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; letter-spacing: .06em; fill: rgb(var(--c-txt4)); }
     .tree .tlab.goal { fill: rgb(var(--c-txt2)); font-weight: 600; }
     .tree .t-lead line { stroke: rgb(var(--c-txt3)); stroke-opacity: .5; stroke-width: 1; }
@@ -271,7 +266,7 @@
     .tchip { position: absolute; left: 0; top: 0; max-width: 240px; }
     .tchip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .clab { position: absolute; left: 0; top: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: rgb(var(--c-txt2));
-            background: rgb(var(--c-surface) / .75); padding: 2px 6px; border-radius: 3px; cursor: pointer; white-space: nowrap; animation: chipIn 520ms var(--ease-out) both; }
+            background: rgb(var(--c-surface) / .75); padding: 2px 6px; border-radius: 3px; cursor: pointer; pointer-events: auto; border: 0; white-space: nowrap; animation: chipIn 520ms var(--ease-out) both; }
     .clab:hover { background: rgb(var(--c-accent2)); color: #fff; }
     .tl-track { padding-top: 30px; }
     .tl-hist { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 28px; overflow: visible; }
@@ -328,11 +323,8 @@
 
     <div class="grid">
       <div class="stage" id="stage">
-        <div class="gl" id="gl" aria-label="Maqueta 3D de posts por campaña"></div>
-        <svg class="tree" id="tree" aria-label="Árbol de campañas: los mejores contenidos en la copa"></svg>
-        <div class="treelabels" id="treelabels"></div>
+        <div class="gl" id="gl" aria-label="Árbol 3D de campañas: los mejores contenidos en la copa"></div>
         <div class="ticks" id="ticks"></div>
-        <div class="rowlabels" id="rowlabels"></div>
         <svg class="leaders" id="leaders" aria-hidden="true"></svg>
         <div class="chips" id="chips"></div>
         <div class="ov">
@@ -341,10 +333,6 @@
           <button class="back" id="back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Todas las campañas</button>
           </div>
           <div class="ov-r">
-          <div class="seg mseg" role="radiogroup" aria-label="Visualización">
-            <button role="radio" data-mode="maqueta" aria-checked="true">Maqueta 3D</button>
-            <button role="radio" data-mode="arbol" aria-checked="false">Árbol</button>
-          </div>
           <div class="seg vseg" role="radiogroup" aria-label="Vista">
             <button role="radio" data-view="persp" aria-checked="true">Perspectiva</button>
             <button role="radio" data-view="top" aria-checked="false">Desde arriba</button>
@@ -357,7 +345,7 @@
           <div class="tl-track"><svg class="tl-hist" id="tlhist" aria-hidden="true"></svg><input type="range" id="tlrange" min="0" max="1" step="1" value="1" aria-label="Semana"><div class="tl-months" id="tlmonths"></div></div>
           <div class="tl-lbl" id="tllbl">Todo el periodo</div>
         </div>
-        <div class="hintdrag" id="hintdrag">Arrastra para girar · rueda o pellizco para acercar · clic en un post para abrir su campaña</div>
+        <div class="hintdrag" id="hintdrag">Arrastra para girar el árbol · rueda o pellizco para acercar · clic en una hoja para ver el post</div>
         <div class="legend" id="legend"></div>
         <div class="tip" id="tip" hidden></div>
         <div class="state" id="state"><div class="spin"></div><div>Leyendo las 7 pestañas del Sheet…</div></div>
@@ -590,38 +578,7 @@
     const clusters = [...groups].map(([name, list]) => ({ n: name, list, size: list.length, reach: d3.sum(list, p => p.reach), mid: d3.median(list, p => +p.d) }))
       .sort((a, b) => a.mid - b.mid);
 
-    // Aristas: hilo cronológico por producto (cada post con los 2 siguientes) y por subcampaña
-    const seen = new Set(), links = [];
-    const addL = (a, b) => { const k = a.i < b.i ? a.i + '-' + b.i : b.i + '-' + a.i; if (!seen.has(k)) { seen.add(k); links.push({ source: a.i, target: b.i, x: a.c !== b.c }); } };
-    d3.group(posts.filter(p => p.pr), p => p.pr).forEach(list => { for (let i = 0; i < list.length; i++) for (let j = i + 1; j < Math.min(i + 3, list.length); j++) addL(list[i], list[j]); });
-    d3.group(posts.filter(p => p.sub), p => p.c, p => p.sub).forEach(m => m.forEach(list => { for (let i = 0; i + 1 < list.length; i++) addL(list[i], list[i + 1]); }));
-
-    // Layout: clusters alrededor del anillo en orden cronológico
-    const W = 1000, R = 310;
-    const rMax = Math.max(6, Math.min(13.5, 13.5 * Math.sqrt(800 / Math.max(n, 1))));
-    const q = d3.quantile(posts.map(p => p.reach).sort(d3.ascending), 0.97) || 1;
-    const rs = d3.scaleSqrt().domain([0, q]).range([rMax * 0.18, rMax]).clamp(true);
-    posts.forEach(p => { p.rad = rs(p.reach); });
-    const w = clusters.map(c => Math.sqrt(c.size) + 2.2), tw = d3.sum(w);
-    let acc = 0;
-    clusters.forEach((c, i) => { const a = -Math.PI / 2 + (acc + w[i] / 2) / tw * 2 * Math.PI; acc += w[i]; c.cx = W / 2 + R * Math.cos(a); c.cy = W / 2 + R * Math.sin(a); });
-    const cIdx = new Map(clusters.map(c => [c.n, c]));
-    posts.forEach((p, i) => { const c = cIdx.get(p.c), j = i * 2.39996, r = 10 * Math.sqrt(i % 40); p.x = c.cx + Math.cos(j) * r; p.y = c.cy + Math.sin(j) * r; });
-    const sim = d3.forceSimulation(posts)
-      .force('x', d3.forceX(p => cIdx.get(p.c).cx).strength(0.2))
-      .force('y', d3.forceY(p => cIdx.get(p.c).cy).strength(0.2))
-      .force('charge', d3.forceManyBody().strength(-6).distanceMax(60))
-      .force('link', d3.forceLink(links).strength(l => l.x ? 0.004 : 0.05).distance(l => l.x ? 120 : 14))
-      .force('collide', d3.forceCollide(p => p.rad + 0.9).iterations(2))
-      .stop();
-    for (let i = 0; i < 300; i++) sim.tick();
-    clusters.forEach(c => {
-      c.mx = d3.mean(c.list, p => p.x); c.my = d3.mean(c.list, p => p.y);
-      c.rr = d3.max(c.list, p => Math.hypot(p.x - c.mx, p.y - c.my) + p.rad);
-      const a = Math.atan2(c.my - W / 2, c.mx - W / 2); c.ux = Math.cos(a); c.uy = Math.sin(a);
-    });
-    const nbr = posts.map(() => []);
-    links.forEach(l => { nbr[l.source.i].push(l.target.i); nbr[l.target.i].push(l.source.i); });
+    const links = [], nbr = [], W = 1000;     // el árbol calcula su propio layout; sin simulación de fuerzas
     const top = clusters.slice().sort((a, b) => b.size - a.size).slice(0, 10).map(c => c.n);
     return { pid, posts, clusters, links, nbr, W, top, variants,
       from: d3.min(posts, p => p.d), to: d3.max(posts, p => p.d),
@@ -629,24 +586,32 @@
   }
 
   // ============================================================
-  // ESCENA 3D — maqueta: campañas en anillo, altura = KPI, plano = meta
+  // ÁRBOL 3D — tronco = cuenta, ramas = campañas y subcampañas, hojas = posts.
+  // La altura de cada hoja es su KPI: los mejores contenidos quedan en la copa.
+  // El disco de vidrio marca la meta: lo que queda arriba cumple.
   // ============================================================
   const stage = document.getElementById('stage'), host = document.getElementById('gl');
   const chipsEl = document.getElementById('chips'), tip = document.getElementById('tip');
-  const ticksEl = document.getElementById('ticks'), rowsEl = document.getElementById('rowlabels'), leadersEl = document.getElementById('leaders');
+  const ticksEl = document.getElementById('ticks'), leadersEl = document.getElementById('leaders');
   const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const H = 150;                                   // altura máxima sobre (o bajo) la meta
-  const SPAN = { vtr: 40, er: 6 };                 // puntos porcentuales que ocupan esa altura
   const EASE = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const EASE_OUT = t => 1 - Math.pow(1 - t, 4);
-  let GL = false, renderer, scene, camera, controls, nodes, stems, threads, plane, rim, ruler, hemi, key;
-  let web = null, pulses = null, webIntro = 0, hoverC = null, tNow = 0;
-  let UPTO = null, STEPS = [], playing = null, JOURNEY = null, jtube = null, jcurve = null;
+  // Medidas del árbol (unidades de escena)
+  const TRUNK = 170, CAMP_R = 140, CAMP_Y = 245, SUB_R = 245, SUB_Y = 315;
+  const LEAF_Y0 = 345, LEAF_H = 330, LEAF_R0 = 270, LEAF_R1 = 420, KG = 0.42;   // KG = fracción de altura donde cae la meta
+  const Y_GOAL = LEAF_Y0 + LEAF_H * KG, CROWN = new THREE.Vector3(0, 400, 0);
+  let GL = false, renderer, scene, camera, controls, hemi, key, ground, disc, rim, ruler, branches, twigs, leaves, path, pulses, jtube = null, jcurve = null;
+  let tw = null, fly = null, dirty = true, view = 'persp', lastTouch = 0, tNow = 0, shownFocus = null, hoverC = null;
+  let TREE = null, labelItems = [], tickItems = [];
+  let UPTO = null, STEPS = [], playing = null, JOURNEY = null;
+  const MODE = 'arbol';
   const vis = p => !UPTO || p.d <= UPTO;
   const curPosts = () => VIEW ? VIEW.posts.filter(vis) : [];
-  let tw = null, fly = null, dirty = true, shownFocus = null, view = 'persp', lastTouch = 0, chipItems = [], rowItems = [], tickItems = [];
-  const dummy = new THREE.Object3D(), tmp = new THREE.Color(), tmp2 = new THREE.Color(), V = new THREE.Vector3();
+  const grow = { value: 1 };
+  let growT0 = 0;
+  const dummy = new THREE.Object3D(), V = new THREE.Vector3(), tmpC = new THREE.Color();
   const tokColor = n => { const p = tok(n).split(/\s+/).map(Number); return new THREE.Color(p[0] / 255, p[1] / 255, p[2] / 255); };
+  const treeLens = () => lens === 'plat' ? 'vtr' : lens;
 
   function hasWebGL() {
     try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl'))); } catch (e) { return false; }
@@ -660,47 +625,56 @@
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.appendChild(renderer.domElement);
     scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x0a0a0f, 1700, 3400);
-    camera = new THREE.PerspectiveCamera(30, 1, 10, 7000);
-    camera.position.set(0, 1150, 1050);
+    scene.fog = new THREE.Fog(0x0a0a0f, 1900, 3600);
+    camera = new THREE.PerspectiveCamera(32, 1, 10, 8000);
+    camera.position.set(0, 1600, 2600);
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    Object.assign(controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 140, maxDistance: 2800, maxPolarAngle: Math.PI * 0.48,
-      rotateSpeed: 0.55, zoomSpeed: 0.8, panSpeed: 0.7, screenSpacePanning: false, autoRotateSpeed: 0.28 });
+    Object.assign(controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 160, maxDistance: 3200, maxPolarAngle: Math.PI * 0.62,
+      rotateSpeed: 0.55, zoomSpeed: 0.8, panSpeed: 0.7, autoRotateSpeed: 0.32 });
+    controls.target.copy(CROWN);
     controls.addEventListener('start', () => { lastTouch = performance.now(); hideHint(); });
-    hemi = new THREE.HemisphereLight(0xffffff, 0x50505a, 0.9); scene.add(hemi);
-    key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(-420, 950, 380); key.castShadow = true;
+    hemi = new THREE.HemisphereLight(0xffffff, 0x40404a, 0.9); scene.add(hemi);
+    key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(-500, 1300, 420); key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    Object.assign(key.shadow.camera, { left: -600, right: 600, top: 600, bottom: -600, near: 200, far: 2400 });
-    key.shadow.bias = -0.0004; key.shadow.radius = 5;
+    Object.assign(key.shadow.camera, { left: -650, right: 650, top: 650, bottom: -650, near: 300, far: 2600 });
+    key.shadow.bias = -0.0005; key.shadow.radius = 6;
     scene.add(key);
-    // El plano de la meta: mate, translúcido, recibe la sombra de cada post
-    plane = new THREE.Mesh(new THREE.CircleGeometry(560, 160), new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, transparent: true, opacity: 0.78, depthWrite: false }));
-    plane.rotation.x = -Math.PI / 2; plane.receiveShadow = true; plane.renderOrder = 1; scene.add(plane);
-    rim = new THREE.Mesh(new THREE.RingGeometry(556, 560, 160), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
-    rim.rotation.x = -Math.PI / 2; rim.position.y = 0.4; scene.add(rim);
-    // Regla vertical en el borde del plano
+    // Suelo: solo recibe la sombra de la copa
+    ground = new THREE.Mesh(new THREE.CircleGeometry(700, 96), new THREE.ShadowMaterial({ opacity: 0.3 }));
+    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+    // La meta: disco de vidrio atravesando la copa
+    disc = new THREE.Mesh(new THREE.CircleGeometry(LEAF_R1 + 70, 128), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide }));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = Y_GOAL; disc.renderOrder = 5; scene.add(disc);
+    rim = new THREE.Mesh(new THREE.RingGeometry(LEAF_R1 + 67, LEAF_R1 + 70, 128), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+    rim.rotation.x = -Math.PI / 2; rim.position.y = Y_GOAL + 0.3; scene.add(rim);
+    // Regla vertical al costado de la copa
     ruler = new THREE.Group();
-    const rp = []; [-1, -0.5, 0, 0.5, 1].forEach(f => { rp.push(-9, f * H, 0, 9, f * H, 0); }); rp.push(0, -H, 0, 0, H, 0);
+    const rp = []; [0, 0.5, 1].forEach(f => { const y = LEAF_Y0 + LEAF_H * f - Y_GOAL; rp.push(-8, y, 0, 8, y, 0); }); rp.push(0, LEAF_Y0 - Y_GOAL, 0, 0, LEAF_Y0 + LEAF_H - Y_GOAL, 0);
     const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
     ruler.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ transparent: true, opacity: 0.5 })));
-    ruler.position.set(-600, 0, 0); scene.add(ruler);
-    // Tallos (de la meta a cada post evaluado) e hilos (al pasar el cursor)
-    stems = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false }));
-    threads = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7, depthWrite: false }));
-    scene.add(stems); scene.add(threads);
-    // La telaraña: todos los hilos de producto y subcampaña, siempre visibles
-    web = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, vertexAlphas: true, transparent: true, depthWrite: false }));
-    web.renderOrder = 2; scene.add(web);
-    // Pulsos que recorren los hilos de lo que estás mirando
+    scene.add(ruler);
+    // Ramas: un solo mesh con crecimiento por shader
+    const bm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+    bm.onBeforeCompile = sh => {
+      sh.uniforms.uGrow = grow;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aU;\nvarying float vU;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvU = aU;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uGrow;\nvarying float vU;').replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vU > uGrow) discard;');
+    };
+    bm.customProgramCacheKey = () => 'grow-v1';
+    branches = new THREE.Mesh(new THREE.BufferGeometry(), bm); branches.castShadow = true; scene.add(branches);
+    twigs = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, vertexAlphas: true, transparent: true, depthWrite: false }));
+    twigs.renderOrder = 2; scene.add(twigs);
+    path = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false }));
+    path.renderOrder = 6; scene.add(path);
     const dot = document.createElement('canvas'); dot.width = dot.height = 32;
     const g2 = dot.getContext('2d'); g2.fillStyle = '#fff'; g2.beginPath(); g2.arc(16, 16, 14, 0, 7); g2.fill();
-    pulses = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, map: new THREE.CanvasTexture(dot), transparent: true, alphaTest: 0.4, depthWrite: false }));
-    pulses.renderOrder = 3; scene.add(pulses);
+    pulses = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 6, sizeAttenuation: false, map: new THREE.CanvasTexture(dot), transparent: true, alphaTest: 0.4, depthWrite: false }));
+    pulses.renderOrder = 7; scene.add(pulses);
     const el = renderer.domElement;
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointerleave', () => { if (pinned == null && hover != null) { hover = null; tip.hidden = true; dirty = true; setThreads(); } });
+    el.addEventListener('pointerleave', () => { if (pinned == null && hover != null) { hover = null; tip.hidden = true; dirty = true; } });
     window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null || JOURNEY)) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); else if (JOURNEY) setJourney(null); } });
     themeGL();
     GL = true;
@@ -709,84 +683,127 @@
   }
   function themeGL() {
     if (!scene) return;
-    const ink = tokColor('--c-ink'), light = document.documentElement.classList.contains('light');
-    scene.fog.color.copy(ink);
-    plane.material.color.copy(light ? tokColor('--c-surface') : tokColor('--c-surface2'));
-    plane.material.opacity = light ? 0.86 : 0.78;
-    rim.material.color.copy(tokColor('--c-txt4'));
+    const light = document.documentElement.classList.contains('light');
+    scene.fog.color.copy(tokColor('--c-surface'));
+    disc.material.color.copy(light ? tokColor('--c-accent2') : tokColor('--c-txt'));
+    disc.material.opacity = light ? 0.06 : 0.045;
+    rim.material.color.copy(tokColor('--c-txt2'));
     ruler.children[0].material.color.copy(tokColor('--c-txt3'));
-    threads.material.color.copy(tokColor('--c-accent'));
-    if (pulses) pulses.material.color.copy(tokColor('--c-txt'));
-    hemi.color.set(0xffffff); hemi.groundColor.copy(light ? new THREE.Color(0x9a9aa6) : new THREE.Color(0x3a3a46));
-    hemi.intensity = light ? 0.95 : 0.85; key.intensity = light ? 0.6 : 0.8;
-    if (VIEW) { VIEW.posts.forEach(p => { if (p.a) { const c = targetColor(p); p.a.r = c.r; p.a.g = c.g; p.a.b = c.b; } }); dirty = true; writeStems(); }
+    path.material.color.copy(tokColor('--c-accent'));
+    pulses.material.color.copy(tokColor('--c-txt'));
+    ground.material.opacity = light ? 0.16 : 0.32;
+    hemi.groundColor.copy(light ? new THREE.Color(0x9a9aa6) : new THREE.Color(0x34343e));
+    hemi.intensity = light ? 1.0 : 0.85; key.intensity = light ? 0.55 : 0.8;
+    if (VIEW && TREE) { paintBranches(); VIEW.posts.forEach(p => { if (p.a) { const c = leafTarget(p); p.a.r = c.r; p.a.g = c.g; p.a.b = c.b; } }); dirty = true; }
   }
 
-  // ---------- posiciones y colores objetivo
-  function heightOf(p) {
-    if (lens === 'plat' || !eligible(p, lens)) return 0;
-    const v = (val(p, lens) - KPI[lens].goal) / SPAN[lens];
-    return H * Math.max(-1, Math.min(1.25, v));
-  }
-  function baseColor(p) {
-    if (lens === 'plat') return tmp.set(PLAT_COLORS[p.plat]);
-    if (!eligible(p, lens)) return tmp.copy(tokColor('--c-na'));
-    return tmp.copy(val(p, lens) >= KPI[lens].goal ? tokColor('--c-success') : tokColor('--c-bad'));
-  }
-  function targetColor(p) {
-    const c = baseColor(p).clone();
-    if (focus && p.c !== focus) c.lerp(tokColor('--c-surface'), 0.9);
-    if (JOURNEY && p.pr !== JOURNEY) c.lerp(tokColor('--c-surface'), 0.86);
-    return c;
-  }
-  function targetOf(p) {
-    const inF = focus && p.c === focus, out = focus && p.c !== focus;
-    const evalOk = lens === 'plat' || eligible(p, lens);
-    const x = inF ? p.ex : p.x - VIEW.W / 2, z = inF ? p.ez : p.y - VIEW.W / 2;
-    let s = p.rad * (evalOk ? 1 : 0.62);
-    if (inF) s = evalOk ? Math.min(Math.max(s * 1.15, 3.5), 9.5) : Math.min(Math.max(s, 2.5), 5); else if (out) s *= 0.5;
-    if (JOURNEY) s = p.pr === JOURNEY ? Math.max(s * 1.25, 3.2) : s * 0.6;
-    const c = targetColor(p);
-    // Línea de tiempo: lo que aún no se publica espera sobre el plano, sin tamaño
-    if (!vis(p)) return { x, y: 0, z, s: 0, r: c.r, g: c.g, b: c.b };
-    return { x, y: heightOf(p), z, s, r: c.r, g: c.g, b: c.b };
-  }
-  // Campaña abierta: un renglón por plataforma, los posts en orden de fecha
-  function expandCluster(c) {
-    const cx = c.mx - VIEW.W / 2, cz = c.my - VIEW.W / 2, L = Math.hypot(cx, cz) || 1;
-    const u = { x: cx / L, z: cz / L }, t = { x: -u.z, z: u.x };
-    const per = 16, sp = 23, gap = 26, platGap = 22;
-    const lines = [];
-    PLATFORMS.forEach(pl => {
-      const ps = c.list.filter(p => p.plat === pl).sort((a, b) => a.d - b.d);
-      for (let i = 0; i < ps.length; i += per) lines.push({ pl, ps: ps.slice(i, i + per), first: i === 0 });
-    });
-    let depth = 0; lines.forEach((ln, i) => { if (i && ln.first) depth += platGap; ln.off = depth; depth += gap; });
-    depth -= gap;
-    c.rows = [];
-    lines.forEach(ln => {
-      const o = ln.off - depth / 2;           // negativo = hacia el centro del anillo
-      ln.ps.forEach((p, j) => {
-        const tt = (j - (ln.ps.length - 1) / 2) * sp;
-        p.ex = cx + u.x * -o + t.x * tt; p.ez = cz + u.z * -o + t.z * tt;
+  // ---------- layout del árbol
+  function kOf(v, L) { return v <= L.g ? KG * Math.max(0, v) / L.g : KG + (1 - KG) * Math.min(1, (v - L.g) / (L.vmax - L.g)); }
+  function buildTree() {
+    const lz = treeLens(), g = KPI[lz].goal;
+    const el = VIEW.posts.filter(p => eligible(p, lz));
+    const vals = el.map(p => val(p, lz)).sort(d3.ascending);
+    const L = { lz, g, vmax: Math.max(g * 1.7, d3.quantile(vals, 0.97) || g * 2), camps: [], subs: [] };
+    const groups = VIEW.clusters.map(c => ({ c, n: c.n, list: c.list.filter(p => eligible(p, lz)).sort((a, b) => a.d - b.d) })).filter(x => x.list.length);
+    const tot = d3.sum(groups, x => x.list.length + 3) || 1;
+    let a = -Math.PI / 2;                     // empieza al frente y avanza en el sentido de las manecillas
+    const rs = d3.scaleSqrt().domain([0, d3.quantile(el.map(p => p.reach).sort(d3.ascending), 0.97) || 1]).range([2.6, 9]).clamp(true);
+    VIEW.posts.forEach(p => { p.leaf = null; });
+    groups.forEach((x, ci) => {
+      const span = 2 * Math.PI * (x.list.length + 3) / tot, a0 = a + span * 0.06, a1 = a + span * 0.94; a += span;
+      x.a = (a0 + a1) / 2; x.ci = ci; x.reach = d3.sum(x.list, p => p.reach);
+      x.node = new THREE.Vector3(CAMP_R * Math.cos(x.a), CAMP_Y, CAMP_R * Math.sin(x.a));
+      L.camps.push(x);
+      const bySub = d3.groups(x.list, p => p.sub || '—').map(([s, l]) => ({ s, l, d0: d3.min(l, p => +p.d) })).sort((p, q) => p.d0 - q.d0);
+      let sa = a0; const sw = (a1 - a0) / x.list.length;
+      bySub.forEach((sb, si) => {
+        const s0 = sa, s1 = sa + sw * sb.l.length; sa = s1;
+        const sn = { s: sb.s, c: x.n, parent: x, a: (s0 + s1) / 2, reach: d3.sum(sb.l, p => p.reach), n: sb.l.length };
+        const sy = SUB_Y + ((si % 3) - 1) * 10;
+        sn.node = new THREE.Vector3(SUB_R * Math.cos(sn.a), sy, SUB_R * Math.sin(sn.a));
+        L.subs.push(sn);
+        sb.l.forEach((p, i) => {
+          const la = sb.l.length === 1 ? sn.a : s0 + (s1 - s0) * (0.08 + 0.84 * i / (sb.l.length - 1));
+          const k = kOf(val(p, lz), L), jit = ((p.i * 37) % 11 - 5);
+          const r = LEAF_R0 + (LEAF_R1 - LEAF_R0) * (0.35 + 0.65 * k) + jit * 5;
+          p.leaf = { sub: sn, camp: x, k, pos: new THREE.Vector3(r * Math.cos(la), LEAF_Y0 + LEAF_H * k + jit * 0.6, r * Math.sin(la)), s: rs(p.reach) };
+        });
       });
-      if (ln.first) { const e = (Math.min(ln.ps.length, per) - 1) / 2 * sp + 22;
-        c.rows.push({ pl: ln.pl, x: cx + u.x * -o - t.x * e, z: cz + u.z * -o - t.z * e, x2: cx + u.x * -o + t.x * e, z2: cz + u.z * -o + t.z * e }); }
     });
-    c.box = { cx, cz, u, half: Math.max(per * sp / 2, depth / 2 + 40) };
+    return L;
+  }
+  function curveCamp(x) { return new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, TRUNK - 6, 0), new THREE.Vector3(x.node.x * 0.25, TRUNK + 70, x.node.z * 0.25), x.node); }
+  function curveSub(s) { const m = s.parent.node.clone().lerp(s.node, 0.5); m.y += 26; return new THREE.QuadraticBezierCurve3(s.parent.node, m, s.node); }
+  function twigCurve(p) { const s = p.leaf.sub.node, e = p.leaf.pos, m = s.clone().lerp(e, 0.45); m.y = Math.max(s.y, e.y) * 0.9 + s.y * 0.1; return new THREE.QuadraticBezierCurve3(s, m, e); }
+
+  // Ramas: tronco + campañas + subcampañas en una sola geometría
+  function buildBranches(L) {
+    const pos = [], nor = [], idx = [], au = [], own = [];
+    let base = 0;
+    const add = (geo, u0, u1, owner, uFn) => {
+      const p = geo.attributes.position, n = geo.attributes.normal, uv = geo.attributes.uv, ix = geo.index;
+      for (let i = 0; i < p.count; i++) {
+        pos.push(p.getX(i), p.getY(i), p.getZ(i)); nor.push(n.getX(i), n.getY(i), n.getZ(i));
+        au.push(uFn ? uFn(p.getY(i)) : u0 + (u1 - u0) * uv.getX(i)); own.push(owner);
+      }
+      for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base);
+      base += p.count; geo.dispose();
+    };
+    const tw = 16, trunk = new THREE.CylinderGeometry(7, tw, TRUNK, 20, 6, true); trunk.translate(0, TRUNK / 2, 0);
+    add(trunk, 0, 0.22, -1, y => 0.22 * y / TRUNK);
+    const wC = d3.scaleSqrt().domain([0, d3.max(L.camps, x => x.reach) || 1]).range([1.8, 6.5]);
+    const wS = d3.scaleSqrt().domain([0, d3.max(L.subs, x => x.reach) || 1]).range([0.8, 2.6]);
+    L.camps.forEach(x => add(new THREE.TubeGeometry(curveCamp(x), 18, wC(x.reach), 7, false), 0.2, 0.55, x.ci));
+    L.subs.forEach(s => add(new THREE.TubeGeometry(curveSub(s), 10, wS(s.reach), 5, false), 0.55, 0.78, s.parent.ci));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    geo.setAttribute('aU', new THREE.Float32BufferAttribute(au, 1));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(pos.length), 3));
+    geo.setIndex(idx);
+    geo.userData.own = own;
+    branches.geometry.dispose(); branches.geometry = geo;
+    paintBranches();
+  }
+  function paintBranches() {
+    if (!TREE || !branches.geometry.attributes.color) return;
+    const c = branches.geometry.attributes.color.array, own = branches.geometry.userData.own;
+    const light = document.documentElement.classList.contains('light');
+    const wood = light ? new THREE.Color(0x8c8c98) : new THREE.Color(0x8a8a97), dim = tokColor('--c-surface'), hi = tokColor('--c-txt');
+    const act = focus || hoverC, ai = act ? (TREE.camps.find(x => x.n === act) || {}).ci : null;
+    for (let i = 0; i < own.length; i++) {
+      let col = wood;
+      if (ai != null && own[i] >= 0) col = own[i] === ai ? tmpC.copy(wood).lerp(hi, 0.35) : tmpC.copy(wood).lerp(dim, 0.82);
+      if (JOURNEY && own[i] >= 0) col = tmpC.copy(wood).lerp(dim, 0.7);
+      c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b;
+    }
+    branches.geometry.attributes.color.needsUpdate = true;
   }
 
-  // ---------- transiciones
+  // ---------- hojas
+  function leafColorBase(p) {
+    if (lens === 'plat') return tmpC.set(PLAT_COLORS[p.plat]);
+    return tmpC.copy(val(p, lens) >= KPI[lens].goal ? tokColor('--c-success') : tokColor('--c-bad'));
+  }
+  function leafTarget(p) {
+    const L = p.leaf;
+    if (!L) return { x: 0, y: TRUNK, z: 0, s: 0, r: 0, g: 0, b: 0 };
+    const c = leafColorBase(p).clone();
+    const off = (focus && p.c !== focus) || (JOURNEY && p.pr !== JOURNEY);
+    if (off) c.lerp(tokColor('--c-surface'), 0.86);
+    let s = L.s * (focus && p.c === focus ? 1.25 : off ? 0.6 : 1) * (JOURNEY && p.pr === JOURNEY ? 1.35 : 1);
+    if (!vis(p)) return { x: L.sub.node.x, y: L.sub.node.y, z: L.sub.node.z, s: 0, r: c.r, g: c.g, b: c.b };   // brota desde su rama
+    return { x: L.pos.x, y: L.pos.y, z: L.pos.z, s, r: c.r, g: c.g, b: c.b };
+  }
   function animateTo(dur, delayFn) {
     if (!VIEW) return;
     const now = performance.now();
     VIEW.posts.forEach(p => {
-      const t = targetOf(p);
-      if (!p.a) p.a = { x: t.x, y: 0, z: t.z, s: 0, r: t.r, g: t.g, b: t.b };
-      p.f = Object.assign({}, p.a); p.t = t; p.dl = delayFn ? delayFn(p) : 0;
+      const t = leafTarget(p);
+      if (!p.a) p.a = { x: p.leaf ? p.leaf.sub.node.x : 0, y: p.leaf ? p.leaf.sub.node.y : TRUNK, z: p.leaf ? p.leaf.sub.node.z : 0, s: 0, r: t.r, g: t.g, b: t.b };
+      p.f = Object.assign({}, p.a); p.t = t; p.dl = REDUCED ? 0 : (delayFn ? delayFn(p) : 0);
     });
-    tw = { t0: now, dur: REDUCED ? 1 : dur, max: REDUCED ? 0 : d3.max(VIEW.posts, p => p.dl) || 0 };
-    if (REDUCED) VIEW.posts.forEach(p => { p.dl = 0; });
+    tw = { t0: now, dur: REDUCED ? 1 : dur };
   }
   function stepTween(now) {
     if (!tw) return false;
@@ -802,121 +819,77 @@
     if (done) tw = null;
     return true;
   }
-  function writeInstances() {
-    if (!nodes || !VIEW) return;
+  function writeLeaves() {
+    if (!leaves || !VIEW) return;
     VIEW.posts.forEach((p, i) => {
-      const a = p.a, s = Math.max(0.0001, a.s * (i === hover ? 1.45 : 1) * (hoverC && p.c === hoverC ? 1.15 : 1));
-      const br = REDUCED ? 0 : Math.sin(tNow * 0.0011 + i * 1.7) * 1.4;
-      dummy.position.set(a.x, a.y + br, a.z); dummy.scale.set(s, s, s); dummy.updateMatrix();
-      nodes.setMatrixAt(i, dummy.matrix);
-      tmp2.setRGB(a.r, a.g, a.b); nodes.setColorAt(i, tmp2);
+      const a = p.a || { x: 0, y: 0, z: 0, s: 0, r: 0, g: 0, b: 0 };
+      const sway = REDUCED ? 0 : Math.sin(tNow * 0.0009 + i * 1.3) * 1.2;      // la copa se mece apenas
+      const s = Math.max(0.0001, a.s * (i === hover ? 1.6 : 1));
+      dummy.position.set(a.x + sway, a.y + sway * 0.4, a.z); dummy.scale.set(s, s, s); dummy.updateMatrix();
+      leaves.setMatrixAt(i, dummy.matrix);
+      tmpC.setRGB(a.r, a.g, a.b); leaves.setColorAt(i, tmpC);
     });
-    nodes.instanceMatrix.needsUpdate = true; if (nodes.instanceColor) nodes.instanceColor.needsUpdate = true;
+    leaves.instanceMatrix.needsUpdate = true; if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true;
   }
-  function writeStems() {
-    if (!VIEW) return;
-    const pos = [], col = [];
-    if (lens !== 'plat') VIEW.posts.forEach(p => {
-      if (!p.a || !eligible(p, lens) || Math.abs(p.a.y) < 1) return;
-      const dim = focus && p.c !== focus;
-      if (dim) return;
-      const top = p.a.y > 0 ? p.a.y - p.a.s : p.a.y + p.a.s;
-      pos.push(p.a.x, 0, p.a.z, p.a.x, top, p.a.z);
-      col.push(p.a.r, p.a.g, p.a.b, p.a.r, p.a.g, p.a.b);
+  // Ramitas de la subcampaña a cada hoja (siguen a la hoja mientras se mueve)
+  function writeTwigs() {
+    if (!VIEW || !TREE) return;
+    const pos = [], col = [], light = document.documentElement.classList.contains('light');
+    const base = light ? 0.32 : 0.28, gk = Math.max(0, Math.min(1, (grow.value - 0.72) / 0.28));
+    const tone = light ? new THREE.Color(0x70707c) : new THREE.Color(0x9a9aa8);
+    VIEW.posts.forEach(p => {
+      if (!p.leaf || !p.a || p.a.s < 0.05) return;
+      const s = p.leaf.sub.node, e = p.a, m = { x: s.x + (e.x - s.x) * 0.45, y: Math.max(s.y, e.y) * 0.9 + s.y * 0.1, z: s.z + (e.z - s.z) * 0.45 };
+      let al = base * gk;
+      if ((focus && p.c !== focus) || (JOURNEY && p.pr !== JOURNEY)) al *= 0.12;
+      else if ((focus && p.c === focus) || (JOURNEY && p.pr === JOURNEY)) al = Math.min(1, al * 2.2);
+      let px = s.x, py = s.y, pz = s.z;
+      for (let k = 1; k <= 5; k++) {
+        const t = k / 5, u = 1 - t;
+        const x = u * u * s.x + 2 * u * t * m.x + t * t * e.x, y = u * u * s.y + 2 * u * t * m.y + t * t * e.y, z = u * u * s.z + 2 * u * t * m.z + t * t * e.z;
+        pos.push(px, py, pz, x, y, z); col.push(tone.r, tone.g, tone.b, al, tone.r, tone.g, tone.b, al);
+        px = x; py = y; pz = z;
+      }
     });
-    stems.geometry.dispose();
-    stems.geometry = new THREE.BufferGeometry();
-    stems.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    stems.geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    stems.material.opacity = focus ? 0.8 : 0.4;
+    twigs.geometry.dispose(); twigs.geometry = new THREE.BufferGeometry();
+    twigs.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    twigs.geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
   }
-  function buildWeb() {
-    if (!web || !VIEW) return;
-    // en orden cronológico de campaña, para que la telaraña se teja en la entrada
-    const ord = new Map(VIEW.clusters.map((c, i) => [c.n, i]));
-    VIEW.webLinks = VIEW.links.slice().sort((a, b) => Math.min(ord.get(a.source.c), ord.get(a.target.c)) - Math.min(ord.get(b.source.c), ord.get(b.target.c)));
-    const n = VIEW.webLinks.length;
-    web.geometry.dispose();
-    web.geometry = new THREE.BufferGeometry();
-    web.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3).setUsage(THREE.DynamicDrawUsage));
-    web.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 8), 4).setUsage(THREE.DynamicDrawUsage));
-  }
-  function writeWeb() {
-    if (!web || !VIEW || !VIEW.webLinks) return;
-    const P = web.geometry.attributes.position.array, C = web.geometry.attributes.color.array;
-    const act = focus || hoverC, light = document.documentElement.classList.contains('light');
-    const base = light ? 0.30 : 0.34, mix = tokColor('--c-txt'), m = light ? 0.1 : 0.38;
-    const lift = (x, y) => x + (y - x) * m;
-    VIEW.webLinks.forEach((l, k) => {
-      const a = l.source.a, b = l.target.a; if (!a || !b) return;
-      P.set([a.x, a.y, a.z, b.x, b.y, b.z], k * 6);
-      let al = base;
-      if (!vis(l.source) || !vis(l.target)) al = 0;
-      else if (JOURNEY) al = (l.source.pr === JOURNEY && l.target.pr === JOURNEY) ? 0.35 : 0.02;
-      else if (act) al = (l.source.c === act || l.target.c === act) ? (l.x ? 0.85 : 0.6) : 0.03;
-      else if (l.x) al = base * 0.8;
-      C.set([lift(a.r, mix.r), lift(a.g, mix.g), lift(a.b, mix.b), al, lift(b.r, mix.r), lift(b.g, mix.g), lift(b.b, mix.b), al], k * 8);
-    });
-    web.geometry.attributes.position.needsUpdate = true; web.geometry.attributes.color.needsUpdate = true;
-    const k = REDUCED ? 1 : Math.min(1, webIntro ? (tNow - webIntro) / 2600 : 1);
-    web.geometry.setDrawRange(0, Math.floor(VIEW.webLinks.length * 2 * EASE_OUT(k)));
+  // La savia: el camino del tronco a la hoja señalada se enciende y unos pulsos lo suben
+  let sapCurve = null;
+  function writePath() {
+    sapCurve = null;
+    const i = pinned != null ? pinned : hover;
+    if (i == null || !VIEW.posts[i] || !VIEW.posts[i].leaf || !VIEW.posts[i].a) { path.visible = false; return; }
+    const p = VIEW.posts[i], L = p.leaf;
+    const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, TRUNK - 6, 0)].concat(curveCamp(L.camp).getPoints(10).slice(1), curveSub(L.sub).getPoints(8).slice(1), twigCurve(p).getPoints(8).slice(1));
+    pts[pts.length - 1] = new THREE.Vector3(p.a.x, p.a.y, p.a.z);
+    sapCurve = new THREE.CatmullRomCurve3(pts);
+    path.geometry.dispose(); path.geometry = new THREE.BufferGeometry().setFromPoints(sapCurve.getPoints(80));
+    path.visible = true;
   }
   function writePulses() {
-    if (!pulses || !VIEW || !VIEW.webLinks) return;
-    const act = focus || hoverC;
-    let ls = [];
-    if (JOURNEY && hover == null) {
-      // el viaje: varias cabezas recorren la trayectoria del producto
-      if (!jcurve || REDUCED) { pulses.visible = false; return; }
-      const nh = 7, pos = new Float32Array(nh * 3);
-      for (let j = 0; j < nh; j++) { const q = jcurve.getPointAt(((tNow / 9000) + j / nh) % 1); pos[j * 3] = q.x; pos[j * 3 + 1] = q.y; pos[j * 3 + 2] = q.z; }
-      pulses.visible = true; pulses.material.size = 7;
-      pulses.geometry.dispose(); pulses.geometry = new THREE.BufferGeometry(); pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      return;
-    }
-    pulses.material.size = 5;
-    if (hover != null) ls = VIEW.webLinks.filter(l => l.source.i === hover || l.target.i === hover);
-    else if (act) ls = VIEW.webLinks.filter(l => l.source.c === act || l.target.c === act);
-    ls = ls.filter(l => vis(l.source) && vis(l.target));
-    if (REDUCED || !ls.length) { pulses.visible = false; return; }
+    const curve = sapCurve || (JOURNEY && jcurve);
+    if (!curve || REDUCED) { pulses.visible = false; return; }
+    const n = sapCurve ? 6 : 8, pos = new Float32Array(n * 3), per = sapCurve ? 1700 : 9000;
+    for (let j = 0; j < n; j++) { const q = curve.getPointAt(((tNow / per) + j / n) % 1); pos[j * 3] = q.x; pos[j * 3 + 1] = q.y; pos[j * 3 + 2] = q.z; }
+    pulses.geometry.dispose(); pulses.geometry = new THREE.BufferGeometry(); pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     pulses.visible = true;
-    const max = Math.min(ls.length, 220), pos = new Float32Array(max * 3), step = ls.length / max;
-    for (let j = 0; j < max; j++) {
-      const l = ls[Math.floor(j * step)], a = l.source.a, b = l.target.a;
-      // cada pulso va del post más antiguo al más reciente
-      const [p0, p1] = l.source.d <= l.target.d ? [a, b] : [b, a];
-      const f = ((tNow / 1600) + (j * 0.618)) % 1;
-      pos[j * 3] = p0.x + (p1.x - p0.x) * f; pos[j * 3 + 1] = p0.y + (p1.y - p0.y) * f; pos[j * 3 + 2] = p0.z + (p1.z - p0.z) * f;
-    }
-    pulses.geometry.dispose();
-    pulses.geometry = new THREE.BufferGeometry();
-    pulses.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   }
   function writeJourney() {
     if (jtube) { scene.remove(jtube); jtube.geometry.dispose(); jtube = null; }
     jcurve = null;
     if (!JOURNEY || !VIEW) return;
     const pts = [];
-    VIEW.posts.filter(p => p.pr === JOURNEY && vis(p) && p.a).sort((a, b) => a.d - b.d).forEach(p => {
+    VIEW.posts.filter(p => p.pr === JOURNEY && vis(p) && p.leaf && p.a && p.a.s > 0.05).sort((a, b) => a.d - b.d).forEach(p => {
       const v = new THREE.Vector3(p.a.x, p.a.y, p.a.z);
       if (!pts.length || pts[pts.length - 1].distanceTo(v) > 0.5) pts.push(v);
     });
     if (pts.length < 2) return;
     jcurve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    jtube = new THREE.Mesh(new THREE.TubeGeometry(jcurve, Math.min(900, pts.length * 10), 1.5, 6, false),
-      new THREE.MeshBasicMaterial({ color: tokColor('--c-accent'), transparent: true, opacity: 0.9, depthWrite: false }));
+    jtube = new THREE.Mesh(new THREE.TubeGeometry(jcurve, Math.min(900, pts.length * 10), 1.4, 6, false),
+      new THREE.MeshBasicMaterial({ color: tokColor('--c-accent'), transparent: true, opacity: 0.85, depthWrite: false }));
     jtube.renderOrder = 4; scene.add(jtube);
-  }
-  function setThreads() {
-    if (!VIEW) return;
-    const pos = [];
-    if (hover != null && VIEW.posts[hover].a) {
-      const a = VIEW.posts[hover].a;
-      VIEW.nbr[hover].forEach(j => { const b = VIEW.posts[j].a; if (b) pos.push(a.x, a.y, a.z, b.x, b.y, b.z); });
-    }
-    threads.geometry.dispose();
-    threads.geometry = new THREE.BufferGeometry();
-    threads.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   }
 
   // ---------- cámara
@@ -926,15 +899,16 @@
   }
   function overviewPose() {
     const az = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
-    if (view === 'top') return { pos: new THREE.Vector3(0.001, 2380, 0.01), target: new THREE.Vector3(0, 0, 0) };
-    const r = 2050, phi = 0.9;
-    return { pos: new THREE.Vector3(Math.sin(phi) * Math.sin(az) * r, Math.cos(phi) * r, Math.sin(phi) * Math.cos(az) * r), target: new THREE.Vector3(0, 0, 0) };
+    if (view === 'top') return { pos: new THREE.Vector3(0.001, 2150, 0.01), target: new THREE.Vector3(0, 300, 0) };
+    const r = 1750, phi = 1.12;
+    return { pos: new THREE.Vector3(Math.sin(phi) * Math.sin(az) * r, CROWN.y + Math.cos(phi) * r, Math.sin(phi) * Math.cos(az) * r), target: CROWN.clone() };
   }
-  function focusPose(c) {
-    const b = c.box, d = Math.max(720, b.half * 3.4);
-    const target = new THREE.Vector3(b.cx, 30, b.cz);
-    if (view === 'top') return { pos: new THREE.Vector3(b.cx + 0.001, d * 1.2, b.cz + 0.01), target };
-    return { pos: new THREE.Vector3(b.cx + b.u.x * d * 0.68, d * 0.92, b.cz + b.u.z * d * 0.68), target };
+  function focusPose(x) {
+    const ls = x.list.filter(p => p.leaf), c = new THREE.Vector3();
+    ls.forEach(p => c.add(p.leaf.pos)); c.divideScalar(Math.max(1, ls.length));
+    const dir = new THREE.Vector3(Math.cos(x.a), 0, Math.sin(x.a));
+    if (view === 'top') return { pos: new THREE.Vector3(c.x * 0.6 + 0.001, 1300, c.z * 0.6 + 0.01), target: new THREE.Vector3(c.x * 0.6, c.y - 60, c.z * 0.6) };
+    return { pos: c.clone().add(dir.multiplyScalar(820)).add(new THREE.Vector3(0, 120, 0)), target: c.clone().lerp(x.node, 0.35) };
   }
   function stepFly(now) {
     if (!fly) return false;
@@ -944,91 +918,79 @@
     if (k >= 1) { fly = null; controls.enabled = true; }
     return true;
   }
+  function setView(v) {
+    view = v;
+    document.querySelectorAll('.vseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.view === v)));
+    const x = focus && TREE && TREE.camps.find(c => c.n === focus);
+    const pose = x ? focusPose(x) : overviewPose();
+    flyTo(pose.pos, pose.target, 1200);
+  }
 
   // ---------- etiquetas HTML proyectadas
-  function toScreen(x, y, z, w, h) {
-    V.set(x, y, z).project(camera);
-    return { x: (V.x + 1) / 2 * w, y: (1 - V.y) / 2 * h, back: V.z > 1 };
-  }
-  function chipHtml(c) {
-    const list = c.list.filter(p => vis(p) && (!JOURNEY || p.pr === JOURNEY));
-    if (lens === 'plat') return '<b>' + fmtInt(d3.sum(list, p => p.reach)) + '</b><span>' + esc(c.n) + ' · ' + list.length + ' posts</span>';
-    const s = stats(list, lens);
-    if (!s.n) return '<b>' + (JOURNEY ? fmtInt(list.length) + ' posts' : '—') + '</b><span>' + esc(c.n) + '</span>';
-    return '<b class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</b><span>' + esc(c.n) + ' · ' + s.ok + '/' + s.n + '</span>';
-  }
+  function toScreen(x, y, z, w, h) { V.set(x, y, z).project(camera); return { x: (V.x + 1) / 2 * w, y: (1 - V.y) / 2 * h, back: V.z > 1 }; }
   function renderChips() {
-    chipsEl.innerHTML = ''; chipItems = [];
-    rowsEl.innerHTML = ''; rowItems = [];
-    if (!VIEW) return;
-    const b = stage.getBoundingClientRect(), nTop = b.width < 600 ? 5 : 9;
-    const hc = hover != null ? VIEW.posts[hover].c : null;
-    const vl = c => c.list.filter(p => vis(p) && (!JOURNEY || p.pr === JOURNEY));
-    let show;
-    if (focus) show = VIEW.clusters.filter(c => c.n === focus);
-    else if (JOURNEY) show = VIEW.clusters.map(c => [c, vl(c).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).slice(0, nTop).map(x => x[0]);
-    else show = VIEW.clusters.filter(c => vl(c).length && ((VIEW.top.slice(0, nTop).includes(c.n) && (lens === 'plat' || stats(vl(c), lens).n >= 3)) || c.n === hc));
-    show.forEach((c, i) => {
+    chipsEl.innerHTML = ''; labelItems = [];
+    if (!VIEW || !TREE) return;
+    const narrow = stage.getBoundingClientRect().width < 640, lz = TREE.lz;
+    // los mejores contenidos de la copa
+    const pool = VIEW.posts.filter(p => p.leaf && vis(p) && (!focus || p.c === focus) && (!JOURNEY || p.pr === JOURNEY));
+    pool.sort((a, b) => val(b, lz) - val(a, lz)).slice(0, narrow ? 4 : 7).forEach((p, i) => {
       const el = document.createElement('button');
-      el.className = 'chip' + (focus ? ' big' : '');
-      el.innerHTML = chipHtml(c);
-      el.style.setProperty('--d', (i * 45) + 'ms');
-      el.setAttribute('aria-label', (focus ? 'Cerrar ' : 'Abrir ') + c.n);
-      el.addEventListener('click', e => { e.stopPropagation(); setFocus(c.n); });
-      el.addEventListener('mouseenter', () => { if (!focus) { hoverC = c.n; dirty = true; } });
-      el.addEventListener('mouseleave', () => { if (hoverC === c.n) { hoverC = null; dirty = true; } });
+      el.className = 'chip tchip'; el.style.setProperty('--d', (i * 60) + 'ms');
+      el.innerHTML = '<b class="' + (val(p, lz) >= KPI[lz].goal ? 'ok' : 'bad') + '">' + pct(val(p, lz), KPI[lz].dec) + '</b><span>' + esc([p.fmt, p.pr || p.c, p.plat].filter(Boolean).join(' · ')) + '</span>';
+      el.addEventListener('click', e => { e.stopPropagation(); pinned = p.i; hover = p.i; dirty = true; showTip(p, true); });
+      el.addEventListener('mouseenter', () => { if (pinned == null) { hover = p.i; dirty = true; } });
+      el.addEventListener('mouseleave', () => { if (pinned == null && hover === p.i) { hover = null; dirty = true; } });
       chipsEl.appendChild(el);
-      chipItems.push({ el, c, w: el.offsetWidth, h: el.offsetHeight });
+      labelItems.push({ el, kind: 'leaf', p, w: el.offsetWidth, h: el.offsetHeight });
     });
-    if (focus) {
-      const c = VIEW.clusters.find(x => x.n === focus);
-      (c.rows || []).forEach((r, i) => {
-        const list = c.list.filter(p => p.plat === r.pl);
-        let txt = r.pl + ' · ' + list.length;
-        if (lens !== 'plat') { const s = stats(list, lens); if (s.n) txt = r.pl + ' · <span class="' + (s.avg >= KPI[lens].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lens].dec) + '</span> · ' + s.ok + '/' + s.n; else txt = r.pl + ' · no aplica'; }
-        const el = document.createElement('div');
-        el.className = 'rowlabel'; el.style.setProperty('--d', (200 + i * 60) + 'ms');
-        el.innerHTML = '<i style="background:' + PLAT_COLORS[r.pl] + '"></i>' + txt;
-        rowsEl.appendChild(el);
-        rowItems.push({ el, r, w: el.offsetWidth, h: el.offsetHeight });
+    // nombres de campaña en sus ramas
+    if (!JOURNEY) {
+      const camps = focus ? TREE.camps.filter(x => x.n === focus) : TREE.camps.slice().sort((a, b) => b.list.length - a.list.length).slice(0, narrow ? 4 : 8);
+      camps.forEach(x => {
+        const s = stats(x.list.filter(vis), lz), el = document.createElement('button');
+        el.className = 'clab';
+        el.innerHTML = esc(x.n) + (s.n ? ' · <span class="' + (s.avg >= KPI[lz].goal ? 'ok' : 'bad') + '">' + pct(s.avg, KPI[lz].dec) + '</span>' : '');
+        el.addEventListener('click', e => { e.stopPropagation(); setFocus(x.n); });
+        el.addEventListener('mouseenter', () => { if (!focus) { hoverC = x.n; paintBranches(); } });
+        el.addEventListener('mouseleave', () => { if (hoverC === x.n) { hoverC = null; paintBranches(); } });
+        chipsEl.appendChild(el);
+        labelItems.push({ el, kind: 'camp', cx: x, w: el.offsetWidth, h: el.offsetHeight });
       });
     }
     renderTicks();
   }
   function renderTicks() {
     ticksEl.innerHTML = ''; tickItems = [];
-    if (!VIEW || lens === 'plat') return;
-    const g = KPI[lens].goal, sp = SPAN[lens];
-    [[1, g + sp], [0.5, g + sp / 2], [0, g], [-0.5, g - sp / 2], [-1, g - sp]].forEach(([f, v]) => {
-      if (v < 0) return;
+    if (!TREE) return;
+    const L = TREE, lz = L.lz;
+    [[0, 0], [KG, L.g], [1, L.vmax]].forEach(([k, v]) => {
       const el = document.createElement('div');
-      el.className = 'tick' + (f === 0 ? ' goal' : '');
-      el.textContent = f === 0 ? 'Meta ' + v + '%' : (f === 1 ? '≥ ' : '') + (Math.round(v * 10) / 10) + '%';
-      ticksEl.appendChild(el); tickItems.push({ el, f });
+      el.className = 'tick' + (k === KG ? ' goal' : '');
+      el.textContent = k === KG ? 'Meta ' + v + '%' : (k === 1 ? '≥ ' : '') + (Math.round(v * 10) / 10) + '%';
+      ticksEl.appendChild(el); tickItems.push({ el, k });
     });
   }
   function placeOverlays() {
-    const b = stage.getBoundingClientRect(), w = b.width, h = b.height, bottom = h - (document.getElementById('legend').offsetHeight + document.getElementById('tl').offsetHeight + 44);
-    const items = [];
-    chipItems.forEach(it => {
-      const c = it.c; let top = 0;
-      c.list.forEach(p => { if (p.a && vis(p)) top = Math.max(top, p.a.y + p.a.s); });
-      const ax = focus ? c.box.cx : c.mx - VIEW.W / 2, az = focus ? c.box.cz : c.my - VIEW.W / 2;
-      const s = toScreen(ax, top + (focus ? 46 : 24), az, w, h);
-      const an = toScreen(ax, top + 4, az, w, h); it.ax = an.x; it.ay = an.y;
-      it.x = s.x; it.y = s.y - it.h / 2; it.back = s.back; items.push(it);
-    });
+    const b = stage.getBoundingClientRect(), w = b.width, h = b.height;
+    const bottom = h - (document.getElementById('legend').offsetHeight + document.getElementById('tl').offsetHeight + 44);
     const jc = document.getElementById('jcard'), jb = jc.hidden ? null : { r: jc.offsetLeft + jc.offsetWidth + 10, b: jc.offsetTop + jc.offsetHeight + 8 };
+    const items = [];
+    labelItems.forEach(it => {
+      let s;
+      if (it.kind === 'leaf') { const a = it.p.a; if (!a || a.s < 0.05) { it.el.style.visibility = 'hidden'; return; } s = toScreen(a.x, a.y, a.z, w, h); it.ax = s.x; it.ay = s.y; it.x = s.x + (s.x < w / 2 ? -1 : 1) * (it.w / 2 + 26); it.y = s.y - 22; }
+      else { const a = it.cx.a, r = focus ? CAMP_R : LEAF_R1 + 95; s = toScreen(r * Math.cos(a), focus ? CAMP_Y : LEAF_Y0 - 30, r * Math.sin(a), w, h); it.ax = null; it.x = s.x; it.y = s.y; }
+      it.back = s.back; it.el.style.visibility = s.back ? 'hidden' : 'visible'; items.push(it);
+    });
     const clamp = it => {
-      it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 52, it.y));
-      // fuera de la ficha del viaje
+      it.x = Math.min(w - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(it.h / 2 + 56, it.y));
       if (jb && it.y - it.h / 2 < jb.b && it.x - it.w / 2 < jb.r) it.x = Math.min(w - it.w / 2 - 8, jb.r + it.w / 2);
     };
     items.forEach(clamp);
     for (let k = 0; k < 24; k++) {
       let moved = false;
       for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
-        const A = items[i], B = items[j], dx = (A.w + B.w) / 2 + 6 - Math.abs(A.x - B.x), dy = (A.h + B.h) / 2 + 6 - Math.abs(A.y - B.y);
+        const A = items[i], B = items[j], dx = (A.w + B.w) / 2 + 6 - Math.abs(A.x - B.x), dy = (A.h + B.h) / 2 + 4 - Math.abs(A.y - B.y);
         if (dx <= 0 || dy <= 0) continue;
         moved = true;
         if (dy < dx) { const s = (A.y <= B.y ? -1 : 1) * dy / 2; A.y += s; B.y -= s; } else { const s = (A.x <= B.x ? -1 : 1) * dx / 2; A.x += s; B.x -= s; }
@@ -1036,26 +998,22 @@
       }
       if (!moved) break;
     }
-    items.forEach(it => { it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)'; it.el.style.visibility = it.back ? 'hidden' : 'visible'; });
     let svg = '';
-    if (!focus) items.forEach(it => {
-      if (it.back) return;
-      const ex = it.x, ey = it.y + it.h / 2;
-      if (Math.hypot(ex - it.ax, ey - it.ay) < 10) return;
-      svg += '<line x1="' + ex.toFixed(1) + '" y1="' + ey.toFixed(1) + '" x2="' + it.ax.toFixed(1) + '" y2="' + it.ay.toFixed(1) + '"/><circle cx="' + it.ax.toFixed(1) + '" cy="' + it.ay.toFixed(1) + '" r="2"/>';
+    items.forEach(it => {
+      it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)';
+      if (it.ax != null && !it.back) {
+        const ex = it.x + (it.ax < it.x ? -it.w / 2 : it.w / 2), ey = it.y;
+        svg += '<line x1="' + ex.toFixed(1) + '" y1="' + ey.toFixed(1) + '" x2="' + it.ax.toFixed(1) + '" y2="' + it.ay.toFixed(1) + '"/><circle cx="' + it.ax.toFixed(1) + '" cy="' + it.ay.toFixed(1) + '" r="2"/>';
+      }
     });
     leadersEl.innerHTML = svg;
-    rowItems.forEach(it => {
-      const s1 = toScreen(it.r.x, 0, it.r.z, w, h), s2 = toScreen(it.r.x2, 0, it.r.z2, w, h), s = s1.x <= s2.x ? s1 : s2;
-      it.el.style.transform = 'translate(' + Math.max(8, s.x - it.w).toFixed(1) + 'px,' + (s.y - it.h / 2).toFixed(1) + 'px)';
-      it.el.style.visibility = s.back ? 'hidden' : 'visible';
-    });
+    // regla: siempre del lado izquierdo de la copa respecto a la cámara
     tickItems.forEach(it => {
-      const s = toScreen(ruler.position.x - 14, it.f * H, ruler.position.z, w, h);
-      it.el.style.transform = 'translate(' + (s.x - it.el.offsetWidth).toFixed(1) + 'px,' + (s.y - 8).toFixed(1) + 'px)';
+      const y = LEAF_Y0 + LEAF_H * it.k, s = toScreen(ruler.position.x, y, ruler.position.z, w, h);
+      it.el.style.transform = 'translate(' + (s.x - it.el.offsetWidth - 14).toFixed(1) + 'px,' + (s.y - 8).toFixed(1) + 'px)';
       it.el.style.visibility = s.back || focus ? 'hidden' : 'visible';
     });
-    if (tip && !tip.hidden) {
+    if (!tip.hidden) {
       const i = pinned != null ? pinned : hover;
       if (i != null && VIEW.posts[i] && VIEW.posts[i].a) { const a = VIEW.posts[i].a, s = toScreen(a.x, a.y, a.z, w, h); placeTip(s.x, s.y); }
     }
@@ -1064,105 +1022,100 @@
   // ---------- bucle
   function frame(now) {
     requestAnimationFrame(frame);
-    if (!VIEW || document.hidden) return;
-    if (MODE === 'arbol') { stepTween(now); return; }
+    if (!VIEW || !TREE || document.hidden) return;
+    tNow = now;
+    if (growT0) { const k = Math.min(1, (now - growT0) / (REDUCED ? 1 : 2600)); grow.value = 0.02 + 1.02 * EASE_OUT(k); if (k >= 1) { growT0 = 0; grow.value = 1.05; } dirty = true; }
     const moving = stepTween(now);
     stepFly(now);
-    tNow = now;
-    writeInstances();
-    if (moving || dirty || webIntro) { writeStems(); writeWeb(); writeJourney(); if (hover != null) setThreads(); if (webIntro && now - webIntro > 2700) webIntro = 0; }
+    writeLeaves();
+    if (moving || dirty) { writeTwigs(); writePath(); writeJourney(); dirty = false; }
     writePulses();
-    dirty = false;
-    // La rotación lenta solo cuando nadie la está usando
-    controls.autoRotate = !REDUCED && !focus && view === 'persp' && !fly && pinned == null && hover == null && now - lastTouch > 9000;
+    controls.autoRotate = !REDUCED && !focus && view === 'persp' && !fly && pinned == null && hover == null && now - lastTouch > 8000;
     if (!fly) controls.update();
-    // El regulador mira siempre hacia la cámara
-    const az = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) - 1.15;
-    ruler.position.set(Math.sin(az) * 600, 0, Math.cos(az) * 600);
-    ruler.lookAt(camera.position.x, 0, camera.position.z);
-    ruler.visible = lens !== 'plat' && !focus;
+    const az = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) - 1.25;
+    ruler.position.set(Math.sin(az) * (LEAF_R1 + 90), Y_GOAL, Math.cos(az) * (LEAF_R1 + 90));
+    ruler.lookAt(camera.position.x, Y_GOAL, camera.position.z);
+    ruler.visible = !focus;
     renderer.render(scene, camera);
     placeOverlays();
   }
   function resize() {
-    if (VIEW && MODE === 'arbol') { renderTree(false); }
     if (VIEW) renderHist();
     if (!GL) return;
     const b = stage.getBoundingClientRect();
     renderer.setSize(b.width, b.height, false);
     renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
     camera.aspect = b.width / Math.max(1, b.height); camera.updateProjectionMatrix();
-    if (VIEW) { renderChips(); }
+    if (VIEW) renderChips();
   }
 
   // ---------- conectar con el modelo
-  function sceneSetView(intro) {
+  function sceneSetView() {
     if (!initGL()) { noGL(); return; }
     const old = new Map();
     if (sceneSetView.prev) sceneSetView.prev.forEach(p => { if (p.a) old.set(p.plat + '|' + p.row, p.a); });
     VIEW.posts.forEach(p => { p.a = old.get(p.plat + '|' + p.row) || null; });
+    const first = !sceneSetView.prev;
     sceneSetView.prev = VIEW.posts;
-    if (nodes) { scene.remove(nodes); nodes.dispose && nodes.dispose(); }
-    const n = Math.max(1, VIEW.posts.length);
-    nodes = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 22, 16), new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0 }), n);
-    nodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    nodes.setColorAt(0, new THREE.Color(1, 1, 1));
-    nodes.castShadow = true; nodes.count = VIEW.posts.length;
-    scene.add(nodes);
-    VIEW.clusters.forEach(expandCluster);
-    buildWeb(); webIntro = performance.now() + (old.size ? 0 : 500);
+    TREE = buildTree();
+    buildBranches(TREE);
+    if (leaves) { scene.remove(leaves); leaves.dispose && leaves.dispose(); }
+    leaves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2), new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 }), Math.max(1, VIEW.posts.length));
+    leaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    leaves.setColorAt(0, new THREE.Color(1, 1, 1));
+    leaves.castShadow = true; leaves.count = VIEW.posts.length;
+    scene.add(leaves);
     shownFocus = null; hoverC = null;
-    // Entrada: el anillo se arma en orden cronológico, en el sentido de las manecillas
-    const order = new Map(VIEW.clusters.map((c, i) => [c.n, i / Math.max(1, VIEW.clusters.length - 1)]));
-    const first = !old.size;
-    animateTo(first ? 1100 : 850, p => first ? order.get(p.c) * 1300 + (p.i % 7) * 18 : (p.a ? 0 : 200));
+    // el árbol crece: primero el tronco y las ramas, luego brotan las hojas en orden de fecha
+    if (first || !old.size) { growT0 = performance.now(); grow.value = 0.02; }
+    else { growT0 = performance.now() - 900; }
+    const n = VIEW.posts.length || 1;
+    animateTo(first ? 900 : 700, p => (first || !p.a) ? (first ? 1500 : 500) + (p.i / n) * 900 : 0);
     resize();
-    if (first) {
-      camera.position.set(0, 2300, 1900); controls.target.set(0, 0, 0);
-      const o = overviewPose(); flyTo(o.pos, o.target, 2400);
-    }
+    if (first) { camera.position.set(0, 2600, 2700); controls.target.copy(CROWN); const o = overviewPose(); flyTo(o.pos, o.target, 2600); }
     dirty = true;
   }
   function sceneUpdate() {
     if (!GL || !VIEW) return;
-    animateTo(focus !== shownFocus ? 950 : 700, focus !== shownFocus && focus ? (p => p.c === focus ? 80 + (p.i % 11) * 14 : 0) : null);
+    if (TREE && TREE.lz !== treeLens()) {
+      // cambio de lente: las ramas se rehacen y las hojas viajan a su nueva altura
+      TREE = buildTree(); buildBranches(TREE); growT0 = performance.now() - 700; grow.value = 0.2;
+    }
+    paintBranches();
+    animateTo(focus !== shownFocus ? 900 : 750, null);
     if (focus !== shownFocus) {
-      const c = focus && VIEW.clusters.find(x => x.n === focus);
-      const pose = c ? focusPose(c) : overviewPose();
+      const x = focus && TREE.camps.find(c => c.n === focus);
+      const pose = x ? focusPose(x) : overviewPose();
       flyTo(pose.pos, pose.target, 1300);
       shownFocus = focus;
       document.getElementById('back').hidden = !focus;
     }
     renderChips(); dirty = true;
   }
-  function setView(v) {
-    view = v;
-    document.querySelectorAll('.vseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.view === v)));
-    const c = focus && VIEW && VIEW.clusters.find(x => x.n === focus);
-    const pose = c ? focusPose(c) : overviewPose();
-    flyTo(pose.pos, pose.target, 1200);
-  }
+  const renderTree = () => sceneUpdate();
+  function setThreads() { dirty = true; }
   function noGL() {
     const s = document.getElementById('state'); s.hidden = false;
-    s.innerHTML = '<div style="max-width:420px">Este navegador no puede mostrar la vista 3D (WebGL apagado). Abre la <a href="mapa.html">versión plana del mapa</a>.</div>';
+    s.innerHTML = '<div style="max-width:420px">Este navegador no puede mostrar la vista 3D (WebGL apagado). Actívalo en la configuración del navegador o abre el mapa en Chrome.</div>';
   }
-  let hintTimer = null;
   function hideHint() { const h = document.getElementById('hintdrag'); if (h) h.classList.add('gone'); }
+  setTimeout(hideHint, 9000);
 
   // ---------- puntero
   const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
   let down = null, moveRaf = 0, lastEv = null;
   function pick(e) {
-    if (!nodes || !VIEW) return null;
+    if (!leaves || !VIEW) return null;
     const r = renderer.domElement.getBoundingClientRect();
     mouse.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
     ray.setFromCamera(mouse, camera);
-    const hit = ray.intersectObject(nodes, false)[0];
-    if (!hit || hit.instanceId == null) return null;
-    const p = VIEW.posts[hit.instanceId];
-    if (focus && p.c !== focus) return null;
-    if (!vis(p) || (JOURNEY && p.pr !== JOURNEY)) return null;
-    return p;
+    const hits = ray.intersectObject(leaves, false);
+    for (const hit of hits) {
+      const p = VIEW.posts[hit.instanceId];
+      if (!p || !p.leaf || !vis(p) || (focus && p.c !== focus) || (JOURNEY && p.pr !== JOURNEY)) continue;
+      return p;
+    }
+    return null;
   }
   function onMove(e) {
     lastEv = e;
@@ -1172,7 +1125,7 @@
       if (pinned != null || !VIEW || e.pointerType === 'touch') return;
       const p = pick(lastEv), h = p ? p.i : null;
       renderer.domElement.style.cursor = p ? 'pointer' : 'grab';
-      if (h !== hover) { hover = h; dirty = true; setThreads(); if (!focus) renderChips(); }
+      if (h !== hover) { hover = h; dirty = true; }
       if (p) showTip(p, false); else tip.hidden = true;
     });
   }
@@ -1180,13 +1133,9 @@
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
     down = null; lastTouch = performance.now(); hideHint();
     const p = pick(e);
-    if (p) {
-      if (!focus) { setFocus(p.c); pinned = p.i; hover = p.i; dirty = true; setThreads(); setTimeout(() => showTip(p, true), REDUCED ? 0 : 900); return; }
-      pinned = p.i; hover = p.i; dirty = true; setThreads(); showTip(p, true);
-    } else {
-      if (pinned != null) { pinned = null; hover = null; tip.hidden = true; dirty = true; setThreads(); return; }
-      if (focus) setFocus(focus);
-    }
+    if (p) { pinned = p.i; hover = p.i; dirty = true; showTip(p, true); return; }
+    if (pinned != null) { pinned = null; hover = null; tip.hidden = true; dirty = true; return; }
+    if (focus) setFocus(focus);
   }
 
   // ---------- ficha del post
@@ -1203,228 +1152,22 @@
       (pin ? '<div class="links">' + (p.link && /^https?:/i.test(p.link) ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener">Abrir post ↗</a>' : '') +
         (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' en el Sheet ↗</a>' : '') + '</div>' +
         (p.pr && JOURNEY !== p.pr ? '<button class="jlink" data-pr="' + esc(p.pr) + '">Ver el viaje de ' + esc(p.pr) + ' →</button>' : '')
-        : '<div class="hint">' + (focus ? 'Clic para fijar y abrir el post' : 'Clic para abrir su campaña') + '</div>');
+        : '<div class="hint">Clic para fijar y abrir el post</div>');
     tip.hidden = false; tip.classList.toggle('pin', !!pin);
     tip.classList.remove('in'); void tip.offsetWidth; tip.classList.add('in');
     if (p.a) { const b = stage.getBoundingClientRect(), s = toScreen(p.a.x, p.a.y, p.a.z, b.width, b.height); placeTip(s.x, s.y); }
   }
   function placeTip(px, py) {
-    const b = stage.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+    const b = stage.getBoundingClientRect(), tw_ = tip.offsetWidth, th = tip.offsetHeight;
     let x = px + 18, y = py - th / 2;
-    if (x + tw > b.width - 10) x = px - tw - 18;
+    if (x + tw_ > b.width - 10) x = px - tw_ - 18;
     y = Math.min(b.height - th - 10, Math.max(10, y));
     tip.style.transform = 'translate(' + Math.max(10, x).toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
   }
   function setFocus(c) {
     if (JOURNEY && c !== focus) { JOURNEY = null; syncJourneyUI(); }
     focus = focus === c ? null : c; pinned = null; hover = null; tip.hidden = true;
-    if (GL) { setThreads(); }
     refresh();
-  }
-
-  // ============================================================
-  // ÁRBOL — tronco = cuenta, ramas = campañas y subcampañas, hojas = posts.
-  // Cada hoja se aleja del tronco según su KPI: los mejores quedan en la copa.
-  // ============================================================
-  const treeSvg = d3.select('#tree'), treeLbl = document.getElementById('treelabels');
-  let MODE = 'maqueta';
-  try { MODE = localStorage.getItem('smx-mapa-mode') || 'maqueta'; } catch (e) {}
-  let treeHoverC = null, treeGeo = null;
-  const TT = () => d3.transition().duration(REDUCED ? 0 : 850).ease(d3.easeCubicInOut);
-  const treeLens = () => lens === 'plat' ? 'vtr' : lens;           // en Plataforma: altura por VTR, color por plataforma
-  const leafColor = p => lens === 'plat' ? PLAT_COLORS[p.plat] : (val(p, lens) >= KPI[lens].goal ? rgb('--c-success') : rgb('--c-bad'));
-
-  function setMode(m) {
-    MODE = m;
-    try { localStorage.setItem('smx-mapa-mode', m); } catch (e) {}
-    document.querySelectorAll('.mseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
-    stage.classList.toggle('treemode', m === 'arbol');
-    tip.hidden = true; pinned = null; hover = null;
-    renderLegend();
-    if (m === 'arbol') renderTree(true); else { treeSvg.selectAll('*').remove(); treeLbl.innerHTML = ''; resize(); sceneUpdate(); }
-  }
-
-  function treeLayout() {
-    const b = stage.getBoundingClientRect(), W = b.width, Hs = b.height;
-    const bottom = Hs - (document.getElementById('tl').offsetHeight + document.getElementById('legend').offsetHeight + 34);
-    const top = 64, narrow = W < 640;
-    const avail = bottom - top;
-    const trunkH = Math.max(36, avail * 0.13);
-    const R = Math.max(80, Math.min(avail - trunkH - 6, (W - (narrow ? 40 : 330)) / 2));
-    const F = { x: W / 2, y: bottom - trunkH };
-    const A = narrow ? 1.25 : 1.42;                                // apertura de la copa (radianes desde la vertical)
-    const lz = treeLens(), leaves = VIEW.posts.filter(p => vis(p) && eligible(p, lz));
-    const g = KPI[lz].goal, vals = leaves.map(p => val(p, lz)).sort(d3.ascending);
-    const vmax = Math.max(g * 1.7, d3.quantile(vals, 0.97) || g * 2);
-    const r0 = R * 0.46, rg = r0 + (R - r0) * 0.45;
-    const rOf = v => v <= g ? r0 + (rg - r0) * Math.max(0, v) / g : rg + (R - rg) * Math.min(1, (v - g) / (vmax - g));
-    // sectores: campañas en orden cronológico, la abierta toma la mitad de la copa
-    const groups = VIEW.clusters.map(c => ({ c, n: c.n, list: c.list.filter(p => vis(p) && eligible(p, lz)) })).filter(x => x.list.length);
-    const tot = d3.sum(groups, x => x.list.length + 2) || 1;
-    groups.forEach(x => { x.w = x.list.length + 2; });
-    if (focus) { const f = groups.find(x => x.n === focus); if (f) f.w = Math.max(f.w, (tot - f.w) * 1.1); }
-    const W2 = d3.sum(groups, x => x.w) || 1;
-    let a = -A;
-    const twigs = [], subs = [], camps = [];
-    groups.forEach(x => {
-      const span = 2 * A * x.w / W2, a0 = a + span * 0.04, a1 = a + span * 0.96; a += span;
-      x.a = (a0 + a1) / 2; x.a0 = a0; x.a1 = a1;
-      x.reach = d3.sum(x.list, p => p.reach);
-      camps.push(x);
-      const bySub = d3.groups(x.list, p => p.sub || '—').map(([s, l]) => ({ s, l: l.sort((p, q) => p.d - q.d), d0: d3.min(l, p => +p.d) })).sort((p, q) => p.d0 - q.d0);
-      let sa = a0; const sw = (a1 - a0) / x.list.length;
-      bySub.forEach(sb => {
-        const s0 = sa, s1 = sa + sw * sb.l.length; sa = s1;
-        const node = { key: x.n + '|' + sb.s, c: x.n, s: sb.s, a: (s0 + s1) / 2, reach: d3.sum(sb.l, p => p.reach), parent: x };
-        subs.push(node);
-        sb.l.forEach((p, i) => {
-          const la = sb.l.length === 1 ? node.a : s0 + (s1 - s0) * (0.12 + 0.76 * i / (sb.l.length - 1));
-          twigs.push({ p, key: p.plat + '|' + p.row, a: la, r: rOf(val(p, lz)), parent: node });
-        });
-      });
-    });
-    return { W, Hs, F, R, r0, rg, r1: R * 0.17, r2: R * 0.32, A, bottom, camps, subs, twigs, lz, g, vmax, rOf, narrow, trunkH };
-  }
-
-  const polar = (F, a, r) => [F.x + r * Math.sin(a), F.y - r * Math.cos(a)];
-  function branchPath(F, a0, r0, a1, r1) {
-    // curva que sale en la dirección de la rama madre y llega en la de la hija
-    const [x0, y0] = polar(F, a0, r0), [x1, y1] = polar(F, a1, r1), rm = (r0 + r1) / 2;
-    const [cx0, cy0] = polar(F, a0, rm), [cx1, cy1] = polar(F, a1, rm);
-    return 'M' + x0.toFixed(1) + ',' + y0.toFixed(1) + 'C' + cx0.toFixed(1) + ',' + cy0.toFixed(1) + ' ' + cx1.toFixed(1) + ',' + cy1.toFixed(1) + ' ' + x1.toFixed(1) + ',' + y1.toFixed(1);
-  }
-
-  function renderTree(grow) {
-    if (MODE !== 'arbol' || !VIEW) return;
-    const L = treeGeo = treeLayout(), F = L.F;
-    treeSvg.attr('viewBox', '0 0 ' + L.W + ' ' + L.Hs);
-    const act = focus || treeHoverC;
-    const wC = d3.scaleSqrt().domain([0, d3.max(L.camps, x => x.reach) || 1]).range([1.4, 9]);
-    const wS = d3.scaleSqrt().domain([0, d3.max(L.subs, x => x.reach) || 1]).range([0.8, 4]);
-    const rL = d3.scaleSqrt().domain([0, d3.quantile(L.twigs.map(t => t.p.reach).sort(d3.ascending), 0.97) || 1]).range([2, 7.5]).clamp(true);
-    const on = c => !act || c === act;
-    const jOn = p => !JOURNEY || p.pr === JOURNEY;
-    const T = TT();
-
-    // capas
-    const layer = n => { let s = treeSvg.select('g.' + n); if (s.empty()) s = treeSvg.append('g').attr('class', n); return s; };
-    const gArc = layer('t-arcs'), gTrunk = layer('t-trunk'), gBr = layer('t-br'), gTw = layer('t-tw'), gLf = layer('t-lf');
-
-    // escala: arcos de referencia y la meta
-    const ticks = [0.5, 1, 1.5].map(f => L.g * f).concat([L.vmax]).filter((v, i, arr) => v <= L.vmax && arr.indexOf(v) === i);
-    const arcD = r => { const [x0, y0] = polar(F, -L.A - 0.05, r), [x1, y1] = polar(F, L.A + 0.05, r); return 'M' + x0 + ',' + y0 + 'A' + r + ',' + r + ' 0 0 1 ' + x1 + ',' + y1; };
-    const arcs = ticks.map(v => ({ v, r: L.rOf(v), goal: v === L.g }));
-    gArc.selectAll('path').data(arcs, d => d.v).join(
-      e => e.append('path').attr('fill', 'none').attr('d', d => arcD(d.r)).attr('opacity', 0),
-      u => u, x => x.remove())
-      .attr('stroke', d => d.goal ? rgb('--c-txt2') : rgb('--c-txt4'))
-      .attr('stroke-width', d => d.goal ? 2 : 1).attr('stroke-opacity', d => d.goal ? 0.55 : 0.18)
-      .attr('stroke-dasharray', d => d.goal ? null : '2 5')
-      .transition(T).attr('d', d => arcD(d.r)).attr('opacity', 1);
-    gArc.selectAll('text').data(arcs, d => d.v).join('text')
-      .attr('class', d => 'tlab' + (d.goal ? ' goal' : ''))
-      .text(d => (d.goal ? 'META ' : '') + (Math.round(d.v * 10) / 10) + '%')
-      .attr('text-anchor', 'end')
-      .attr('text-anchor', 'start')
-      .transition(T).attr('x', d => polar(F, -L.A * 0.72, d.r)[0] + 6).attr('y', d => polar(F, -L.A * 0.72, d.r)[1] - 5);
-
-    // tronco
-    const tw = Math.max(10, Math.min(26, L.R * 0.05));
-    gTrunk.selectAll('path').data([0]).join('path').attr('fill', rgb('--c-txt3')).attr('fill-opacity', 0.55)
-      .transition(T).attr('d', 'M' + (F.x - tw / 2) + ',' + (L.bottom + 2) + 'C' + (F.x - tw * 0.32) + ',' + (F.y + L.trunkH * 0.4) + ' ' + (F.x - tw * 0.18) + ',' + (F.y + 6) + ' ' + (F.x - 2) + ',' + F.y +
-        'L' + (F.x + 2) + ',' + F.y + 'C' + (F.x + tw * 0.18) + ',' + (F.y + 6) + ' ' + (F.x + tw * 0.32) + ',' + (F.y + L.trunkH * 0.4) + ' ' + (F.x + tw / 2) + ',' + (L.bottom + 2) + 'Z');
-
-    // ramas: campaña y subcampaña
-    const brData = L.camps.map(x => ({ key: 'c|' + x.n, c: x.n, d: branchPath(F, 0, 0, x.a, L.r1) + branchPath(F, x.a, L.r1, x.a, L.r2 * 0.92).replace('M', 'L'), w: wC(x.reach) }))
-      .concat(L.subs.map(s => ({ key: 's|' + s.key, c: s.c, d: branchPath(F, s.parent.a, L.r2 * 0.92, s.a, L.r0 * 0.86), w: wS(s.reach) })));
-    gBr.selectAll('path').data(brData, d => d.key).join(
-      e => e.append('path').attr('fill', 'none').attr('stroke-linecap', 'round').attr('d', d => d.d)
-        .attr('stroke-dasharray', function () { return grow ? this.getTotalLength() : null; }).attr('stroke-dashoffset', function () { return grow ? this.getTotalLength() : null; }),
-      u => u, x => x.transition(T).attr('stroke-opacity', 0).remove())
-      .attr('stroke', rgb('--c-txt2'))
-      .on('mouseenter', (e, d) => { if (!focus) { treeHoverC = d.c; renderTree(false); } })
-      .on('mouseleave', () => { if (treeHoverC) { treeHoverC = null; renderTree(false); } })
-      .on('click', (e, d) => { e.stopPropagation(); setFocus(d.c); })
-      .transition(T).delay((d, i) => grow && !REDUCED ? 120 + i * 6 : 0)
-      .attr('d', d => d.d).attr('stroke-width', d => d.w).attr('stroke-dashoffset', 0)
-      .attr('stroke-opacity', d => JOURNEY ? 0.12 : on(d.c) ? 0.55 : 0.1)
-      .on('end', function () { this.removeAttribute('stroke-dasharray'); this.removeAttribute('stroke-dashoffset'); });
-
-    // ramitas a cada hoja
-    gTw.selectAll('path').data(L.twigs, d => d.key).join(
-      e => e.append('path').attr('fill', 'none').attr('stroke-opacity', 0).attr('d', d => branchPath(F, d.parent.a, L.r0 * 0.86, d.a, L.r0 * 0.86)),
-      u => u, x => x.transition(T).attr('stroke-opacity', 0).remove())
-      .attr('stroke', d => JOURNEY && d.p.pr === JOURNEY ? rgb('--c-accent') : rgb('--c-txt3'))
-      .attr('stroke-width', d => JOURNEY && d.p.pr === JOURNEY ? 1.4 : 0.7)
-      .transition(T).delay((d, i) => grow && !REDUCED ? 500 + (i % 60) * 8 : 0)
-      .attr('d', d => branchPath(F, d.parent.a, L.r0 * 0.86, d.a, d.r))
-      .attr('stroke-opacity', d => !jOn(d.p) ? 0.04 : JOURNEY ? 0.9 : on(d.p.c) ? 0.28 : 0.05);
-
-    // hojas
-    gLf.selectAll('circle').data(L.twigs, d => d.key).join(
-      e => e.append('circle').attr('r', 0).attr('cx', d => polar(F, d.a, L.r0 * 0.86)[0]).attr('cy', d => polar(F, d.a, L.r0 * 0.86)[1]),
-      u => u, x => x.transition(T).attr('r', 0).remove())
-      .attr('fill', d => leafColor(d.p))
-      .style('cursor', 'pointer')
-      .on('mouseenter', (e, d) => { if (pinned != null) return; hover = d.p.i; showTip(d.p, false); const [x, y] = polar(F, d.a, d.r); placeTip(x, y); })
-      .on('mouseleave', () => { if (pinned == null) { hover = null; tip.hidden = true; } })
-      .on('click', (e, d) => { e.stopPropagation(); pinned = d.p.i; hover = d.p.i; showTip(d.p, true); const [x, y] = polar(F, d.a, d.r); placeTip(x, y); })
-      .transition(T).delay((d, i) => grow && !REDUCED ? 650 + (i % 80) * 7 : 0)
-      .attr('cx', d => polar(F, d.a, d.r)[0]).attr('cy', d => polar(F, d.a, d.r)[1])
-      .attr('r', d => rL(d.p.reach) * (jOn(d.p) ? 1 : 0.6))
-      .attr('fill-opacity', d => !jOn(d.p) ? 0.12 : on(d.p.c) ? 0.92 : 0.18);
-
-    treeLabels(L, grow);
-  }
-
-  // etiquetas: los mejores contenidos en la copa y el nombre de cada campaña
-  function treeLabels(L, grow) {
-    treeLbl.innerHTML = '';
-    const F = L.F, items = [];
-    const pool = L.twigs.filter(t => (!focus || t.p.c === focus) && (!JOURNEY || t.p.pr === JOURNEY));
-    const best = pool.slice().sort((a, b) => val(b.p, L.lz) - val(a.p, L.lz)).slice(0, L.narrow ? 4 : 8);
-    best.forEach((t, i) => {
-      const el = document.createElement('div');
-      el.className = 'chip tchip'; el.style.setProperty('--d', (grow ? 1100 : 0) + i * 60 + 'ms');
-      el.innerHTML = '<b class="ok">' + pct(val(t.p, L.lz), KPI[L.lz].dec) + '</b><span>' + esc([t.p.fmt, t.p.pr || t.p.c, t.p.plat].filter(Boolean).join(' · ')) + '</span>';
-      el.addEventListener('click', e => { e.stopPropagation(); pinned = t.p.i; hover = t.p.i; showTip(t.p, true); const [x, y] = polar(F, t.a, t.r); placeTip(x, y); });
-      treeLbl.appendChild(el);
-      const [x, y] = polar(F, t.a, t.r), side = t.a < 0 ? -1 : 1;
-      items.push({ el, w: el.offsetWidth, h: el.offsetHeight, ax: x, ay: y, side, x: side < 0 ? Math.min(x - 24, F.x - L.R * 0.2) : Math.max(x + 24, F.x + L.R * 0.2), y: y - 18 });
-    });
-    // nombres de campaña sobre su rama
-    if (!JOURNEY) L.camps.slice().sort((a, b) => b.list.length - a.list.length).slice(0, focus ? 1 : (L.narrow ? 3 : 6)).forEach(x => {
-      if (focus && x.n !== focus) return;
-      const el = document.createElement('div');
-      el.className = 'clab'; el.textContent = x.n + ' · ' + x.list.length;
-      el.addEventListener('click', e => { e.stopPropagation(); setFocus(x.n); });
-      treeLbl.appendChild(el);
-      const [x0, y0] = polar(F, x.a, L.r0 * 0.78);
-      items.push({ el, w: el.offsetWidth, h: el.offsetHeight, x: x0, y: y0 });
-    });
-    // separar etiquetas
-    const top = 58, bottom = L.bottom - 8;
-    const clamp = it => { it.x = Math.min(L.W - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(top + it.h / 2, it.y)); };
-    items.forEach(clamp);
-    for (let k = 0; k < 60; k++) {
-      let moved = false;
-      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
-        const A = items[i], B = items[j], dx = (A.w + B.w) / 2 + 6 - Math.abs(A.x - B.x), dy = (A.h + B.h) / 2 + 4 - Math.abs(A.y - B.y);
-        if (dx <= 0 || dy <= 0) continue;
-        moved = true;
-        const s = (A.y <= B.y ? -1 : 1) * dy / 2;
-        if (!A.fixed) A.y += B.fixed ? 2 * s : s; if (!B.fixed) B.y -= A.fixed ? 2 * s : s;
-        clamp(A); clamp(B);
-      }
-      if (!moved) break;
-    }
-    let svg = '';
-    items.forEach(it => {
-      it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)';
-      if (it.ax != null) svg += '<line x1="' + it.ax.toFixed(1) + '" y1="' + it.ay.toFixed(1) + '" x2="' + (it.x + (it.side < 0 ? it.w / 2 : -it.w / 2)).toFixed(1) + '" y2="' + it.y.toFixed(1) + '"/>';
-    });
-    let lead = treeSvg.select('g.t-lead'); if (lead.empty()) lead = treeSvg.append('g').attr('class', 't-lead');
-    lead.html(svg);
   }
 
   // ---------- histograma semanal bajo la línea de tiempo
@@ -1432,6 +1175,7 @@
     const svg = d3.select('#tlhist');
     if (!VIEW || !STEPS.length) { svg.selectAll('*').remove(); return; }
     const box = document.getElementById('tlhist').getBoundingClientRect(), W = box.width, Hh = box.height;
+    if (!W) return;
     const n = STEPS.length, x = i => 7 + (W - 14) * (n > 1 ? i / (n - 1) : 0.5), bw = Math.max(2, (W - 14) / Math.max(1, n) * 0.62);
     const lz = treeLens(), kpi = lens !== 'plat';
     const rows = STEPS.map((s, i) => {
@@ -1446,8 +1190,7 @@
     svg.attr('viewBox', '0 0 ' + W + ' ' + Hh);
     const g = svg.selectAll('g.col').data(rows, d => d.i).join(e => { const g = e.append('g').attr('class', 'col'); g.append('rect').attr('class', 'ra'); g.append('rect').attr('class', 'rb'); g.append('rect').attr('class', 'hit'); return g; });
     g.attr('opacity', d => d.i <= cur ? 1 : 0.28);
-    g.select('.ra').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1)
-      .attr('fill', kpi ? rgb('--c-success') : rgb('--c-accent2'))
+    g.select('.ra').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', kpi ? rgb('--c-success') : rgb('--c-accent2'))
       .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a)).attr('height', d => y(d.a));
     g.select('.rb').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', rgb('--c-bad'))
       .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a) - y(d.b)).attr('height', d => y(d.b));
@@ -1456,6 +1199,7 @@
       .selectAll('title').data(d => [d]).join('title')
       .text(d => (d.i < n - 1 ? 'Semana al ' + fdate(STEPS[d.i]) : 'Última semana') + ' · ' + (kpi ? d.a + ' cumplen, ' + d.b + ' no' : d.a + ' posts'));
   }
+
   // ============================================================
   // PANEL
   // ============================================================
@@ -1549,31 +1293,23 @@
     if (parts.length) { const d = document.createElement('div'); d.className = 'thin'; d.textContent = parts.join(' '); box.appendChild(d); }
   }
   function renderLegend() {
-    const el = document.getElementById('legend');
-    if (MODE === 'arbol') {
-      const lz = lens === 'plat' ? 'vtr' : lens;
-      el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
-        : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>') +
-        '<span>Hojas = ' + KPI[lz].unit + ' · más lejos del tronco = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · arco marcado = meta · grosor y tamaño = alcance</span>';
-      return;
-    }
-    el.innerHTML = lens === 'plat'
-      ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('') + '<span>Tamaño = alcance</span>'
-      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Altura = distancia a la meta · el plano es la meta · tamaño = alcance · hilos = mismo producto o subcampaña</span>';
+    const el = document.getElementById('legend'), lz = lens === 'plat' ? 'vtr' : lens;
+    el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
+      : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>') +
+      '<span>Hojas = ' + KPI[lz].unit + ' · más alto = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · disco de vidrio = meta ' + KPI[lz].goal + '% · tamaño = alcance</span>';
   }
   function renderNotes() {
     const v = VIEW.variants.map(a => '«' + a.slice(1).join('», «') + '» → «' + a[0] + '»').join('; ');
     document.getElementById('notes').innerHTML =
       '<h3>Cómo leerlo</h3><ul>' +
-      '<li>Cada esfera es un post. Las campañas van alrededor del anillo en orden cronológico, en el sentido de las manecillas del reloj.</li>' +
-      '<li>El plano es la meta. En los lentes de KPI, lo que cumple flota arriba y lo que no se hunde; la altura es la distancia a la meta. Los posts que no aplican quedan sobre el plano, en gris.</li>' +
-      '<li>Al abrir una campaña, sus posts se acomodan en un renglón por plataforma, en orden de fecha.</li>' +
-      '<li>Vista «Árbol»: el tronco es la cuenta, las ramas son campañas y subcampañas y cada hoja es un post. Entre más lejos del tronco, mejor su VTR (o su ER en el lente de Instagram): los mejores contenidos quedan en la copa y están rotulados. El arco marcado es la meta.</li>' +
+      '<li>El tronco es la cuenta, las ramas son campañas y subcampañas y cada hoja es un post. Las campañas rodean el tronco en orden cronológico, en el sentido de las manecillas del reloj.</li>' +
+      '<li>La altura de cada hoja es su KPI: los mejores contenidos quedan en la copa y están rotulados. El disco de vidrio es la meta; todo lo que queda arriba cumple.</li>' +
+      '<li>El lente VTR usa los videos de 0 a 30 s de todas las plataformas; el lente ER, los posts de feed de Instagram. Al cambiar de lente las hojas viajan a su nueva altura. El lente Plataforma colorea por red y conserva las alturas de VTR.</li>' +
+      '<li>Al pasar el cursor por una hoja se ilumina su camino desde el tronco. Clic para fijar la ficha y abrir el post o su fila en el Sheet.</li>' +
+      '<li>Clic en el nombre de una campaña (o en el ranking) para acercarte a su rama.</li>' +
       '<li>Una campaña que concentra más del 20% de los posts del periodo se separa por etapa.</li>' +
-      '<li>Al pasar el cursor sobre un post se dibujan los hilos a los posts del mismo producto o subcampaña.</li>' +
-      '<li>La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) el mapa se arma solo y el KPI corre con él.</li>' +
-      '<li>«Viaje de un producto» dibuja la trayectoria de un producto en orden de fecha a través de las campañas. Con play, se ve cómo viajó durante el año.</li>' +
-      '<li>Se rotulan las campañas más grandes (9 en pantalla ancha, 5 en el teléfono); todas están en el ranking.</li></ul>' +
+      '<li>La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) las hojas brotan en orden de fecha y el KPI corre con ellas.</li>' +
+      '<li>«Viaje de un producto» enciende las hojas de ese producto y las une en orden de fecha.</li></ul>' +
       '<h3>Pendientes de captura en el periodo</h3><ul>' +
       '<li>' + fmtInt(VIEW.noCamp) + ' posts sin Campaña y ' + fmtInt(VIEW.noProd) + ' sin Producto.</li>' +
       (v ? '<li>Nombres de campaña con variantes, unificados aquí: ' + esc(v) + '.</li>' : '<li>Sin variantes de escritura en nombres de campaña.</li>') +
@@ -1583,7 +1319,6 @@
   function refresh() {
     if (!VIEW) return;
     renderLegend(); sceneUpdate(); renderSummary(); renderRank();
-    if (MODE === 'arbol') renderTree(false);
   }
   function renderPlatFilter() {
     const base = PID ? inPeriod(PID).filter(passPT) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
@@ -1628,7 +1363,8 @@
     PID = pid; setPlay(false); UPTO = null; renderPlatFilter(); renderPTFilter();
     focus = null; hover = null; pinned = null; tip.hidden = true;
     if (!inPeriod(pid).some(passes)) {
-      VIEW = null; chipsEl.innerHTML = ''; rowsEl.innerHTML = ''; ticksEl.innerHTML = ''; chipItems = []; rowItems = []; tickItems = []; if (nodes) nodes.count = 0; if (web) web.geometry.setDrawRange(0, 0); if (pulses) pulses.visible = false; leadersEl.innerHTML = ''; $('jcard').hidden = true; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; if (stems) { stems.geometry.dispose(); stems.geometry = new THREE.BufferGeometry(); }
+      VIEW = null; TREE = null; chipsEl.innerHTML = ''; ticksEl.innerHTML = ''; labelItems = []; tickItems = []; leadersEl.innerHTML = ''; $('jcard').hidden = true;
+      if (GL) { if (leaves) leaves.count = 0; branches.geometry.dispose(); branches.geometry = new THREE.BufferGeometry(); twigs.geometry.dispose(); twigs.geometry = new THREE.BufferGeometry(); path.visible = false; pulses.visible = false; if (jtube) { scene.remove(jtube); jtube = null; } jcurve = null; sceneSetView.prev = null; }
       $('state').hidden = false; $('state').innerHTML = '<div>No hay posts con esta selección en el periodo' + esc(filterLabel()) + '.</div>';
       ['summary', 'rank', 'notes', 'legend'].forEach(id => { $(id).innerHTML = ''; }); $('rank-h').textContent = '';
       document.getElementById('meta').textContent = '0 posts en la selección · leído ' + META.at;
@@ -1639,8 +1375,6 @@
     document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts' + filterLabel() + ' · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
     buildSteps(); fillJourney();
     renderNotes(); sceneSetView(); renderLegend(); renderSummary(); renderRank();
-    stage.classList.toggle('treemode', MODE === 'arbol');
-    if (MODE === 'arbol') renderTree(true);
     try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
   }
 
@@ -1681,7 +1415,6 @@
     animateTo(fromPlay ? 520 : 380, null);
     dirty = true;
     renderChips(); renderJourneyCard(); renderHist();
-    if (MODE === 'arbol') renderTree(false);
     // el KPI corre con la línea de tiempo, sin saturar el panel
     if (!sumTimer) sumTimer = setTimeout(() => { sumTimer = 0; renderSummary(); }, fromPlay ? 0 : 160);
   }
@@ -1735,7 +1468,6 @@
     if (focus) { focus = null; }
     syncJourneyUI();
     if (GL) { setThreads(); sceneUpdate(); }
-    if (MODE === 'arbol') renderTree(false);
     renderSummary(); renderRank();
   }
   // ============================================================
@@ -1782,10 +1514,6 @@
   $('reload').addEventListener('click', start);
   $('period').addEventListener('change', e => setPeriod(e.target.value));
   $('back').addEventListener('click', () => { if (focus) setFocus(focus); });
-  document.querySelectorAll('.mseg button').forEach(b => b.addEventListener('click', () => { if (MODE !== b.dataset.mode) setMode(b.dataset.mode); }));
-  document.querySelectorAll('.mseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === MODE)));
-  stage.classList.toggle('treemode', MODE === 'arbol');
-  document.getElementById('tree').addEventListener('click', () => { if (pinned != null) { pinned = null; hover = null; tip.hidden = true; } else if (focus) setFocus(focus); });
   $('tlplay').addEventListener('click', () => { hideHint(); setPlay(!playing); });
   $('tlrange').addEventListener('input', e => { setPlay(false); hideHint(); setUpto(+e.target.value, false); });
   $('journey').addEventListener('change', e => setJourney(e.target.value));
@@ -1802,7 +1530,7 @@
     document.documentElement.classList.toggle('light', light);
     try { localStorage.setItem('smx-theme', light ? 'light' : 'dark'); } catch (e) {}
     document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#F8F7F2' : '#0A0A0F');
-    themeGL(); if (VIEW) { renderLegend(); renderSummary(); renderRank(); renderChips(); renderHist(); if (MODE === 'arbol') renderTree(false); }
+    themeGL(); if (VIEW) { renderLegend(); renderSummary(); renderRank(); renderChips(); renderHist(); }
   });
   new ResizeObserver(resize).observe(stage);
   if (authLoad()) start(); else showLogin();
