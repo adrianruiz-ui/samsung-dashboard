@@ -254,8 +254,28 @@
     .tl-months span { position: absolute; transform: translateX(-50%); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--c-txt4)); }
     .tl-lbl { flex: none; min-width: 150px; text-align: right; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgb(var(--c-txt2)); font-variant-numeric: tabular-nums; }
     @media (max-width: 600px) { .tl-lbl { min-width: 0; font-size: 10px; } .jcard { width: auto; right: 14px; } }
-    .legend { bottom: 62px; }
-    .hintdrag { bottom: 100px; }
+    .legend { bottom: 92px; }
+    .ov-r { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .ov .vseg { margin-left: 0; }
+    .ov .mseg { background: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
+    html.light .ov .mseg { background: rgb(var(--c-surface2) / .9); }
+    .tree { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+    .treelabels { position: absolute; inset: 0; pointer-events: none; display: none; }
+    .treelabels > * { pointer-events: auto; }
+    .stage.treemode .tree, .stage.treemode .treelabels { display: block; }
+    .stage.treemode .gl, .stage.treemode .chips, .stage.treemode .ticks, .stage.treemode .rowlabels, .stage.treemode .leaders, .stage.treemode .vseg, .stage.treemode .hintdrag { display: none !important; }
+    .tree .tlab { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; letter-spacing: .06em; fill: rgb(var(--c-txt4)); }
+    .tree .tlab.goal { fill: rgb(var(--c-txt2)); font-weight: 600; }
+    .tree .t-lead line { stroke: rgb(var(--c-txt3)); stroke-opacity: .5; stroke-width: 1; }
+    .tree circle { transition: fill 300ms ease; }
+    .tchip { position: absolute; left: 0; top: 0; max-width: 240px; }
+    .tchip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .clab { position: absolute; left: 0; top: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: rgb(var(--c-txt2));
+            background: rgb(var(--c-surface) / .75); padding: 2px 6px; border-radius: 3px; cursor: pointer; white-space: nowrap; animation: chipIn 520ms var(--ease-out) both; }
+    .clab:hover { background: rgb(var(--c-accent2)); color: #fff; }
+    .tl-track { padding-top: 30px; }
+    .tl-hist { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 28px; overflow: visible; }
+    .hintdrag { bottom: 132px; }
     .tip .jlink { display: block; margin-top: 8px; border: 0; background: none; padding: 0; color: rgb(var(--c-accent)); font: 600 12.5px var(--font); cursor: pointer; text-align: left; }
     @media (prefers-reduced-motion: reduce) { .chip, .rowlabel, .tip.in, .brk, .back, .jcard { animation: none !important; } .bar span { transition: none !important; } }
   </style>
@@ -309,6 +329,8 @@
     <div class="grid">
       <div class="stage" id="stage">
         <div class="gl" id="gl" aria-label="Maqueta 3D de posts por campaña"></div>
+        <svg class="tree" id="tree" aria-label="Árbol de campañas: los mejores contenidos en la copa"></svg>
+        <div class="treelabels" id="treelabels"></div>
         <div class="ticks" id="ticks"></div>
         <div class="rowlabels" id="rowlabels"></div>
         <svg class="leaders" id="leaders" aria-hidden="true"></svg>
@@ -318,15 +340,21 @@
           <select class="sel jsel" id="journey" aria-label="Viaje de un producto"><option value="">Viaje de un producto…</option></select>
           <button class="back" id="back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Todas las campañas</button>
           </div>
+          <div class="ov-r">
+          <div class="seg mseg" role="radiogroup" aria-label="Visualización">
+            <button role="radio" data-mode="maqueta" aria-checked="true">Maqueta 3D</button>
+            <button role="radio" data-mode="arbol" aria-checked="false">Árbol</button>
+          </div>
           <div class="seg vseg" role="radiogroup" aria-label="Vista">
             <button role="radio" data-view="persp" aria-checked="true">Perspectiva</button>
             <button role="radio" data-view="top" aria-checked="false">Desde arriba</button>
+          </div>
           </div>
         </div>
         <div class="jcard" id="jcard" hidden></div>
         <div class="tl" id="tl">
           <button class="tl-play" id="tlplay" aria-label="Reproducir el periodo"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="tlicon" d="M7 4.5v15l13-7.5z"/></svg></button>
-          <div class="tl-track"><input type="range" id="tlrange" min="0" max="1" step="1" value="1" aria-label="Semana"><div class="tl-months" id="tlmonths"></div></div>
+          <div class="tl-track"><svg class="tl-hist" id="tlhist" aria-hidden="true"></svg><input type="range" id="tlrange" min="0" max="1" step="1" value="1" aria-label="Semana"><div class="tl-months" id="tlmonths"></div></div>
           <div class="tl-lbl" id="tllbl">Todo el periodo</div>
         </div>
         <div class="hintdrag" id="hintdrag">Arrastra para girar · rueda o pellizco para acercar · clic en un post para abrir su campaña</div>
@@ -1037,6 +1065,7 @@
   function frame(now) {
     requestAnimationFrame(frame);
     if (!VIEW || document.hidden) return;
+    if (MODE === 'arbol') { stepTween(now); return; }
     const moving = stepTween(now);
     stepFly(now);
     tNow = now;
@@ -1056,6 +1085,8 @@
     placeOverlays();
   }
   function resize() {
+    if (VIEW && MODE === 'arbol') { renderTree(false); }
+    if (VIEW) renderHist();
     if (!GL) return;
     const b = stage.getBoundingClientRect();
     renderer.setSize(b.width, b.height, false);
@@ -1192,6 +1223,240 @@
   }
 
   // ============================================================
+  // ÁRBOL — tronco = cuenta, ramas = campañas y subcampañas, hojas = posts.
+  // Cada hoja se aleja del tronco según su KPI: los mejores quedan en la copa.
+  // ============================================================
+  const treeSvg = d3.select('#tree'), treeLbl = document.getElementById('treelabels');
+  let MODE = 'maqueta';
+  try { MODE = localStorage.getItem('smx-mapa-mode') || 'maqueta'; } catch (e) {}
+  let treeHoverC = null, treeGeo = null;
+  const TT = () => d3.transition().duration(REDUCED ? 0 : 850).ease(d3.easeCubicInOut);
+  const treeLens = () => lens === 'plat' ? 'vtr' : lens;           // en Plataforma: altura por VTR, color por plataforma
+  const leafColor = p => lens === 'plat' ? PLAT_COLORS[p.plat] : (val(p, lens) >= KPI[lens].goal ? rgb('--c-success') : rgb('--c-bad'));
+
+  function setMode(m) {
+    MODE = m;
+    try { localStorage.setItem('smx-mapa-mode', m); } catch (e) {}
+    document.querySelectorAll('.mseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
+    stage.classList.toggle('treemode', m === 'arbol');
+    tip.hidden = true; pinned = null; hover = null;
+    renderLegend();
+    if (m === 'arbol') renderTree(true); else { treeSvg.selectAll('*').remove(); treeLbl.innerHTML = ''; resize(); sceneUpdate(); }
+  }
+
+  function treeLayout() {
+    const b = stage.getBoundingClientRect(), W = b.width, Hs = b.height;
+    const bottom = Hs - (document.getElementById('tl').offsetHeight + document.getElementById('legend').offsetHeight + 34);
+    const top = 64, narrow = W < 640;
+    const avail = bottom - top;
+    const trunkH = Math.max(36, avail * 0.13);
+    const R = Math.max(80, Math.min(avail - trunkH - 6, (W - (narrow ? 40 : 330)) / 2));
+    const F = { x: W / 2, y: bottom - trunkH };
+    const A = narrow ? 1.25 : 1.42;                                // apertura de la copa (radianes desde la vertical)
+    const lz = treeLens(), leaves = VIEW.posts.filter(p => vis(p) && eligible(p, lz));
+    const g = KPI[lz].goal, vals = leaves.map(p => val(p, lz)).sort(d3.ascending);
+    const vmax = Math.max(g * 1.7, d3.quantile(vals, 0.97) || g * 2);
+    const r0 = R * 0.46, rg = r0 + (R - r0) * 0.45;
+    const rOf = v => v <= g ? r0 + (rg - r0) * Math.max(0, v) / g : rg + (R - rg) * Math.min(1, (v - g) / (vmax - g));
+    // sectores: campañas en orden cronológico, la abierta toma la mitad de la copa
+    const groups = VIEW.clusters.map(c => ({ c, n: c.n, list: c.list.filter(p => vis(p) && eligible(p, lz)) })).filter(x => x.list.length);
+    const tot = d3.sum(groups, x => x.list.length + 2) || 1;
+    groups.forEach(x => { x.w = x.list.length + 2; });
+    if (focus) { const f = groups.find(x => x.n === focus); if (f) f.w = Math.max(f.w, (tot - f.w) * 1.1); }
+    const W2 = d3.sum(groups, x => x.w) || 1;
+    let a = -A;
+    const twigs = [], subs = [], camps = [];
+    groups.forEach(x => {
+      const span = 2 * A * x.w / W2, a0 = a + span * 0.04, a1 = a + span * 0.96; a += span;
+      x.a = (a0 + a1) / 2; x.a0 = a0; x.a1 = a1;
+      x.reach = d3.sum(x.list, p => p.reach);
+      camps.push(x);
+      const bySub = d3.groups(x.list, p => p.sub || '—').map(([s, l]) => ({ s, l: l.sort((p, q) => p.d - q.d), d0: d3.min(l, p => +p.d) })).sort((p, q) => p.d0 - q.d0);
+      let sa = a0; const sw = (a1 - a0) / x.list.length;
+      bySub.forEach(sb => {
+        const s0 = sa, s1 = sa + sw * sb.l.length; sa = s1;
+        const node = { key: x.n + '|' + sb.s, c: x.n, s: sb.s, a: (s0 + s1) / 2, reach: d3.sum(sb.l, p => p.reach), parent: x };
+        subs.push(node);
+        sb.l.forEach((p, i) => {
+          const la = sb.l.length === 1 ? node.a : s0 + (s1 - s0) * (0.12 + 0.76 * i / (sb.l.length - 1));
+          twigs.push({ p, key: p.plat + '|' + p.row, a: la, r: rOf(val(p, lz)), parent: node });
+        });
+      });
+    });
+    return { W, Hs, F, R, r0, rg, r1: R * 0.17, r2: R * 0.32, A, bottom, camps, subs, twigs, lz, g, vmax, rOf, narrow, trunkH };
+  }
+
+  const polar = (F, a, r) => [F.x + r * Math.sin(a), F.y - r * Math.cos(a)];
+  function branchPath(F, a0, r0, a1, r1) {
+    // curva que sale en la dirección de la rama madre y llega en la de la hija
+    const [x0, y0] = polar(F, a0, r0), [x1, y1] = polar(F, a1, r1), rm = (r0 + r1) / 2;
+    const [cx0, cy0] = polar(F, a0, rm), [cx1, cy1] = polar(F, a1, rm);
+    return 'M' + x0.toFixed(1) + ',' + y0.toFixed(1) + 'C' + cx0.toFixed(1) + ',' + cy0.toFixed(1) + ' ' + cx1.toFixed(1) + ',' + cy1.toFixed(1) + ' ' + x1.toFixed(1) + ',' + y1.toFixed(1);
+  }
+
+  function renderTree(grow) {
+    if (MODE !== 'arbol' || !VIEW) return;
+    const L = treeGeo = treeLayout(), F = L.F;
+    treeSvg.attr('viewBox', '0 0 ' + L.W + ' ' + L.Hs);
+    const act = focus || treeHoverC;
+    const wC = d3.scaleSqrt().domain([0, d3.max(L.camps, x => x.reach) || 1]).range([1.4, 9]);
+    const wS = d3.scaleSqrt().domain([0, d3.max(L.subs, x => x.reach) || 1]).range([0.8, 4]);
+    const rL = d3.scaleSqrt().domain([0, d3.quantile(L.twigs.map(t => t.p.reach).sort(d3.ascending), 0.97) || 1]).range([2, 7.5]).clamp(true);
+    const on = c => !act || c === act;
+    const jOn = p => !JOURNEY || p.pr === JOURNEY;
+    const T = TT();
+
+    // capas
+    const layer = n => { let s = treeSvg.select('g.' + n); if (s.empty()) s = treeSvg.append('g').attr('class', n); return s; };
+    const gArc = layer('t-arcs'), gTrunk = layer('t-trunk'), gBr = layer('t-br'), gTw = layer('t-tw'), gLf = layer('t-lf');
+
+    // escala: arcos de referencia y la meta
+    const ticks = [0.5, 1, 1.5].map(f => L.g * f).concat([L.vmax]).filter((v, i, arr) => v <= L.vmax && arr.indexOf(v) === i);
+    const arcD = r => { const [x0, y0] = polar(F, -L.A - 0.05, r), [x1, y1] = polar(F, L.A + 0.05, r); return 'M' + x0 + ',' + y0 + 'A' + r + ',' + r + ' 0 0 1 ' + x1 + ',' + y1; };
+    const arcs = ticks.map(v => ({ v, r: L.rOf(v), goal: v === L.g }));
+    gArc.selectAll('path').data(arcs, d => d.v).join(
+      e => e.append('path').attr('fill', 'none').attr('d', d => arcD(d.r)).attr('opacity', 0),
+      u => u, x => x.remove())
+      .attr('stroke', d => d.goal ? rgb('--c-txt2') : rgb('--c-txt4'))
+      .attr('stroke-width', d => d.goal ? 2 : 1).attr('stroke-opacity', d => d.goal ? 0.55 : 0.18)
+      .attr('stroke-dasharray', d => d.goal ? null : '2 5')
+      .transition(T).attr('d', d => arcD(d.r)).attr('opacity', 1);
+    gArc.selectAll('text').data(arcs, d => d.v).join('text')
+      .attr('class', d => 'tlab' + (d.goal ? ' goal' : ''))
+      .text(d => (d.goal ? 'META ' : '') + (Math.round(d.v * 10) / 10) + '%')
+      .attr('text-anchor', 'end')
+      .attr('text-anchor', 'start')
+      .transition(T).attr('x', d => polar(F, -L.A * 0.72, d.r)[0] + 6).attr('y', d => polar(F, -L.A * 0.72, d.r)[1] - 5);
+
+    // tronco
+    const tw = Math.max(10, Math.min(26, L.R * 0.05));
+    gTrunk.selectAll('path').data([0]).join('path').attr('fill', rgb('--c-txt3')).attr('fill-opacity', 0.55)
+      .transition(T).attr('d', 'M' + (F.x - tw / 2) + ',' + (L.bottom + 2) + 'C' + (F.x - tw * 0.32) + ',' + (F.y + L.trunkH * 0.4) + ' ' + (F.x - tw * 0.18) + ',' + (F.y + 6) + ' ' + (F.x - 2) + ',' + F.y +
+        'L' + (F.x + 2) + ',' + F.y + 'C' + (F.x + tw * 0.18) + ',' + (F.y + 6) + ' ' + (F.x + tw * 0.32) + ',' + (F.y + L.trunkH * 0.4) + ' ' + (F.x + tw / 2) + ',' + (L.bottom + 2) + 'Z');
+
+    // ramas: campaña y subcampaña
+    const brData = L.camps.map(x => ({ key: 'c|' + x.n, c: x.n, d: branchPath(F, 0, 0, x.a, L.r1) + branchPath(F, x.a, L.r1, x.a, L.r2 * 0.92).replace('M', 'L'), w: wC(x.reach) }))
+      .concat(L.subs.map(s => ({ key: 's|' + s.key, c: s.c, d: branchPath(F, s.parent.a, L.r2 * 0.92, s.a, L.r0 * 0.86), w: wS(s.reach) })));
+    gBr.selectAll('path').data(brData, d => d.key).join(
+      e => e.append('path').attr('fill', 'none').attr('stroke-linecap', 'round').attr('d', d => d.d)
+        .attr('stroke-dasharray', function () { return grow ? this.getTotalLength() : null; }).attr('stroke-dashoffset', function () { return grow ? this.getTotalLength() : null; }),
+      u => u, x => x.transition(T).attr('stroke-opacity', 0).remove())
+      .attr('stroke', rgb('--c-txt2'))
+      .on('mouseenter', (e, d) => { if (!focus) { treeHoverC = d.c; renderTree(false); } })
+      .on('mouseleave', () => { if (treeHoverC) { treeHoverC = null; renderTree(false); } })
+      .on('click', (e, d) => { e.stopPropagation(); setFocus(d.c); })
+      .transition(T).delay((d, i) => grow && !REDUCED ? 120 + i * 6 : 0)
+      .attr('d', d => d.d).attr('stroke-width', d => d.w).attr('stroke-dashoffset', 0)
+      .attr('stroke-opacity', d => JOURNEY ? 0.12 : on(d.c) ? 0.55 : 0.1)
+      .on('end', function () { this.removeAttribute('stroke-dasharray'); this.removeAttribute('stroke-dashoffset'); });
+
+    // ramitas a cada hoja
+    gTw.selectAll('path').data(L.twigs, d => d.key).join(
+      e => e.append('path').attr('fill', 'none').attr('stroke-opacity', 0).attr('d', d => branchPath(F, d.parent.a, L.r0 * 0.86, d.a, L.r0 * 0.86)),
+      u => u, x => x.transition(T).attr('stroke-opacity', 0).remove())
+      .attr('stroke', d => JOURNEY && d.p.pr === JOURNEY ? rgb('--c-accent') : rgb('--c-txt3'))
+      .attr('stroke-width', d => JOURNEY && d.p.pr === JOURNEY ? 1.4 : 0.7)
+      .transition(T).delay((d, i) => grow && !REDUCED ? 500 + (i % 60) * 8 : 0)
+      .attr('d', d => branchPath(F, d.parent.a, L.r0 * 0.86, d.a, d.r))
+      .attr('stroke-opacity', d => !jOn(d.p) ? 0.04 : JOURNEY ? 0.9 : on(d.p.c) ? 0.28 : 0.05);
+
+    // hojas
+    gLf.selectAll('circle').data(L.twigs, d => d.key).join(
+      e => e.append('circle').attr('r', 0).attr('cx', d => polar(F, d.a, L.r0 * 0.86)[0]).attr('cy', d => polar(F, d.a, L.r0 * 0.86)[1]),
+      u => u, x => x.transition(T).attr('r', 0).remove())
+      .attr('fill', d => leafColor(d.p))
+      .style('cursor', 'pointer')
+      .on('mouseenter', (e, d) => { if (pinned != null) return; hover = d.p.i; showTip(d.p, false); const [x, y] = polar(F, d.a, d.r); placeTip(x, y); })
+      .on('mouseleave', () => { if (pinned == null) { hover = null; tip.hidden = true; } })
+      .on('click', (e, d) => { e.stopPropagation(); pinned = d.p.i; hover = d.p.i; showTip(d.p, true); const [x, y] = polar(F, d.a, d.r); placeTip(x, y); })
+      .transition(T).delay((d, i) => grow && !REDUCED ? 650 + (i % 80) * 7 : 0)
+      .attr('cx', d => polar(F, d.a, d.r)[0]).attr('cy', d => polar(F, d.a, d.r)[1])
+      .attr('r', d => rL(d.p.reach) * (jOn(d.p) ? 1 : 0.6))
+      .attr('fill-opacity', d => !jOn(d.p) ? 0.12 : on(d.p.c) ? 0.92 : 0.18);
+
+    treeLabels(L, grow);
+  }
+
+  // etiquetas: los mejores contenidos en la copa y el nombre de cada campaña
+  function treeLabels(L, grow) {
+    treeLbl.innerHTML = '';
+    const F = L.F, items = [];
+    const pool = L.twigs.filter(t => (!focus || t.p.c === focus) && (!JOURNEY || t.p.pr === JOURNEY));
+    const best = pool.slice().sort((a, b) => val(b.p, L.lz) - val(a.p, L.lz)).slice(0, L.narrow ? 4 : 8);
+    best.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = 'chip tchip'; el.style.setProperty('--d', (grow ? 1100 : 0) + i * 60 + 'ms');
+      el.innerHTML = '<b class="ok">' + pct(val(t.p, L.lz), KPI[L.lz].dec) + '</b><span>' + esc([t.p.fmt, t.p.pr || t.p.c, t.p.plat].filter(Boolean).join(' · ')) + '</span>';
+      el.addEventListener('click', e => { e.stopPropagation(); pinned = t.p.i; hover = t.p.i; showTip(t.p, true); const [x, y] = polar(F, t.a, t.r); placeTip(x, y); });
+      treeLbl.appendChild(el);
+      const [x, y] = polar(F, t.a, t.r), side = t.a < 0 ? -1 : 1;
+      items.push({ el, w: el.offsetWidth, h: el.offsetHeight, ax: x, ay: y, side, x: side < 0 ? Math.min(x - 24, F.x - L.R * 0.2) : Math.max(x + 24, F.x + L.R * 0.2), y: y - 18 });
+    });
+    // nombres de campaña sobre su rama
+    if (!JOURNEY) L.camps.slice().sort((a, b) => b.list.length - a.list.length).slice(0, focus ? 1 : (L.narrow ? 3 : 6)).forEach(x => {
+      if (focus && x.n !== focus) return;
+      const el = document.createElement('div');
+      el.className = 'clab'; el.textContent = x.n + ' · ' + x.list.length;
+      el.addEventListener('click', e => { e.stopPropagation(); setFocus(x.n); });
+      treeLbl.appendChild(el);
+      const [x0, y0] = polar(F, x.a, L.r0 * 0.78);
+      items.push({ el, w: el.offsetWidth, h: el.offsetHeight, x: x0, y: y0 });
+    });
+    // separar etiquetas
+    const top = 58, bottom = L.bottom - 8;
+    const clamp = it => { it.x = Math.min(L.W - it.w / 2 - 8, Math.max(it.w / 2 + 8, it.x)); it.y = Math.min(bottom - it.h / 2, Math.max(top + it.h / 2, it.y)); };
+    items.forEach(clamp);
+    for (let k = 0; k < 60; k++) {
+      let moved = false;
+      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+        const A = items[i], B = items[j], dx = (A.w + B.w) / 2 + 6 - Math.abs(A.x - B.x), dy = (A.h + B.h) / 2 + 4 - Math.abs(A.y - B.y);
+        if (dx <= 0 || dy <= 0) continue;
+        moved = true;
+        const s = (A.y <= B.y ? -1 : 1) * dy / 2;
+        if (!A.fixed) A.y += B.fixed ? 2 * s : s; if (!B.fixed) B.y -= A.fixed ? 2 * s : s;
+        clamp(A); clamp(B);
+      }
+      if (!moved) break;
+    }
+    let svg = '';
+    items.forEach(it => {
+      it.el.style.transform = 'translate(' + (it.x - it.w / 2).toFixed(1) + 'px,' + (it.y - it.h / 2).toFixed(1) + 'px)';
+      if (it.ax != null) svg += '<line x1="' + it.ax.toFixed(1) + '" y1="' + it.ay.toFixed(1) + '" x2="' + (it.x + (it.side < 0 ? it.w / 2 : -it.w / 2)).toFixed(1) + '" y2="' + it.y.toFixed(1) + '"/>';
+    });
+    let lead = treeSvg.select('g.t-lead'); if (lead.empty()) lead = treeSvg.append('g').attr('class', 't-lead');
+    lead.html(svg);
+  }
+
+  // ---------- histograma semanal bajo la línea de tiempo
+  function renderHist() {
+    const svg = d3.select('#tlhist');
+    if (!VIEW || !STEPS.length) { svg.selectAll('*').remove(); return; }
+    const box = document.getElementById('tlhist').getBoundingClientRect(), W = box.width, Hh = box.height;
+    const n = STEPS.length, x = i => 7 + (W - 14) * (n > 1 ? i / (n - 1) : 0.5), bw = Math.max(2, (W - 14) / Math.max(1, n) * 0.62);
+    const lz = treeLens(), kpi = lens !== 'plat';
+    const rows = STEPS.map((s, i) => {
+      const from = i ? STEPS[i - 1] : new Date(0);
+      const ps = VIEW.posts.filter(p => p.d > from && p.d <= s);
+      if (!kpi) return { i, a: ps.length, b: 0 };
+      const e = ps.filter(p => eligible(p, lz));
+      return { i, a: e.filter(p => val(p, lz) >= KPI[lz].goal).length, b: e.filter(p => val(p, lz) < KPI[lz].goal).length };
+    });
+    const ymax = d3.max(rows, r => r.a + r.b) || 1, y = v => v / ymax * (Hh - 2);
+    const cur = +document.getElementById('tlrange').value;
+    svg.attr('viewBox', '0 0 ' + W + ' ' + Hh);
+    const g = svg.selectAll('g.col').data(rows, d => d.i).join(e => { const g = e.append('g').attr('class', 'col'); g.append('rect').attr('class', 'ra'); g.append('rect').attr('class', 'rb'); g.append('rect').attr('class', 'hit'); return g; });
+    g.attr('opacity', d => d.i <= cur ? 1 : 0.28);
+    g.select('.ra').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1)
+      .attr('fill', kpi ? rgb('--c-success') : rgb('--c-accent2'))
+      .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a)).attr('height', d => y(d.a));
+    g.select('.rb').attr('x', d => x(d.i) - bw / 2).attr('width', bw).attr('rx', 1).attr('fill', rgb('--c-bad'))
+      .transition().duration(REDUCED ? 0 : 400).attr('y', d => Hh - y(d.a) - y(d.b)).attr('height', d => y(d.b));
+    g.select('.hit').attr('x', d => x(d.i) - Math.max(bw, 8) / 2).attr('width', Math.max(bw, 8)).attr('y', 0).attr('height', Hh).attr('fill', 'transparent').style('cursor', 'pointer')
+      .on('click', (e, d) => { setPlay(false); setUpto(d.i, false); })
+      .selectAll('title').data(d => [d]).join('title')
+      .text(d => (d.i < n - 1 ? 'Semana al ' + fdate(STEPS[d.i]) : 'Última semana') + ' · ' + (kpi ? d.a + ' cumplen, ' + d.b + ' no' : d.a + ' posts'));
+  }
+  // ============================================================
   // PANEL
   // ============================================================
   function platBreak(list, title, cls) {
@@ -1285,6 +1550,13 @@
   }
   function renderLegend() {
     const el = document.getElementById('legend');
+    if (MODE === 'arbol') {
+      const lz = lens === 'plat' ? 'vtr' : lens;
+      el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
+        : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>') +
+        '<span>Hojas = ' + KPI[lz].unit + ' · más lejos del tronco = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · arco marcado = meta · grosor y tamaño = alcance</span>';
+      return;
+    }
     el.innerHTML = lens === 'plat'
       ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('') + '<span>Tamaño = alcance</span>'
       : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span><span><i style="background:' + rgb('--c-na') + '"></i>No aplica</span><span>Altura = distancia a la meta · el plano es la meta · tamaño = alcance · hilos = mismo producto o subcampaña</span>';
@@ -1296,6 +1568,7 @@
       '<li>Cada esfera es un post. Las campañas van alrededor del anillo en orden cronológico, en el sentido de las manecillas del reloj.</li>' +
       '<li>El plano es la meta. En los lentes de KPI, lo que cumple flota arriba y lo que no se hunde; la altura es la distancia a la meta. Los posts que no aplican quedan sobre el plano, en gris.</li>' +
       '<li>Al abrir una campaña, sus posts se acomodan en un renglón por plataforma, en orden de fecha.</li>' +
+      '<li>Vista «Árbol»: el tronco es la cuenta, las ramas son campañas y subcampañas y cada hoja es un post. Entre más lejos del tronco, mejor su VTR (o su ER en el lente de Instagram): los mejores contenidos quedan en la copa y están rotulados. El arco marcado es la meta.</li>' +
       '<li>Una campaña que concentra más del 20% de los posts del periodo se separa por etapa.</li>' +
       '<li>Al pasar el cursor sobre un post se dibujan los hilos a los posts del mismo producto o subcampaña.</li>' +
       '<li>La barra de abajo recorre el periodo semana por semana; con play (o la barra espaciadora) el mapa se arma solo y el KPI corre con él.</li>' +
@@ -1310,6 +1583,7 @@
   function refresh() {
     if (!VIEW) return;
     renderLegend(); sceneUpdate(); renderSummary(); renderRank();
+    if (MODE === 'arbol') renderTree(false);
   }
   function renderPlatFilter() {
     const base = PID ? inPeriod(PID).filter(passPT) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
@@ -1365,6 +1639,8 @@
     document.getElementById('meta').textContent = fmtInt(VIEW.posts.length) + ' posts' + filterLabel() + ' · ' + fdate(VIEW.from) + ' a ' + fdate(VIEW.to) + ' · leído ' + META.at;
     buildSteps(); fillJourney();
     renderNotes(); sceneSetView(); renderLegend(); renderSummary(); renderRank();
+    stage.classList.toggle('treemode', MODE === 'arbol');
+    if (MODE === 'arbol') renderTree(true);
     try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
   }
 
@@ -1385,7 +1661,7 @@
     const c = new Date(VIEW.from.getFullYear(), VIEW.from.getMonth() + 1, 1);
     while (c < VIEW.to) { html += '<span style="left:' + ((c - STEPS[0]) / span * 100).toFixed(2) + '%">' + MESL[c.getMonth()] + '</span>'; c.setMonth(c.getMonth() + 1); }
     m.innerHTML = STEPS.length > 3 ? html : '';
-    paintRange();
+    paintRange(); renderHist();
   }
   function paintRange() {
     const r = $('tlrange'), k = +r.max ? +r.value / +r.max : 1;
@@ -1404,7 +1680,8 @@
     paintRange();
     animateTo(fromPlay ? 520 : 380, null);
     dirty = true;
-    renderChips(); renderJourneyCard();
+    renderChips(); renderJourneyCard(); renderHist();
+    if (MODE === 'arbol') renderTree(false);
     // el KPI corre con la línea de tiempo, sin saturar el panel
     if (!sumTimer) sumTimer = setTimeout(() => { sumTimer = 0; renderSummary(); }, fromPlay ? 0 : 160);
   }
@@ -1458,6 +1735,7 @@
     if (focus) { focus = null; }
     syncJourneyUI();
     if (GL) { setThreads(); sceneUpdate(); }
+    if (MODE === 'arbol') renderTree(false);
     renderSummary(); renderRank();
   }
   // ============================================================
@@ -1504,23 +1782,27 @@
   $('reload').addEventListener('click', start);
   $('period').addEventListener('change', e => setPeriod(e.target.value));
   $('back').addEventListener('click', () => { if (focus) setFocus(focus); });
+  document.querySelectorAll('.mseg button').forEach(b => b.addEventListener('click', () => { if (MODE !== b.dataset.mode) setMode(b.dataset.mode); }));
+  document.querySelectorAll('.mseg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === MODE)));
+  stage.classList.toggle('treemode', MODE === 'arbol');
+  document.getElementById('tree').addEventListener('click', () => { if (pinned != null) { pinned = null; hover = null; tip.hidden = true; } else if (focus) setFocus(focus); });
   $('tlplay').addEventListener('click', () => { hideHint(); setPlay(!playing); });
   $('tlrange').addEventListener('input', e => { setPlay(false); hideHint(); setUpto(+e.target.value, false); });
   $('journey').addEventListener('change', e => setJourney(e.target.value));
   tip.addEventListener('click', e => { const b = e.target.closest('.jlink'); if (b) setJourney(b.dataset.pr); });
   window.addEventListener('keydown', e => { if (e.key === ' ' && e.target === document.body && VIEW) { e.preventDefault(); setPlay(!playing); } });
   document.querySelectorAll('.vseg button').forEach(b => b.addEventListener('click', () => { lastTouch = performance.now(); hideHint(); setView(b.dataset.view); }));
-  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.seg button[data-lens]').forEach(b => b.addEventListener('click', () => {
     lens = b.dataset.lens;
-    document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
-    pinned = null; hover = null; tip.hidden = true; refresh(); renderJourneyCard();
+    document.querySelectorAll('.seg button[data-lens]').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+    pinned = null; hover = null; tip.hidden = true; refresh(); renderJourneyCard(); renderHist();
   }));
   $('theme').addEventListener('click', () => {
     const light = !document.documentElement.classList.contains('light');
     document.documentElement.classList.toggle('light', light);
     try { localStorage.setItem('smx-theme', light ? 'light' : 'dark'); } catch (e) {}
     document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#F8F7F2' : '#0A0A0F');
-    themeGL(); if (VIEW) { renderLegend(); renderSummary(); renderRank(); renderChips(); }
+    themeGL(); if (VIEW) { renderLegend(); renderSummary(); renderRank(); renderChips(); renderHist(); if (MODE === 'arbol') renderTree(false); }
   });
   new ResizeObserver(resize).observe(stage);
   if (authLoad()) start(); else showLogin();
