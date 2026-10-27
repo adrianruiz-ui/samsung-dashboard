@@ -1,0 +1,1089 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0A0A0F" />
+  <title>Samsung MX — Gráficas de desempeño</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231428A0'/%3E%3Cpath d='M22 70 Q40 30 50 50 T78 30' fill='none' stroke='white' stroke-width='8' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    (function () {
+      var t = 'dark';
+      try {
+        var s = localStorage.getItem('smx-theme');
+        if (s === 'light' || s === 'dark') t = s;
+        else if (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) t = 'light';
+      } catch (e) {}
+      if (t === 'light') document.documentElement.classList.add('light');
+    })();
+  </script>
+  <style>
+
+    /* Tokens del dashboard maestro: :root = oscuro, html.light = claro */
+    :root {
+      color-scheme: dark;
+      --c-ink: 10 10 15; --c-surface: 19 19 26; --c-surface2: 26 26 34;
+      --c-txt: 255 255 255; --c-txt2: 181 181 192; --c-txt3: 136 136 148; --c-txt4: 107 107 120; --c-faint: 74 74 85;
+      --c-accent: 122 150 255; --c-accent2: 76 110 245;
+      --c-amber: 240 179 88; --c-success: 93 202 165; --c-bad: 242 110 110; --c-na: 58 58 70;
+      --edge: 255 255 255;
+      --logo-samsung: #FFFFFF; --logo-ganem: #FFFFFF;
+      --font: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --ease-out: cubic-bezier(.16, 1, .3, 1);
+    }
+    html.light {
+      color-scheme: light;
+      --c-ink: 245 246 248; --c-surface: 255 255 255; --c-surface2: 239 241 245;
+      --c-txt: 15 15 20; --c-txt2: 66 66 76; --c-txt3: 104 104 114; --c-txt4: 138 138 148; --c-faint: 178 178 186;
+      --c-accent: 20 40 160; --c-accent2: 40 70 205;
+      --c-amber: 168 110 15; --c-success: 22 128 100; --c-bad: 200 52 60; --c-na: 168 170 182;
+      --edge: 15 15 20;
+      --logo-samsung: #1428A0; --logo-ganem: #0A0A0F;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: rgb(var(--c-ink)); color: rgb(var(--c-txt)); }
+    body { font-family: var(--font); font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; font-feature-settings: 'ss01'; letter-spacing: -0.005em;
+           padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: max(20px, env(safe-area-inset-top, 0px)) 32px; }
+    [hidden] { display: none !important; }
+    a { color: inherit; }
+    button { font-family: inherit; }
+    .num { font-variant-numeric: tabular-nums; }
+    :focus-visible { outline: 2px solid rgb(var(--c-accent2)); outline-offset: 2px; border-radius: 6px; }
+
+    /* Acceso */
+    .login { min-height: calc(100vh - 60px); display: flex; align-items: center; justify-content: center; }
+    .login-box { width: 100%; max-width: 420px; }
+    .logos { display: flex; align-items: center; gap: 16px; }
+    .logos .sep { width: 1px; height: 16px; background: rgb(var(--c-txt) / .2); }
+    .logo-s { height: 15px; width: auto; } .logo-g { height: 20px; width: auto; }
+    .login .logos { margin-bottom: 48px; }
+    .eyebrow { font-size: 12px; font-weight: 500; color: rgb(var(--c-txt3)); }
+    .login h1 { font-size: 30px; line-height: 1.1; font-weight: 500; letter-spacing: -0.02em; margin: 10px 0 12px; }
+    .login p { color: rgb(var(--c-txt3)); margin: 0 0 32px; }
+    .g-btn { width: 100%; height: 48px; border: 0; border-radius: 12px; background: #fff; color: #1f1f1f; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer; box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.18); }
+    .g-btn:disabled { opacity: .6; cursor: default; }
+    .alert { margin-top: 16px; border-radius: 12px; background: rgb(var(--c-amber) / .10); padding: 12px 16px; font-size: 13px; color: rgb(var(--c-txt2)); }
+    .login small { display: block; margin-top: 40px; font-size: 11.5px; color: rgb(var(--c-txt4)); }
+
+    /* App */
+    .wrap { max-width: 1480px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .top-r { display: flex; align-items: center; gap: 8px; }
+    .ghost { height: 34px; padding: 0 12px; border-radius: 9px; border: 0; background: rgb(var(--c-txt) / .06); color: rgb(var(--c-txt2)); font-size: 12.5px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; white-space: nowrap; }
+    .ghost:hover { color: rgb(var(--c-txt)); background: rgb(var(--c-txt) / .1); }
+    .ghost svg { width: 15px; height: 15px; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; border: 0; overflow: hidden; background: rgb(var(--c-accent2) / .2); color: rgb(var(--c-txt)); font-size: 12px; font-weight: 500; cursor: pointer; position: relative; }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .menu { position: absolute; right: 0; top: 40px; width: 260px; background: rgb(var(--c-surface)); border-radius: 12px; padding: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.35); z-index: 30; text-align: left; }
+    .menu .n { font-size: 13px; } .menu .e { font-size: 11px; color: rgb(var(--c-txt4)); margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; }
+    .menu button { width: 100%; height: 32px; border-radius: 8px; border: 0; background: rgb(var(--c-txt) / .06); color: rgb(var(--c-txt2)); cursor: pointer; font-size: 12px; }
+    .acct { position: relative; }
+
+    .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .head h1 { font-size: clamp(26px, 3vw, 34px); line-height: 1.08; font-weight: 600; letter-spacing: -0.025em; margin: 6px 0 0; text-wrap: balance; }
+    .head .meta { color: rgb(var(--c-txt3)); font-size: 13px; margin-top: 6px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .seg { display: inline-flex; background: rgb(var(--c-txt) / .06); border-radius: 9px; padding: 3px; gap: 2px; }
+    .seg button { border: 0; background: none; color: rgb(var(--c-txt3)); font-size: 12.5px; font-weight: 550; padding: 7px 12px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, color 160ms ease; }
+    .seg button[aria-checked="true"] { background: rgb(var(--c-surface)); color: rgb(var(--c-txt)); box-shadow: 0 1px 2px rgba(10,10,15,.18); }
+    html:not(.light) .seg button[aria-checked="true"] { background: rgb(var(--c-txt) / .11); }
+    select.sel { height: 34px; border-radius: 9px; border: 0; background: rgb(var(--c-txt) / .06); color: rgb(var(--c-txt)); font: 550 12.5px var(--font); padding: 0 30px 0 12px; cursor: pointer; appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, rgb(var(--c-txt3)) 50%), linear-gradient(135deg, rgb(var(--c-txt3)) 50%, transparent 50%);
+      background-position: right 14px center, right 9px center; background-size: 5px 5px; background-repeat: no-repeat; }
+    select.sel option { background: rgb(var(--c-surface)); color: rgb(var(--c-txt)); }
+
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 16px; align-items: start; }
+    @media (max-width: 1020px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+    .card { background: rgb(var(--c-surface)); border-radius: 16px; padding: 18px; }
+    .stage { position: relative; background: rgb(var(--c-surface)); border-radius: 16px; overflow: hidden; height: min(calc(100vh - 150px), 920px); min-height: 560px; }
+    @media (max-width: 1020px) { .stage { height: auto; aspect-ratio: 1 / 1.1; min-height: 0; } }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .chips { position: absolute; inset: 0; pointer-events: none; }
+    .chip { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; border: 0; border-radius: 8px; padding: 5px 8px 6px; background: rgb(var(--c-ink) / .9); color: rgb(var(--c-txt));
+            font: 500 11px/1.25 var(--font); text-align: left; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,.25); transition: opacity 200ms ease; }
+    html.light .chip { background: rgb(var(--c-surface) / .94); box-shadow: 0 2px 12px rgba(10,10,15,.12); }
+    .chip b { display: block; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .chip span { color: rgb(var(--c-txt3)); }
+    .chip.dim { opacity: .22; }
+    .ok { color: rgb(var(--c-success)); } .bad { color: rgb(var(--c-bad)); }
+    .legend { position: absolute; left: 16px; bottom: 14px; right: 16px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11.5px; color: rgb(var(--c-txt3)); pointer-events: none; }
+    .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+    .state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: rgb(var(--c-txt3)); text-align: center; padding: 24px; }
+    .spin { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgb(var(--c-txt) / .12); border-top-color: rgb(var(--c-accent2)); animation: sp 900ms linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    .tip { position: absolute; z-index: 5; width: 288px; background: rgb(var(--c-surface)); border-radius: 12px; padding: 13px 14px; box-shadow: 0 12px 36px rgba(0,0,0,.35); font-size: 12.5px; pointer-events: none; }
+    html.light .tip { box-shadow: 0 12px 36px rgba(10,10,15,.16); }
+    .tip.pin { pointer-events: auto; }
+    .tip .t { font-weight: 620; font-size: 13.5px; }
+    .tip .m { color: rgb(var(--c-txt3)); font-size: 11.5px; margin: 2px 0 10px; }
+    .tip dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+    .tip dt { color: rgb(var(--c-txt3)); } .tip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tip .links { display: flex; gap: 14px; margin-top: 10px; }
+    .tip .links a { color: rgb(var(--c-accent)); font-weight: 600; text-decoration: none; }
+    .tip .hint { margin-top: 8px; color: rgb(var(--c-txt4)); font-size: 11px; }
+
+    aside { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .big .n { font-size: 44px; line-height: 1; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .pill { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+    .pill.ok { background: rgb(var(--c-success) / .14); } .pill.bad { background: rgb(var(--c-bad) / .14); }
+    .sub { color: rgb(var(--c-txt3)); margin-top: 10px; font-size: 13px; }
+    .sub strong { color: rgb(var(--c-txt)); font-weight: 600; }
+    .rule { color: rgb(var(--c-txt4)); font-size: 12px; margin-top: 8px; }
+    h2 { font-size: 16px; font-weight: 620; letter-spacing: -0.01em; margin: 0; }
+    .hint2 { color: rgb(var(--c-txt3)); font-size: 12px; margin: 4px 0 12px; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 62px; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; border: 0; width: 100%; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .row:nth-child(even) { background: rgb(var(--c-txt) / .025); }
+    .row:hover, .row.on { background: rgb(var(--c-accent2) / .12) !important; }
+    .row .nm { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .nm small { color: rgb(var(--c-txt4)); font-size: 11px; margin-left: 5px; font-variant-numeric: tabular-nums; }
+    .bar { position: relative; height: 8px; background: rgb(var(--c-txt) / .07); border-radius: 4px; }
+    .bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+    .bar em { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: rgb(var(--c-txt) / .55); }
+    .row .v { font-size: 12.5px; font-weight: 550; text-align: right; font-variant-numeric: tabular-nums; }
+    .pf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .pf button { border: 0; border-radius: 999px; padding: 6px 11px 6px 9px; background: rgb(var(--c-txt) / .06); color: rgb(var(--c-txt3)); font: 550 12.5px var(--font); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: background-color 160ms ease, color 160ms ease; }
+    .pf button:hover { background: rgb(var(--c-txt) / .1); color: rgb(var(--c-txt)); }
+    .pf button[aria-pressed="true"] { background: rgb(var(--c-surface)); color: rgb(var(--c-txt)); box-shadow: 0 1px 2px rgba(10,10,15,.14); }
+    html:not(.light) .pf button[aria-pressed="true"] { background: rgb(var(--c-txt) / .12); }
+    .pf button i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .pf button[aria-pressed="false"] i { background: transparent !important; box-shadow: inset 0 0 0 1.5px rgb(var(--c-txt4)); }
+    .pf button small { color: rgb(var(--c-txt4)); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .pf .lbl { font-size: 12px; color: rgb(var(--c-txt4)); margin-left: 4px; }
+    .filters { display: flex; flex-direction: column; gap: 10px; }
+    .ff { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+    .fgroup { display: inline-flex; align-items: center; gap: 8px; }
+    .fgroup > span { font-size: 12px; color: rgb(var(--c-txt3)); font-weight: 500; }
+    .fgroup .seg button small { color: rgb(var(--c-txt4)); font-size: 11px; margin-left: 5px; font-variant-numeric: tabular-nums; }
+    .igk { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .04); font-size: 13px; color: rgb(var(--c-txt2)); }
+    .igk b { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .igk small { flex-basis: 100%; font-size: 12px; color: rgb(var(--c-txt3)); }
+    .fnote { font-size: 12px; color: rgb(var(--c-amber)); }
+    .brk { margin: 2px 0 8px; padding: 10px 10px 8px 14px; border-radius: 10px; background: rgb(var(--c-txt) / .035); }
+    .brk .bt { font-size: 11.5px; color: rgb(var(--c-txt3)); margin-bottom: 6px; }
+    .brow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 56px; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+    .brow .nm { display: flex; align-items: center; gap: 7px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .brow .nm i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .brow .nm small { color: rgb(var(--c-txt4)); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .brow .v { text-align: right; font-weight: 550; font-variant-numeric: tabular-nums; }
+    .summary-brk { margin-top: 14px; }
+    .summary-brk .bt { font-size: 12px; font-weight: 600; color: rgb(var(--c-txt)); margin-bottom: 4px; }
+    .thin { margin-top: 12px; color: rgb(var(--c-txt4)); font-size: 11.5px; }
+    .notes { font-size: 12.5px; color: rgb(var(--c-txt3)); }
+    .notes h3 { font-size: 13px; font-weight: 620; color: rgb(var(--c-txt)); margin: 0 0 6px; }
+    .notes h3 + ul { margin-bottom: 14px; }
+    .notes ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
+    .notes ul:last-child { margin-bottom: 0; }
+    :root { --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace; --ease-out: cubic-bezier(.16,1,.3,1); }
+    .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+    .tabs button { border: 0; background: none; color: rgb(var(--c-txt3)); font: 550 13.5px var(--font); padding: 9px 14px 10px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: background-color 160ms ease, color 160ms ease; }
+    .tabs button:hover { color: rgb(var(--c-txt)); background: rgb(var(--c-txt) / .05); }
+    .tabs button[aria-selected="true"] { color: rgb(var(--c-txt)); background: rgb(var(--c-txt) / .09); }
+    html.light .tabs button[aria-selected="true"] { background: rgb(var(--c-surface)); box-shadow: 0 1px 2px rgba(10,10,15,.12); }
+    .tabs button svg { width: 15px; height: 15px; }
+    .stage { position: relative; background: rgb(var(--c-surface)); border-radius: 16px; overflow: hidden; height: min(calc(100vh - 150px), 900px); min-height: 600px; }
+    @media (max-width: 1020px) { .stage { height: 640px; min-height: 0; aspect-ratio: auto; } }
+    #viz { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .ov { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; pointer-events: none; z-index: 3; }
+    .ov > * { pointer-events: auto; }
+    .ov .seg { background: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
+    html.light .ov .seg { background: rgb(var(--c-surface2) / .9); }
+    .ov .cap { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: rgb(var(--c-txt3)); padding-top: 9px; }
+    .tip { left: 0; top: 0; }
+    .tip.in { animation: tipIn 240ms var(--ease-out) both; }
+    @keyframes tipIn { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+    .tip .t { display: flex; align-items: center; gap: 7px; }
+    .tip .t i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .tip dd { white-space: normal; }
+    .na { color: rgb(var(--c-txt4)); }
+    /* SVG */
+    .vz text { font-family: var(--font); fill: rgb(var(--c-txt2)); }
+    .vz .mono { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; fill: rgb(var(--c-txt4)); }
+    .vz .lbl { font-size: 12px; font-weight: 550; fill: rgb(var(--c-txt)); }
+    .vz .val { font-family: var(--mono); font-size: 10.5px; fill: rgb(var(--c-txt3)); }
+    .vz .axis line, .vz .axis path { stroke: rgb(var(--c-txt) / .1); }
+    .vz .axis text { font-family: var(--mono); font-size: 10px; fill: rgb(var(--c-txt4)); }
+    .vz .grid line { stroke: rgb(var(--c-txt) / .06); }
+    .vz .goal { stroke: rgb(var(--c-txt2)); stroke-dasharray: 4 4; stroke-width: 1; }
+    .vz .goaltxt { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; fill: rgb(var(--c-txt2)); font-weight: 600; }
+    .vz .link { fill: none; transition: stroke-opacity 220ms ease; }
+    .vz .node rect { transition: opacity 220ms ease; }
+    .vz .node, .vz .link { cursor: pointer; }
+    .vz .halo { paint-order: stroke; stroke: rgb(var(--c-surface)); stroke-width: 4px; stroke-linejoin: round; }
+    /* Panel */
+    .eff { display: grid; grid-template-columns: 88px minmax(0, 1fr) 52px; gap: 6px 10px; align-items: center; font-size: 12px; margin-top: 10px; }
+    .eff .nm { display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .eff .nm i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .eff .bars { display: flex; flex-direction: column; gap: 3px; }
+    .eff .bars span { display: block; height: 5px; border-radius: 3px; }
+    .eff .v { text-align: right; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .key { display: flex; gap: 14px; font-size: 11.5px; color: rgb(var(--c-txt3)); margin-top: 10px; }
+    .key i { display: inline-block; width: 14px; height: 5px; border-radius: 3px; margin-right: 6px; vertical-align: 1px; }
+    .route { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; padding: 7px 0; font-size: 12.5px; align-items: baseline; }
+    .route + .route { box-shadow: inset 0 1px 0 rgb(var(--c-txt) / .06); }
+    .route b { font-family: var(--mono); font-size: 11px; color: rgb(var(--c-txt4)); font-weight: 500; }
+    .route span { color: rgb(var(--c-txt2)); }
+    .route em { font-style: normal; font-family: var(--mono); font-size: 11px; color: rgb(var(--c-txt)); font-variant-numeric: tabular-nums; }
+    .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; margin-top: 12px; font-size: 12.5px; }
+    .kv dt { color: rgb(var(--c-txt3)); } .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: rgb(var(--c-txt)); }
+    .clist { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+    .clist button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; border: 0; background: none; color: rgb(var(--c-txt2)); font: 12.5px var(--font); text-align: left; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
+    .clist button:hover, .clist button.on { background: rgb(var(--c-accent2) / .14); color: rgb(var(--c-txt)); }
+    .clist button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .clist button small { font-family: var(--mono); font-size: 10.5px; color: rgb(var(--c-txt4)); }
+    .ptab { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+    .ptab th { text-align: right; font-weight: 500; color: rgb(var(--c-txt4)); font-size: 10.5px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .05em; padding: 0 0 6px; }
+    .ptab th:first-child, .ptab td:first-child { text-align: left; }
+    .ptab td { text-align: right; padding: 6px 0; font-variant-numeric: tabular-nums; box-shadow: inset 0 1px 0 rgb(var(--c-txt) / .05); }
+    .ptab td:first-child { white-space: nowrap; }
+    .ptab td i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+    .grid > *, .wrap > * { min-width: 0; }
+    .top-r { flex-wrap: wrap; justify-content: flex-end; }
+    @media (max-width: 600px) { .top-r .ghost:not(#theme) { font-size: 0; gap: 0; padding: 0 9px; } .top-r .ghost svg { width: 16px; height: 16px; } }
+    .ff, .pf { min-width: 0; max-width: 100%; } .fgroup { max-width: 100%; min-width: 0; flex-wrap: wrap; } .fgroup .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+    .tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; } .tabs button { flex: none; }
+    @media (prefers-reduced-motion: reduce) { .tip.in { animation: none; } }
+  </style>
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <div class="login-box">
+      <div class="logos"><svg class="logo-s" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 156.0" role="img" aria-label="Samsung" style="fill:var(--logo-samsung)"><path d="M44.9 155.8C39.3 155.4 32.4 154.1 28.0 152.7C14.9 148.6 6.0 140.4 2.3 129.1C0.5 123.7 -0.1 118.6 0.1 109.3L0.1 102.4L19.0 102.4C29.3 102.4 37.9 102.5 38.0 102.6C38.2 102.7 38.3 106.1 38.3 110.3L38.3 117.9L38.7 119.7C39.3 122.3 40.4 124.3 42.1 126.0C43.9 127.7 45.4 128.4 48.2 129.2L50.4 129.7L52.5 129.7C60.0 129.7 64.4 127.0 66.3 121.0L67.0 119.0L67.0 114.9L67.0 110.7L66.3 109.2C64.8 105.6 61.9 102.3 56.9 98.6C53.7 96.2 48.4 92.9 36.0 85.9C23.7 78.9 17.5 74.7 12.3 69.4C6.0 63.2 2.9 57.3 1.5 49.3L1.0 46.1L1.0 41.1L1.1 36.1L1.5 33.3C2.3 28.6 3.4 25.2 5.0 21.9C10.7 10.0 22.0 3.1 39.7 0.7L43.3 0.2L51.6 0.2L59.9 0.2L62.9 0.5C72.3 1.7 80.3 4.3 85.8 7.9C88.4 9.6 92.3 13.3 93.9 15.6C96.5 19.3 98.4 24.0 99.3 29.1L99.7 31.9L99.9 39.4L100.1 46.9L82.2 46.9L64.4 46.9L64.2 40.9L64.1 35.0L63.5 33.2C62.0 28.8 59.0 26.1 54.5 25.1L52.9 24.8L49.8 24.9L46.7 25.1L45.1 25.7C41.8 27.0 39.4 29.6 38.3 33.1L37.7 35.0L37.7 37.9C37.7 41.0 38.0 42.5 39.1 44.7L39.8 46.1L42.2 48.6C46.1 52.4 49.3 54.4 63.3 62.1C73.9 67.9 76.5 69.4 80.6 72.1C89.3 77.9 94.5 82.8 98.3 88.8C101.3 93.6 102.6 98.0 103.2 105.8L103.5 110.3L103.2 115.4C102.6 124.3 101.4 129.7 98.7 134.9C96.4 139.4 93.7 142.6 89.9 145.6C83.1 150.8 74.9 153.9 64.0 155.3L60.4 155.8L53.4 155.8C49.6 155.9 45.7 155.9 44.9 155.8ZM506.4 154.7C496.2 153.5 487.6 150.7 481.0 146.3C478.1 144.4 473.4 139.6 471.7 137.0C469.0 132.9 467.1 128.1 466.1 123.0L465.6 120.4L465.5 111.4L465.4 102.3L484.4 102.3L503.4 102.3L503.4 110.4C503.4 114.8 503.6 119.0 503.7 119.7C504.8 124.1 508.2 127.4 513.0 128.7L514.7 129.1L517.6 129.1C526.6 129.1 530.9 125.2 531.9 116.0L532.1 114.1L531.7 112.0C531.1 107.9 528.7 104.2 524.5 100.6C520.0 96.9 517.0 94.9 504.1 87.7C494.3 82.2 488.5 78.5 484.0 75.2C480.2 72.4 475.1 67.4 472.9 64.4C470.9 61.8 468.4 56.7 467.7 53.9C465.0 43.2 466.2 30.2 470.6 21.6C476.7 9.6 489.5 2.7 508.5 1.1L512.4 0.8L519.3 0.9L526.1 1.1L530.1 1.7C541.2 3.4 548.8 6.7 554.7 12.3C559.5 16.9 562.3 22.3 563.6 29.6L564.1 32.1L564.2 39.6L564.4 47.1L546.6 47.1L528.9 47.1L528.9 42.1C528.9 36.2 528.6 34.3 527.4 31.8L526.6 30.1L525.2 28.8C523.6 27.3 522.2 26.5 519.9 25.8L518.2 25.4L514.9 25.5L511.6 25.6L510.0 26.3C506.7 27.5 504.8 29.5 503.5 32.9L502.8 34.7L502.6 37.3C502.5 40.4 502.9 42.7 503.9 44.9L504.7 46.4L507.0 48.7C510.8 52.5 514.2 54.7 527.6 62.0C544.8 71.4 551.3 75.8 557.5 82.2C563.3 88.3 566.1 93.9 567.2 101.9L567.6 104.4L567.5 110.6L567.5 116.7L567.0 120.4C566.2 127.1 564.5 132.2 561.8 136.5C555.8 146.1 545.3 152.0 530.2 154.3L526.4 154.9L518.1 155.0L509.9 155.1L506.4 154.7ZM643.1 154.4C642.6 154.3 640.9 154.2 639.4 154.0C625.7 152.4 614.7 147.1 608.6 139.1C605.1 134.5 602.9 129.4 601.7 122.8L601.0 119.6L600.9 62.1L600.8 4.6L618.8 4.6L636.9 4.6L636.9 59.1L636.9 113.6L637.2 116.3L637.4 119.0L638.4 121.1L639.4 123.1L640.8 124.5C642.3 126.1 644.8 127.4 647.0 128.0C648.8 128.4 653.5 128.4 655.3 127.9C657.5 127.3 659.3 126.3 660.8 125.0L662.2 123.7L663.2 121.8C664.3 119.7 664.7 118.1 665.0 115.3C665.1 114.3 665.1 89.0 665.1 59.1L665.1 4.6L683.1 4.6L701.1 4.6L701.1 60.1L701.1 115.6L700.8 118.7C698.9 138.8 687.1 150.3 664.5 153.8L660.7 154.3L652.4 154.4C647.9 154.5 643.7 154.5 643.1 154.4ZM942.0 153.0C941.4 152.9 939.8 152.7 938.3 152.5C926.3 151.2 915.9 146.7 909.3 140.1C902.8 133.7 899.8 126.5 898.9 115.4L898.5 111.6L898.6 75.0L898.7 38.4L899.2 35.4C901.3 23.0 906.1 15.0 914.9 9.1C922.9 3.8 933.3 1.1 947.1 0.7C973.9 0.1 991.5 9.2 997.4 26.8C999.1 31.7 999.7 36.8 999.7 45.1L999.7 51.1L981.7 51.1L963.8 51.1L963.6 44.6L963.5 38.1L963.1 36.6C962.3 34.1 961.4 32.5 959.7 30.8C957.9 29.0 955.8 27.9 952.9 27.3L950.7 26.8L948.0 26.9L945.3 27.1L943.2 27.8C942.0 28.2 940.4 29.1 939.5 29.7L938.0 30.9L936.8 32.7C936.2 33.6 935.4 35.3 935.1 36.4L934.4 38.4L934.4 77.6L934.4 116.7L935.1 118.4C936.4 122.0 939.3 124.7 943.2 126.0L945.0 126.7L948.3 126.8L951.6 126.9L953.5 126.5C958.9 125.2 962.8 121.3 963.7 116.3L964.0 114.8L964.0 102.2L964.0 89.7L956.7 89.7L949.4 89.7L949.4 79.1L949.4 68.4L974.7 68.4L1000.0 68.4L1000.0 89.8C1000.0 111.3 999.8 116.9 999.0 121.4C996.4 135.2 987.5 144.9 972.8 149.8C969.6 150.9 966.0 151.7 961.4 152.4L958.4 152.9L950.7 153.0C946.5 153.0 942.5 153.0 942.0 153.0ZM126.7 149.5C126.7 149.1 132.7 116.3 139.9 76.6L153.0 4.6L184.8 4.6L216.5 4.6L216.7 5.1C216.9 5.7 242.9 149.6 242.9 150.0L242.9 150.3L223.7 150.3L204.6 150.3L204.4 149.4C204.3 148.8 200.0 119.1 194.9 83.4C189.7 47.6 185.4 18.2 185.3 18.1C185.2 18.0 185.0 18.0 184.9 18.2C184.8 18.3 180.3 47.8 175.0 83.7C169.7 119.6 165.3 149.3 165.3 149.6L165.1 150.3L145.8 150.3L126.5 150.3L126.7 149.5ZM271.5 146.2C271.6 144.0 271.8 137.8 271.9 132.6C271.9 127.3 272.1 121.6 272.1 119.9C272.2 118.1 272.3 111.9 272.4 106.0C272.5 100.1 272.6 94.3 272.7 93.1C272.8 92.0 272.9 85.9 273.0 79.7C273.1 73.5 273.2 67.7 273.3 66.9C273.4 66.0 273.5 59.9 273.6 53.4C273.7 46.9 273.8 41.1 273.9 40.6C273.9 40.0 274.1 34.0 274.2 27.1C274.3 20.3 274.4 14.5 274.4 14.3C274.5 14.0 274.5 11.8 274.5 9.2L274.6 4.6L303.8 4.6L333.0 4.7L341.8 60.3C346.6 90.9 350.5 115.9 350.6 115.9C350.6 116.0 350.7 116.0 350.9 116.0L351.3 116.0L360.0 61.2C364.7 31.1 368.7 6.0 368.8 5.5L368.9 4.6L398.0 4.6L427.1 4.6L427.2 5.0C427.3 5.2 427.4 8.2 427.4 11.6C427.4 15.1 427.5 18.2 427.5 18.5C427.6 18.8 427.7 24.7 427.9 31.7C428.0 38.7 428.1 44.6 428.1 44.9C428.2 45.1 428.3 51.1 428.4 58.1C428.5 65.2 428.7 71.2 428.7 71.4C428.8 71.7 428.9 77.6 429.0 84.6C429.1 91.6 429.2 97.5 429.3 97.7C429.3 97.9 429.5 103.9 429.6 110.9C429.7 117.8 429.8 123.8 429.9 124.0C429.9 124.2 430.0 130.1 430.1 137.1C430.3 144.1 430.4 150.0 430.5 150.1C430.5 150.2 422.5 150.3 412.6 150.3L394.6 150.3L394.6 137.1C394.5 129.8 394.5 123.0 394.4 122.0C394.4 121.0 394.3 102.8 394.1 81.6C394.0 60.4 393.9 42.3 393.8 41.4C393.8 40.6 393.8 35.3 393.7 29.6L393.7 19.4L393.3 19.4L392.9 19.4L392.8 20.4C392.7 20.9 387.3 50.2 380.9 85.6C374.4 121.0 369.1 150.1 369.1 150.1C369.1 150.2 361.0 150.3 350.9 150.2L332.7 150.1L320.8 84.9L309.0 19.6L308.6 19.6L308.2 19.6L308.1 20.7C308.1 21.3 308.0 40.0 307.9 62.1C307.7 84.3 307.6 103.1 307.6 104.0C307.5 104.9 307.5 114.8 307.4 126.0C307.4 137.2 307.3 147.3 307.2 148.4L307.1 150.3L289.2 150.3L271.4 150.3L271.5 146.2ZM741.1 76.7L741.1 4.6L767.6 4.6L794.1 4.7L797.9 17.7C799.9 24.9 803.1 36.0 805.0 42.4C812.5 68.7 820.8 97.4 824.5 110.3L827.0 119.0L827.4 119.1L827.8 119.2L827.6 110.0C827.5 104.9 827.4 96.9 827.3 92.1C827.2 87.4 827.1 80.2 827.0 76.1C826.9 72.1 826.8 64.1 826.7 58.6C826.6 53.0 826.5 45.7 826.4 42.4C826.4 39.1 826.2 31.0 826.1 24.4C826.1 17.8 825.9 10.7 825.8 8.5L825.7 4.6L843.4 4.6L861.1 4.6L861.1 76.7L861.1 148.9L835.7 148.9L810.3 148.9L809.5 146.2C809.1 144.8 801.1 118.1 791.8 87.1L775.0 30.6L774.6 30.6L774.2 30.6L774.4 41.1C774.5 46.8 774.6 54.9 774.7 59.0C774.9 67.0 775.1 78.3 775.3 93.3C775.4 98.5 775.5 105.9 775.6 109.7C775.6 113.6 775.8 121.7 775.9 127.7C775.9 133.8 776.1 141.0 776.2 143.8L776.3 148.9L758.7 148.9L741.1 148.9L741.1 76.7Z"/></svg><span class="sep"></span><svg class="logo-g" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 80" role="img" aria-label="Ganem Group"><path style="fill:var(--logo-ganem)" d="M76.4 78.2C75.1 78.0 74.3 77.8 73.2 77.2C69.7 75.3 67.8 71.5 68.2 67.3C68.6 63.9 70.5 61.2 73.4 59.7C75.0 59.0 76.1 58.8 78.0 58.8C80.6 58.8 82.3 59.3 84.1 60.9C85.1 61.8 85.4 62.2 85.2 62.6C85.0 62.9 84.2 63.5 83.7 63.7C83.1 63.9 82.9 63.8 82.0 63.1C81.1 62.3 80.3 61.9 79.1 61.7C78.2 61.5 78.0 61.5 77.0 61.7C76.3 61.8 75.5 62.0 75.1 62.2C74.2 62.7 72.8 64.1 72.3 65.1C71.1 67.5 71.3 70.5 72.8 72.7C73.9 74.4 75.6 75.3 77.7 75.5C79.0 75.6 80.8 75.1 81.7 74.3C82.5 73.7 82.7 73.3 82.7 72.3C82.8 71.6 82.5 71.1 82.1 70.9C81.9 70.8 81.0 70.8 79.6 70.8L77.5 70.8L77.3 70.4C77.1 70.2 77.0 69.9 77.0 69.2C77.0 67.8 76.8 67.9 81.4 67.9C85.2 67.9 85.4 67.9 85.6 68.1C85.9 68.4 85.9 68.5 85.9 71.5L85.9 74.7L85.6 75.2C85.1 75.8 84.0 76.6 82.7 77.3C81.0 78.2 78.6 78.6 76.4 78.2ZM130.5 78.2C129.0 78.0 128.7 77.8 127.4 77.1C125.3 76.0 123.6 73.8 123.0 71.4C122.6 69.8 122.6 67.1 123.0 65.6C123.8 62.3 126.6 59.6 129.9 58.9C131.2 58.7 133.1 58.7 134.6 58.9C136.7 59.3 138.9 60.9 140.3 62.8C140.6 63.3 141.1 64.2 141.3 65.0L141.8 66.3L141.8 68.4L141.8 70.6L141.3 71.9C139.8 76.5 135.5 78.9 130.5 78.2ZM159.5 78.2C157.7 77.9 156.7 77.4 155.4 76.2C154.4 75.2 154.3 74.9 153.7 73.4L153.3 72.3L153.3 66.0L153.2 59.6L153.5 59.3C153.8 59.0 154.0 59.0 154.8 59.0C155.8 59.0 156.3 59.2 156.5 59.6C156.5 59.7 156.5 61.4 156.5 63.4C156.5 68.1 156.7 71.9 156.9 72.7C157.2 73.5 158.3 74.6 159.1 75.0C160.0 75.4 161.3 75.5 162.3 75.4C163.7 75.1 164.2 74.9 164.9 74.1C166.2 72.7 166.2 73.1 166.2 65.8C166.3 60.0 166.3 59.5 166.5 59.3C166.7 59.1 167.0 59.1 167.8 59.0C168.8 59.0 169.0 59.0 169.3 59.3L169.6 59.5L169.6 65.9L169.6 72.2L169.2 73.4C168.6 75.3 167.5 76.6 165.7 77.5C164.8 77.9 164.5 78.0 163.2 78.2C161.5 78.4 161.2 78.4 159.5 78.2ZM97.9 77.9C97.8 77.8 97.6 77.6 97.6 77.5C97.5 77.4 97.5 73.3 97.5 68.4L97.5 59.6L97.8 59.3C98.1 59.0 98.2 59.0 102.4 59.0C104.9 59.0 107.0 59.1 107.4 59.1C109.0 59.4 110.7 60.8 111.4 62.3C111.8 63.2 112.0 64.5 111.9 65.9C111.7 67.6 110.2 69.6 108.9 70.0C107.8 70.3 107.6 71.2 108.4 72.2C108.7 72.7 109.3 73.6 110.4 75.4C110.7 75.9 111.1 76.5 111.3 76.7C111.6 77.2 111.7 77.6 111.5 77.9C111.2 78.1 108.8 78.1 108.4 77.8C108.1 77.6 107.5 76.7 107.1 76.0C107.0 75.7 106.7 75.2 106.4 74.8C106.2 74.5 105.8 73.8 105.5 73.2C104.2 71.0 104.1 70.9 102.5 70.9C101.5 70.9 101.3 70.9 101.1 71.2L100.8 71.5L100.7 74.5C100.7 76.1 100.7 77.5 100.7 77.6C100.5 77.9 100.0 78.0 99.1 78.0C98.6 78.0 98.1 77.9 97.9 77.9ZM182.2 77.8L181.9 77.6L181.9 68.6C181.9 59.6 181.9 59.5 182.1 59.2C182.4 59.0 182.5 59.0 187.2 59.0L192.0 59.1L192.9 59.6C195.4 60.8 196.5 62.9 196.1 65.8C196.0 67.3 195.6 68.1 194.5 69.1C193.9 69.8 193.5 70.0 192.7 70.4L191.7 70.8L188.6 70.9C185.9 70.9 185.5 71.0 185.3 71.2C185.1 71.4 185.1 71.7 185.0 74.4C185.0 78.2 185.1 78.0 183.5 78.0C182.7 78.0 182.4 77.9 182.2 77.8ZM133.5 75.3C134.7 75.0 135.1 74.9 136.0 74.2C137.3 73.2 138.0 71.9 138.4 69.9C138.7 68.6 138.6 67.6 138.2 66.1C137.3 62.9 134.3 61.1 131.1 61.7C129.0 62.1 127.6 63.1 126.7 65.0C126.2 66.0 126.1 66.4 126.0 67.3C125.8 69.1 126.0 70.5 126.6 71.8C127.6 73.9 129.1 75.0 131.3 75.4C132.4 75.5 132.4 75.5 133.5 75.3ZM106.4 67.8C107.6 67.4 108.6 66.1 108.6 65.0C108.6 63.8 107.9 62.7 106.9 62.2C106.2 61.9 106.1 61.9 103.8 61.9C100.5 61.9 100.8 61.6 100.8 64.9C100.8 67.2 100.8 67.4 101.0 67.7L101.3 68.0L103.7 68.0C105.2 68.0 106.2 67.9 106.4 67.8ZM190.8 67.8C191.4 67.6 192.0 67.1 192.5 66.4C193.0 65.7 193.1 65.1 192.9 64.2C192.7 63.4 191.6 62.2 190.8 62.0C190.5 61.9 189.3 61.9 188.0 61.9C184.8 61.9 185.1 61.6 185.1 64.9C185.1 68.3 184.8 68.0 188.0 68.0C189.6 68.0 190.5 67.9 190.8 67.8ZM12.1 57.2C6.0 56.8 5.0 56.6 4.5 55.7C4.3 55.3 4.3 55.1 4.3 52.5C4.2 49.5 4.3 49.2 5.0 48.9C5.3 48.7 6.7 48.7 13.1 48.6C20.9 48.5 20.9 48.5 22.2 48.2C24.5 47.7 25.7 46.4 26.0 44.2C26.2 42.8 26.2 42.4 25.9 42.1C25.6 41.8 25.5 41.8 23.1 42.0C18.6 42.5 15.5 42.5 11.8 42.1C9.9 41.8 7.4 41.0 6.0 40.2C4.7 39.3 3.4 38.0 2.7 36.7C2.0 35.4 1.3 33.4 1.0 31.5C0.7 29.7 0.6 29.2 0.2 28.8C0.0 28.5 0.0 28.3 -0.0 21.0C-0.0 15.5 0.0 13.4 0.1 13.3C0.4 13.1 0.7 12.2 1.0 10.8C2.1 5.1 4.7 2.3 10.3 1.0C11.9 0.6 12.8 0.3 12.8 0.1C12.8 0.0 14.8 0.0 19.4 0.0C23.9 0.0 26.0 0.0 26.0 0.1C26.0 0.3 27.0 0.7 28.3 1.0C31.6 1.7 33.6 3.0 35.1 5.2C35.9 6.5 36.6 8.3 36.8 9.9C37.0 11.4 37.1 43.9 36.9 46.1C36.7 47.8 36.0 50.1 35.3 51.6C34.2 53.8 32.4 55.3 29.5 56.2C27.8 56.8 27.2 56.9 24.2 57.3C21.4 57.6 16.2 57.6 12.1 57.2ZM64.7 42.4C64.4 42.4 63.4 42.3 62.4 42.2C60.0 42.1 58.9 41.8 57.3 41.2C54.1 40.0 52.6 38.4 51.7 34.9L51.2 33.2L51.2 29.9C51.2 27.8 51.2 26.4 51.3 26.1C51.4 25.8 51.6 25.0 51.8 24.3C52.7 21.5 54.2 19.9 57.2 18.7C60.0 17.7 63.8 17.4 74.7 17.4C74.8 17.4 75.1 17.2 75.3 17.0L75.7 16.7L75.6 15.1C75.5 12.7 75.1 11.7 73.5 10.7C72.9 10.3 72.4 10.1 71.6 9.9C70.5 9.6 70.1 9.6 62.8 9.5C54.7 9.5 54.7 9.5 54.4 8.9C54.2 8.5 54.2 2.2 54.4 1.9C54.6 1.5 55.4 1.2 56.7 1.0C58.3 0.8 59.5 0.5 59.9 0.2C60.2 0.0 60.5 0.0 67.7 0.0C73.0 0.0 75.1 0.0 75.2 0.1C75.4 0.4 76.3 0.8 77.6 1.0C79.9 1.5 81.8 2.4 83.2 3.7C84.2 4.6 85.5 6.7 85.9 8.2C86.4 10.1 86.4 10.9 86.4 25.3C86.4 38.9 86.4 39.3 86.1 39.7C85.8 40.4 85.2 40.8 84.5 41.0C84.1 41.1 83.1 41.3 82.2 41.4C79.5 42.0 74.7 42.4 68.9 42.4C66.8 42.5 65.0 42.5 64.7 42.4ZM167.4 42.4C167.2 42.4 166.2 42.3 165.2 42.2C162.5 42.0 161.2 41.8 159.5 41.2C157.7 40.6 156.7 40.1 155.5 39.1C154.5 38.3 153.4 36.8 153.1 36.0C153.0 35.8 152.8 35.2 152.6 34.8C152.3 33.9 151.6 31.1 151.3 29.1C151.0 26.9 150.8 21.3 151.0 17.8C151.2 14.1 151.2 13.5 151.8 10.7C152.7 6.7 154.0 4.4 156.4 2.8C157.4 2.1 159.2 1.3 160.3 1.1C161.6 0.9 162.9 0.5 163.1 0.2C163.3 0.0 163.6 0.0 169.3 0.0C173.5 0.0 175.4 0.0 175.4 0.1C175.4 0.3 176.3 0.7 177.7 1.0C181.3 1.8 183.7 3.5 185.1 6.3C185.5 7.0 185.9 8.0 186.0 8.5C186.1 9.0 186.3 9.7 186.4 10.0C186.7 10.8 187.0 12.5 187.1 14.4C187.2 15.2 187.3 16.6 187.4 17.4C187.4 18.2 187.5 19.9 187.5 21.2C187.5 23.7 187.4 24.1 186.8 24.6L186.5 24.9L174.5 25.0L162.5 25.1L162.2 25.4C162.1 25.6 162.0 25.8 162.0 26.3C162.0 28.4 162.7 30.6 163.7 31.5C164.3 32.0 165.9 32.7 167.1 32.9C167.6 32.9 171.1 33.0 175.6 33.0C182.2 33.0 183.3 33.0 183.7 33.2C184.4 33.5 184.4 33.6 184.5 37.0C184.5 39.7 184.5 40.2 184.3 40.6C183.9 41.5 183.0 41.7 178.9 42.1C174.7 42.4 169.3 42.6 167.4 42.4ZM103.3 41.9C102.4 41.6 102.5 42.6 102.5 27.9C102.5 16.8 102.5 14.2 102.7 12.6C103.0 9.8 103.2 8.4 103.5 7.5C103.7 7.1 103.9 6.6 104.0 6.3C104.1 5.9 105.0 4.5 105.5 3.9C106.6 2.7 108.8 1.4 110.6 1.0C111.8 0.7 112.8 0.3 112.8 0.1C112.8 0.0 115.2 -0.0 120.7 -0.0C127.7 -0.0 128.6 0.0 128.8 0.2C129.0 0.5 129.6 0.7 131.0 1.1C132.9 1.5 134.1 2.2 135.4 3.6C136.3 4.4 136.7 4.9 137.2 5.8C137.7 6.9 137.8 7.0 138.3 9.1C138.9 11.5 138.9 11.7 139.0 26.8C139.0 42.8 139.1 41.7 138.2 42.0C137.5 42.2 129.6 42.2 129.0 42.0C128.1 41.7 128.1 42.7 128.1 28.1C128.0 20.3 128.0 14.6 127.9 14.1C127.7 12.9 126.9 11.4 126.1 10.7C125.7 10.4 125.1 10.0 124.8 9.9C123.3 9.5 118.1 9.5 116.8 9.9C115.7 10.3 114.7 11.2 114.2 12.2C114.1 12.5 113.9 13.2 113.7 13.8C113.5 14.9 113.4 15.3 113.4 28.2L113.3 41.4L113.0 41.7L112.6 42.1L108.2 42.1C104.5 42.1 103.6 42.1 103.3 41.9ZM202.5 41.9C201.7 41.6 201.7 42.2 201.8 28.5C201.8 12.7 201.8 10.7 202.8 7.8C203.4 5.6 204.4 4.1 206.0 2.8C207.0 2.1 208.5 1.3 209.6 1.1C210.9 0.8 211.6 0.5 211.8 0.2C212.0 0.0 212.3 0.0 219.9 0.0C227.6 0.0 227.8 0.0 228.1 0.2C228.3 0.5 229.0 0.8 230.3 1.1C230.7 1.2 231.4 1.4 231.7 1.6C232.5 1.9 233.1 2.0 233.8 1.6C234.0 1.5 234.9 1.2 235.6 1.0C237.0 0.6 237.4 0.5 237.6 0.2C237.8 0.0 238.7 0.0 245.7 0.0C252.7 0.0 253.6 0.0 253.8 0.2C254.0 0.5 254.6 0.7 255.9 1.0C259.4 1.9 262.2 4.6 262.9 8.0C263.2 9.3 263.5 10.0 263.8 10.2C264.0 10.4 264.0 10.7 264.0 26.1L264.0 41.9L263.4 42.0C263.1 42.0 260.8 42.1 258.3 42.1L253.8 42.1L253.4 41.7L253.1 41.4L253.0 27.8C252.9 17.8 252.9 14.2 252.8 13.8C252.2 11.8 251.0 10.3 249.7 9.9C248.2 9.5 243.1 9.5 241.6 9.9C240.8 10.2 239.6 11.3 239.2 12.2C239.0 12.5 238.8 13.4 238.6 14.1C238.3 15.3 238.3 15.4 238.3 28.3C238.3 36.9 238.2 41.4 238.1 41.5C237.8 42.1 237.4 42.1 233.0 42.1C230.5 42.1 228.6 42.1 228.3 42.0C228.1 41.9 227.8 41.7 227.6 41.6C227.4 41.2 227.4 40.9 227.3 28.3C227.3 13.5 227.3 13.5 226.4 12.0C225.6 10.7 224.7 10.0 223.2 9.8C221.9 9.5 217.8 9.5 216.6 9.8C215.3 10.1 214.4 10.7 213.7 11.9C212.7 13.4 212.8 13.4 212.8 28.1C212.8 38.7 212.7 41.0 212.6 41.3C212.3 42.1 211.9 42.1 207.2 42.1C203.8 42.1 202.9 42.1 202.5 41.9ZM72.3 33.4C74.3 33.2 74.9 33.0 75.3 32.7L75.6 32.3L75.6 28.8C75.6 26.6 75.6 25.3 75.5 25.1C75.2 24.6 74.8 24.5 70.6 24.5C66.6 24.5 64.8 24.6 63.8 25.0C63.4 25.2 62.3 26.3 62.1 26.8C61.9 27.4 61.8 29.8 62.0 30.6C62.2 31.5 62.9 32.5 63.7 32.9C65.0 33.6 68.9 33.8 72.3 33.4ZM23.1 32.9C25.2 32.7 25.7 32.6 26.0 32.0C26.2 31.6 26.2 14.0 26.0 13.1C25.6 11.6 24.0 10.2 22.1 9.8C20.4 9.5 18.1 9.4 16.3 9.7C15.4 9.9 14.5 10.1 14.2 10.3C13.5 10.6 12.4 11.6 12.1 12.1C11.8 12.8 11.3 14.8 11.1 15.9C10.9 17.8 10.8 22.2 11.0 24.5C11.2 27.0 11.2 27.5 11.8 29.2C12.1 30.2 12.2 30.5 12.7 31.0C13.4 31.8 13.8 32.0 15.2 32.4C17.0 33.0 19.3 33.1 23.1 32.9ZM169.6 17.9L175.9 17.9L176.2 17.6C176.5 17.3 176.6 17.2 176.5 16.5C176.5 16.0 176.4 15.0 176.2 14.2C175.9 12.8 175.8 12.5 175.4 11.9C174.6 10.7 173.6 10.1 172.2 9.8C170.6 9.5 169.1 9.5 167.8 9.6C165.8 9.9 165.1 10.1 164.2 10.8C163.4 11.4 163.3 11.6 162.8 12.5C162.3 13.4 162.2 13.9 162.0 15.0C161.9 15.8 161.9 16.7 161.9 16.9C162.0 17.7 162.5 18.1 163.2 17.9C163.3 17.9 166.2 17.9 169.6 17.9Z"/><path fill="#FFD048" d="M52.5 69.1L52.6 58.3L52.8 58.0C53.3 57.4 54.0 57.9 54.0 58.9C54.0 59.2 54.0 64.1 54.0 69.7L54.0 80.0L53.2 80.0L52.5 80.0L52.5 69.1ZM210.0 69.3L209.9 58.7L210.1 58.2L210.3 57.8L210.6 57.8C210.7 57.8 211.0 57.8 211.1 58.0L211.4 58.2L211.5 69.1L211.5 80.0L210.8 80.0L210.0 80.0L210.0 69.3Z"/></svg></div>
+      <div class="eyebrow">Samsung MX · Gráficas de desempeño</div>
+      <h1>Entra con tu cuenta de Ganem</h1>
+      <p>Las gráficas leen la base de Samsung en vivo con tus propios permisos de Google. Solo funciona con correos <span style="color:rgb(var(--c-txt2))">@ganem.mx</span>.</p>
+      <button id="g-btn" class="g-btn"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.2l7.8 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.8l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg><span>Continuar con Google</span></button>
+      <div id="login-err" class="alert" role="alert" hidden></div>
+      <small>Si tu cuenta de Ganem no tiene acceso, pide a quien administra la base que te comparta el Sheet de Samsung MX.</small>
+    </div>
+  </div>
+
+  <div id="app" class="wrap" hidden>
+    <div class="top">
+      <div class="logos"><svg class="logo-s" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 156.0" role="img" aria-label="Samsung" style="fill:var(--logo-samsung)"><path d="M44.9 155.8C39.3 155.4 32.4 154.1 28.0 152.7C14.9 148.6 6.0 140.4 2.3 129.1C0.5 123.7 -0.1 118.6 0.1 109.3L0.1 102.4L19.0 102.4C29.3 102.4 37.9 102.5 38.0 102.6C38.2 102.7 38.3 106.1 38.3 110.3L38.3 117.9L38.7 119.7C39.3 122.3 40.4 124.3 42.1 126.0C43.9 127.7 45.4 128.4 48.2 129.2L50.4 129.7L52.5 129.7C60.0 129.7 64.4 127.0 66.3 121.0L67.0 119.0L67.0 114.9L67.0 110.7L66.3 109.2C64.8 105.6 61.9 102.3 56.9 98.6C53.7 96.2 48.4 92.9 36.0 85.9C23.7 78.9 17.5 74.7 12.3 69.4C6.0 63.2 2.9 57.3 1.5 49.3L1.0 46.1L1.0 41.1L1.1 36.1L1.5 33.3C2.3 28.6 3.4 25.2 5.0 21.9C10.7 10.0 22.0 3.1 39.7 0.7L43.3 0.2L51.6 0.2L59.9 0.2L62.9 0.5C72.3 1.7 80.3 4.3 85.8 7.9C88.4 9.6 92.3 13.3 93.9 15.6C96.5 19.3 98.4 24.0 99.3 29.1L99.7 31.9L99.9 39.4L100.1 46.9L82.2 46.9L64.4 46.9L64.2 40.9L64.1 35.0L63.5 33.2C62.0 28.8 59.0 26.1 54.5 25.1L52.9 24.8L49.8 24.9L46.7 25.1L45.1 25.7C41.8 27.0 39.4 29.6 38.3 33.1L37.7 35.0L37.7 37.9C37.7 41.0 38.0 42.5 39.1 44.7L39.8 46.1L42.2 48.6C46.1 52.4 49.3 54.4 63.3 62.1C73.9 67.9 76.5 69.4 80.6 72.1C89.3 77.9 94.5 82.8 98.3 88.8C101.3 93.6 102.6 98.0 103.2 105.8L103.5 110.3L103.2 115.4C102.6 124.3 101.4 129.7 98.7 134.9C96.4 139.4 93.7 142.6 89.9 145.6C83.1 150.8 74.9 153.9 64.0 155.3L60.4 155.8L53.4 155.8C49.6 155.9 45.7 155.9 44.9 155.8ZM506.4 154.7C496.2 153.5 487.6 150.7 481.0 146.3C478.1 144.4 473.4 139.6 471.7 137.0C469.0 132.9 467.1 128.1 466.1 123.0L465.6 120.4L465.5 111.4L465.4 102.3L484.4 102.3L503.4 102.3L503.4 110.4C503.4 114.8 503.6 119.0 503.7 119.7C504.8 124.1 508.2 127.4 513.0 128.7L514.7 129.1L517.6 129.1C526.6 129.1 530.9 125.2 531.9 116.0L532.1 114.1L531.7 112.0C531.1 107.9 528.7 104.2 524.5 100.6C520.0 96.9 517.0 94.9 504.1 87.7C494.3 82.2 488.5 78.5 484.0 75.2C480.2 72.4 475.1 67.4 472.9 64.4C470.9 61.8 468.4 56.7 467.7 53.9C465.0 43.2 466.2 30.2 470.6 21.6C476.7 9.6 489.5 2.7 508.5 1.1L512.4 0.8L519.3 0.9L526.1 1.1L530.1 1.7C541.2 3.4 548.8 6.7 554.7 12.3C559.5 16.9 562.3 22.3 563.6 29.6L564.1 32.1L564.2 39.6L564.4 47.1L546.6 47.1L528.9 47.1L528.9 42.1C528.9 36.2 528.6 34.3 527.4 31.8L526.6 30.1L525.2 28.8C523.6 27.3 522.2 26.5 519.9 25.8L518.2 25.4L514.9 25.5L511.6 25.6L510.0 26.3C506.7 27.5 504.8 29.5 503.5 32.9L502.8 34.7L502.6 37.3C502.5 40.4 502.9 42.7 503.9 44.9L504.7 46.4L507.0 48.7C510.8 52.5 514.2 54.7 527.6 62.0C544.8 71.4 551.3 75.8 557.5 82.2C563.3 88.3 566.1 93.9 567.2 101.9L567.6 104.4L567.5 110.6L567.5 116.7L567.0 120.4C566.2 127.1 564.5 132.2 561.8 136.5C555.8 146.1 545.3 152.0 530.2 154.3L526.4 154.9L518.1 155.0L509.9 155.1L506.4 154.7ZM643.1 154.4C642.6 154.3 640.9 154.2 639.4 154.0C625.7 152.4 614.7 147.1 608.6 139.1C605.1 134.5 602.9 129.4 601.7 122.8L601.0 119.6L600.9 62.1L600.8 4.6L618.8 4.6L636.9 4.6L636.9 59.1L636.9 113.6L637.2 116.3L637.4 119.0L638.4 121.1L639.4 123.1L640.8 124.5C642.3 126.1 644.8 127.4 647.0 128.0C648.8 128.4 653.5 128.4 655.3 127.9C657.5 127.3 659.3 126.3 660.8 125.0L662.2 123.7L663.2 121.8C664.3 119.7 664.7 118.1 665.0 115.3C665.1 114.3 665.1 89.0 665.1 59.1L665.1 4.6L683.1 4.6L701.1 4.6L701.1 60.1L701.1 115.6L700.8 118.7C698.9 138.8 687.1 150.3 664.5 153.8L660.7 154.3L652.4 154.4C647.9 154.5 643.7 154.5 643.1 154.4ZM942.0 153.0C941.4 152.9 939.8 152.7 938.3 152.5C926.3 151.2 915.9 146.7 909.3 140.1C902.8 133.7 899.8 126.5 898.9 115.4L898.5 111.6L898.6 75.0L898.7 38.4L899.2 35.4C901.3 23.0 906.1 15.0 914.9 9.1C922.9 3.8 933.3 1.1 947.1 0.7C973.9 0.1 991.5 9.2 997.4 26.8C999.1 31.7 999.7 36.8 999.7 45.1L999.7 51.1L981.7 51.1L963.8 51.1L963.6 44.6L963.5 38.1L963.1 36.6C962.3 34.1 961.4 32.5 959.7 30.8C957.9 29.0 955.8 27.9 952.9 27.3L950.7 26.8L948.0 26.9L945.3 27.1L943.2 27.8C942.0 28.2 940.4 29.1 939.5 29.7L938.0 30.9L936.8 32.7C936.2 33.6 935.4 35.3 935.1 36.4L934.4 38.4L934.4 77.6L934.4 116.7L935.1 118.4C936.4 122.0 939.3 124.7 943.2 126.0L945.0 126.7L948.3 126.8L951.6 126.9L953.5 126.5C958.9 125.2 962.8 121.3 963.7 116.3L964.0 114.8L964.0 102.2L964.0 89.7L956.7 89.7L949.4 89.7L949.4 79.1L949.4 68.4L974.7 68.4L1000.0 68.4L1000.0 89.8C1000.0 111.3 999.8 116.9 999.0 121.4C996.4 135.2 987.5 144.9 972.8 149.8C969.6 150.9 966.0 151.7 961.4 152.4L958.4 152.9L950.7 153.0C946.5 153.0 942.5 153.0 942.0 153.0ZM126.7 149.5C126.7 149.1 132.7 116.3 139.9 76.6L153.0 4.6L184.8 4.6L216.5 4.6L216.7 5.1C216.9 5.7 242.9 149.6 242.9 150.0L242.9 150.3L223.7 150.3L204.6 150.3L204.4 149.4C204.3 148.8 200.0 119.1 194.9 83.4C189.7 47.6 185.4 18.2 185.3 18.1C185.2 18.0 185.0 18.0 184.9 18.2C184.8 18.3 180.3 47.8 175.0 83.7C169.7 119.6 165.3 149.3 165.3 149.6L165.1 150.3L145.8 150.3L126.5 150.3L126.7 149.5ZM271.5 146.2C271.6 144.0 271.8 137.8 271.9 132.6C271.9 127.3 272.1 121.6 272.1 119.9C272.2 118.1 272.3 111.9 272.4 106.0C272.5 100.1 272.6 94.3 272.7 93.1C272.8 92.0 272.9 85.9 273.0 79.7C273.1 73.5 273.2 67.7 273.3 66.9C273.4 66.0 273.5 59.9 273.6 53.4C273.7 46.9 273.8 41.1 273.9 40.6C273.9 40.0 274.1 34.0 274.2 27.1C274.3 20.3 274.4 14.5 274.4 14.3C274.5 14.0 274.5 11.8 274.5 9.2L274.6 4.6L303.8 4.6L333.0 4.7L341.8 60.3C346.6 90.9 350.5 115.9 350.6 115.9C350.6 116.0 350.7 116.0 350.9 116.0L351.3 116.0L360.0 61.2C364.7 31.1 368.7 6.0 368.8 5.5L368.9 4.6L398.0 4.6L427.1 4.6L427.2 5.0C427.3 5.2 427.4 8.2 427.4 11.6C427.4 15.1 427.5 18.2 427.5 18.5C427.6 18.8 427.7 24.7 427.9 31.7C428.0 38.7 428.1 44.6 428.1 44.9C428.2 45.1 428.3 51.1 428.4 58.1C428.5 65.2 428.7 71.2 428.7 71.4C428.8 71.7 428.9 77.6 429.0 84.6C429.1 91.6 429.2 97.5 429.3 97.7C429.3 97.9 429.5 103.9 429.6 110.9C429.7 117.8 429.8 123.8 429.9 124.0C429.9 124.2 430.0 130.1 430.1 137.1C430.3 144.1 430.4 150.0 430.5 150.1C430.5 150.2 422.5 150.3 412.6 150.3L394.6 150.3L394.6 137.1C394.5 129.8 394.5 123.0 394.4 122.0C394.4 121.0 394.3 102.8 394.1 81.6C394.0 60.4 393.9 42.3 393.8 41.4C393.8 40.6 393.8 35.3 393.7 29.6L393.7 19.4L393.3 19.4L392.9 19.4L392.8 20.4C392.7 20.9 387.3 50.2 380.9 85.6C374.4 121.0 369.1 150.1 369.1 150.1C369.1 150.2 361.0 150.3 350.9 150.2L332.7 150.1L320.8 84.9L309.0 19.6L308.6 19.6L308.2 19.6L308.1 20.7C308.1 21.3 308.0 40.0 307.9 62.1C307.7 84.3 307.6 103.1 307.6 104.0C307.5 104.9 307.5 114.8 307.4 126.0C307.4 137.2 307.3 147.3 307.2 148.4L307.1 150.3L289.2 150.3L271.4 150.3L271.5 146.2ZM741.1 76.7L741.1 4.6L767.6 4.6L794.1 4.7L797.9 17.7C799.9 24.9 803.1 36.0 805.0 42.4C812.5 68.7 820.8 97.4 824.5 110.3L827.0 119.0L827.4 119.1L827.8 119.2L827.6 110.0C827.5 104.9 827.4 96.9 827.3 92.1C827.2 87.4 827.1 80.2 827.0 76.1C826.9 72.1 826.8 64.1 826.7 58.6C826.6 53.0 826.5 45.7 826.4 42.4C826.4 39.1 826.2 31.0 826.1 24.4C826.1 17.8 825.9 10.7 825.8 8.5L825.7 4.6L843.4 4.6L861.1 4.6L861.1 76.7L861.1 148.9L835.7 148.9L810.3 148.9L809.5 146.2C809.1 144.8 801.1 118.1 791.8 87.1L775.0 30.6L774.6 30.6L774.2 30.6L774.4 41.1C774.5 46.8 774.6 54.9 774.7 59.0C774.9 67.0 775.1 78.3 775.3 93.3C775.4 98.5 775.5 105.9 775.6 109.7C775.6 113.6 775.8 121.7 775.9 127.7C775.9 133.8 776.1 141.0 776.2 143.8L776.3 148.9L758.7 148.9L741.1 148.9L741.1 76.7Z"/></svg><span class="sep"></span><svg class="logo-g" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 80" role="img" aria-label="Ganem Group"><path style="fill:var(--logo-ganem)" d="M76.4 78.2C75.1 78.0 74.3 77.8 73.2 77.2C69.7 75.3 67.8 71.5 68.2 67.3C68.6 63.9 70.5 61.2 73.4 59.7C75.0 59.0 76.1 58.8 78.0 58.8C80.6 58.8 82.3 59.3 84.1 60.9C85.1 61.8 85.4 62.2 85.2 62.6C85.0 62.9 84.2 63.5 83.7 63.7C83.1 63.9 82.9 63.8 82.0 63.1C81.1 62.3 80.3 61.9 79.1 61.7C78.2 61.5 78.0 61.5 77.0 61.7C76.3 61.8 75.5 62.0 75.1 62.2C74.2 62.7 72.8 64.1 72.3 65.1C71.1 67.5 71.3 70.5 72.8 72.7C73.9 74.4 75.6 75.3 77.7 75.5C79.0 75.6 80.8 75.1 81.7 74.3C82.5 73.7 82.7 73.3 82.7 72.3C82.8 71.6 82.5 71.1 82.1 70.9C81.9 70.8 81.0 70.8 79.6 70.8L77.5 70.8L77.3 70.4C77.1 70.2 77.0 69.9 77.0 69.2C77.0 67.8 76.8 67.9 81.4 67.9C85.2 67.9 85.4 67.9 85.6 68.1C85.9 68.4 85.9 68.5 85.9 71.5L85.9 74.7L85.6 75.2C85.1 75.8 84.0 76.6 82.7 77.3C81.0 78.2 78.6 78.6 76.4 78.2ZM130.5 78.2C129.0 78.0 128.7 77.8 127.4 77.1C125.3 76.0 123.6 73.8 123.0 71.4C122.6 69.8 122.6 67.1 123.0 65.6C123.8 62.3 126.6 59.6 129.9 58.9C131.2 58.7 133.1 58.7 134.6 58.9C136.7 59.3 138.9 60.9 140.3 62.8C140.6 63.3 141.1 64.2 141.3 65.0L141.8 66.3L141.8 68.4L141.8 70.6L141.3 71.9C139.8 76.5 135.5 78.9 130.5 78.2ZM159.5 78.2C157.7 77.9 156.7 77.4 155.4 76.2C154.4 75.2 154.3 74.9 153.7 73.4L153.3 72.3L153.3 66.0L153.2 59.6L153.5 59.3C153.8 59.0 154.0 59.0 154.8 59.0C155.8 59.0 156.3 59.2 156.5 59.6C156.5 59.7 156.5 61.4 156.5 63.4C156.5 68.1 156.7 71.9 156.9 72.7C157.2 73.5 158.3 74.6 159.1 75.0C160.0 75.4 161.3 75.5 162.3 75.4C163.7 75.1 164.2 74.9 164.9 74.1C166.2 72.7 166.2 73.1 166.2 65.8C166.3 60.0 166.3 59.5 166.5 59.3C166.7 59.1 167.0 59.1 167.8 59.0C168.8 59.0 169.0 59.0 169.3 59.3L169.6 59.5L169.6 65.9L169.6 72.2L169.2 73.4C168.6 75.3 167.5 76.6 165.7 77.5C164.8 77.9 164.5 78.0 163.2 78.2C161.5 78.4 161.2 78.4 159.5 78.2ZM97.9 77.9C97.8 77.8 97.6 77.6 97.6 77.5C97.5 77.4 97.5 73.3 97.5 68.4L97.5 59.6L97.8 59.3C98.1 59.0 98.2 59.0 102.4 59.0C104.9 59.0 107.0 59.1 107.4 59.1C109.0 59.4 110.7 60.8 111.4 62.3C111.8 63.2 112.0 64.5 111.9 65.9C111.7 67.6 110.2 69.6 108.9 70.0C107.8 70.3 107.6 71.2 108.4 72.2C108.7 72.7 109.3 73.6 110.4 75.4C110.7 75.9 111.1 76.5 111.3 76.7C111.6 77.2 111.7 77.6 111.5 77.9C111.2 78.1 108.8 78.1 108.4 77.8C108.1 77.6 107.5 76.7 107.1 76.0C107.0 75.7 106.7 75.2 106.4 74.8C106.2 74.5 105.8 73.8 105.5 73.2C104.2 71.0 104.1 70.9 102.5 70.9C101.5 70.9 101.3 70.9 101.1 71.2L100.8 71.5L100.7 74.5C100.7 76.1 100.7 77.5 100.7 77.6C100.5 77.9 100.0 78.0 99.1 78.0C98.6 78.0 98.1 77.9 97.9 77.9ZM182.2 77.8L181.9 77.6L181.9 68.6C181.9 59.6 181.9 59.5 182.1 59.2C182.4 59.0 182.5 59.0 187.2 59.0L192.0 59.1L192.9 59.6C195.4 60.8 196.5 62.9 196.1 65.8C196.0 67.3 195.6 68.1 194.5 69.1C193.9 69.8 193.5 70.0 192.7 70.4L191.7 70.8L188.6 70.9C185.9 70.9 185.5 71.0 185.3 71.2C185.1 71.4 185.1 71.7 185.0 74.4C185.0 78.2 185.1 78.0 183.5 78.0C182.7 78.0 182.4 77.9 182.2 77.8ZM133.5 75.3C134.7 75.0 135.1 74.9 136.0 74.2C137.3 73.2 138.0 71.9 138.4 69.9C138.7 68.6 138.6 67.6 138.2 66.1C137.3 62.9 134.3 61.1 131.1 61.7C129.0 62.1 127.6 63.1 126.7 65.0C126.2 66.0 126.1 66.4 126.0 67.3C125.8 69.1 126.0 70.5 126.6 71.8C127.6 73.9 129.1 75.0 131.3 75.4C132.4 75.5 132.4 75.5 133.5 75.3ZM106.4 67.8C107.6 67.4 108.6 66.1 108.6 65.0C108.6 63.8 107.9 62.7 106.9 62.2C106.2 61.9 106.1 61.9 103.8 61.9C100.5 61.9 100.8 61.6 100.8 64.9C100.8 67.2 100.8 67.4 101.0 67.7L101.3 68.0L103.7 68.0C105.2 68.0 106.2 67.9 106.4 67.8ZM190.8 67.8C191.4 67.6 192.0 67.1 192.5 66.4C193.0 65.7 193.1 65.1 192.9 64.2C192.7 63.4 191.6 62.2 190.8 62.0C190.5 61.9 189.3 61.9 188.0 61.9C184.8 61.9 185.1 61.6 185.1 64.9C185.1 68.3 184.8 68.0 188.0 68.0C189.6 68.0 190.5 67.9 190.8 67.8ZM12.1 57.2C6.0 56.8 5.0 56.6 4.5 55.7C4.3 55.3 4.3 55.1 4.3 52.5C4.2 49.5 4.3 49.2 5.0 48.9C5.3 48.7 6.7 48.7 13.1 48.6C20.9 48.5 20.9 48.5 22.2 48.2C24.5 47.7 25.7 46.4 26.0 44.2C26.2 42.8 26.2 42.4 25.9 42.1C25.6 41.8 25.5 41.8 23.1 42.0C18.6 42.5 15.5 42.5 11.8 42.1C9.9 41.8 7.4 41.0 6.0 40.2C4.7 39.3 3.4 38.0 2.7 36.7C2.0 35.4 1.3 33.4 1.0 31.5C0.7 29.7 0.6 29.2 0.2 28.8C0.0 28.5 0.0 28.3 -0.0 21.0C-0.0 15.5 0.0 13.4 0.1 13.3C0.4 13.1 0.7 12.2 1.0 10.8C2.1 5.1 4.7 2.3 10.3 1.0C11.9 0.6 12.8 0.3 12.8 0.1C12.8 0.0 14.8 0.0 19.4 0.0C23.9 0.0 26.0 0.0 26.0 0.1C26.0 0.3 27.0 0.7 28.3 1.0C31.6 1.7 33.6 3.0 35.1 5.2C35.9 6.5 36.6 8.3 36.8 9.9C37.0 11.4 37.1 43.9 36.9 46.1C36.7 47.8 36.0 50.1 35.3 51.6C34.2 53.8 32.4 55.3 29.5 56.2C27.8 56.8 27.2 56.9 24.2 57.3C21.4 57.6 16.2 57.6 12.1 57.2ZM64.7 42.4C64.4 42.4 63.4 42.3 62.4 42.2C60.0 42.1 58.9 41.8 57.3 41.2C54.1 40.0 52.6 38.4 51.7 34.9L51.2 33.2L51.2 29.9C51.2 27.8 51.2 26.4 51.3 26.1C51.4 25.8 51.6 25.0 51.8 24.3C52.7 21.5 54.2 19.9 57.2 18.7C60.0 17.7 63.8 17.4 74.7 17.4C74.8 17.4 75.1 17.2 75.3 17.0L75.7 16.7L75.6 15.1C75.5 12.7 75.1 11.7 73.5 10.7C72.9 10.3 72.4 10.1 71.6 9.9C70.5 9.6 70.1 9.6 62.8 9.5C54.7 9.5 54.7 9.5 54.4 8.9C54.2 8.5 54.2 2.2 54.4 1.9C54.6 1.5 55.4 1.2 56.7 1.0C58.3 0.8 59.5 0.5 59.9 0.2C60.2 0.0 60.5 0.0 67.7 0.0C73.0 0.0 75.1 0.0 75.2 0.1C75.4 0.4 76.3 0.8 77.6 1.0C79.9 1.5 81.8 2.4 83.2 3.7C84.2 4.6 85.5 6.7 85.9 8.2C86.4 10.1 86.4 10.9 86.4 25.3C86.4 38.9 86.4 39.3 86.1 39.7C85.8 40.4 85.2 40.8 84.5 41.0C84.1 41.1 83.1 41.3 82.2 41.4C79.5 42.0 74.7 42.4 68.9 42.4C66.8 42.5 65.0 42.5 64.7 42.4ZM167.4 42.4C167.2 42.4 166.2 42.3 165.2 42.2C162.5 42.0 161.2 41.8 159.5 41.2C157.7 40.6 156.7 40.1 155.5 39.1C154.5 38.3 153.4 36.8 153.1 36.0C153.0 35.8 152.8 35.2 152.6 34.8C152.3 33.9 151.6 31.1 151.3 29.1C151.0 26.9 150.8 21.3 151.0 17.8C151.2 14.1 151.2 13.5 151.8 10.7C152.7 6.7 154.0 4.4 156.4 2.8C157.4 2.1 159.2 1.3 160.3 1.1C161.6 0.9 162.9 0.5 163.1 0.2C163.3 0.0 163.6 0.0 169.3 0.0C173.5 0.0 175.4 0.0 175.4 0.1C175.4 0.3 176.3 0.7 177.7 1.0C181.3 1.8 183.7 3.5 185.1 6.3C185.5 7.0 185.9 8.0 186.0 8.5C186.1 9.0 186.3 9.7 186.4 10.0C186.7 10.8 187.0 12.5 187.1 14.4C187.2 15.2 187.3 16.6 187.4 17.4C187.4 18.2 187.5 19.9 187.5 21.2C187.5 23.7 187.4 24.1 186.8 24.6L186.5 24.9L174.5 25.0L162.5 25.1L162.2 25.4C162.1 25.6 162.0 25.8 162.0 26.3C162.0 28.4 162.7 30.6 163.7 31.5C164.3 32.0 165.9 32.7 167.1 32.9C167.6 32.9 171.1 33.0 175.6 33.0C182.2 33.0 183.3 33.0 183.7 33.2C184.4 33.5 184.4 33.6 184.5 37.0C184.5 39.7 184.5 40.2 184.3 40.6C183.9 41.5 183.0 41.7 178.9 42.1C174.7 42.4 169.3 42.6 167.4 42.4ZM103.3 41.9C102.4 41.6 102.5 42.6 102.5 27.9C102.5 16.8 102.5 14.2 102.7 12.6C103.0 9.8 103.2 8.4 103.5 7.5C103.7 7.1 103.9 6.6 104.0 6.3C104.1 5.9 105.0 4.5 105.5 3.9C106.6 2.7 108.8 1.4 110.6 1.0C111.8 0.7 112.8 0.3 112.8 0.1C112.8 0.0 115.2 -0.0 120.7 -0.0C127.7 -0.0 128.6 0.0 128.8 0.2C129.0 0.5 129.6 0.7 131.0 1.1C132.9 1.5 134.1 2.2 135.4 3.6C136.3 4.4 136.7 4.9 137.2 5.8C137.7 6.9 137.8 7.0 138.3 9.1C138.9 11.5 138.9 11.7 139.0 26.8C139.0 42.8 139.1 41.7 138.2 42.0C137.5 42.2 129.6 42.2 129.0 42.0C128.1 41.7 128.1 42.7 128.1 28.1C128.0 20.3 128.0 14.6 127.9 14.1C127.7 12.9 126.9 11.4 126.1 10.7C125.7 10.4 125.1 10.0 124.8 9.9C123.3 9.5 118.1 9.5 116.8 9.9C115.7 10.3 114.7 11.2 114.2 12.2C114.1 12.5 113.9 13.2 113.7 13.8C113.5 14.9 113.4 15.3 113.4 28.2L113.3 41.4L113.0 41.7L112.6 42.1L108.2 42.1C104.5 42.1 103.6 42.1 103.3 41.9ZM202.5 41.9C201.7 41.6 201.7 42.2 201.8 28.5C201.8 12.7 201.8 10.7 202.8 7.8C203.4 5.6 204.4 4.1 206.0 2.8C207.0 2.1 208.5 1.3 209.6 1.1C210.9 0.8 211.6 0.5 211.8 0.2C212.0 0.0 212.3 0.0 219.9 0.0C227.6 0.0 227.8 0.0 228.1 0.2C228.3 0.5 229.0 0.8 230.3 1.1C230.7 1.2 231.4 1.4 231.7 1.6C232.5 1.9 233.1 2.0 233.8 1.6C234.0 1.5 234.9 1.2 235.6 1.0C237.0 0.6 237.4 0.5 237.6 0.2C237.8 0.0 238.7 0.0 245.7 0.0C252.7 0.0 253.6 0.0 253.8 0.2C254.0 0.5 254.6 0.7 255.9 1.0C259.4 1.9 262.2 4.6 262.9 8.0C263.2 9.3 263.5 10.0 263.8 10.2C264.0 10.4 264.0 10.7 264.0 26.1L264.0 41.9L263.4 42.0C263.1 42.0 260.8 42.1 258.3 42.1L253.8 42.1L253.4 41.7L253.1 41.4L253.0 27.8C252.9 17.8 252.9 14.2 252.8 13.8C252.2 11.8 251.0 10.3 249.7 9.9C248.2 9.5 243.1 9.5 241.6 9.9C240.8 10.2 239.6 11.3 239.2 12.2C239.0 12.5 238.8 13.4 238.6 14.1C238.3 15.3 238.3 15.4 238.3 28.3C238.3 36.9 238.2 41.4 238.1 41.5C237.8 42.1 237.4 42.1 233.0 42.1C230.5 42.1 228.6 42.1 228.3 42.0C228.1 41.9 227.8 41.7 227.6 41.6C227.4 41.2 227.4 40.9 227.3 28.3C227.3 13.5 227.3 13.5 226.4 12.0C225.6 10.7 224.7 10.0 223.2 9.8C221.9 9.5 217.8 9.5 216.6 9.8C215.3 10.1 214.4 10.7 213.7 11.9C212.7 13.4 212.8 13.4 212.8 28.1C212.8 38.7 212.7 41.0 212.6 41.3C212.3 42.1 211.9 42.1 207.2 42.1C203.8 42.1 202.9 42.1 202.5 41.9ZM72.3 33.4C74.3 33.2 74.9 33.0 75.3 32.7L75.6 32.3L75.6 28.8C75.6 26.6 75.6 25.3 75.5 25.1C75.2 24.6 74.8 24.5 70.6 24.5C66.6 24.5 64.8 24.6 63.8 25.0C63.4 25.2 62.3 26.3 62.1 26.8C61.9 27.4 61.8 29.8 62.0 30.6C62.2 31.5 62.9 32.5 63.7 32.9C65.0 33.6 68.9 33.8 72.3 33.4ZM23.1 32.9C25.2 32.7 25.7 32.6 26.0 32.0C26.2 31.6 26.2 14.0 26.0 13.1C25.6 11.6 24.0 10.2 22.1 9.8C20.4 9.5 18.1 9.4 16.3 9.7C15.4 9.9 14.5 10.1 14.2 10.3C13.5 10.6 12.4 11.6 12.1 12.1C11.8 12.8 11.3 14.8 11.1 15.9C10.9 17.8 10.8 22.2 11.0 24.5C11.2 27.0 11.2 27.5 11.8 29.2C12.1 30.2 12.2 30.5 12.7 31.0C13.4 31.8 13.8 32.0 15.2 32.4C17.0 33.0 19.3 33.1 23.1 32.9ZM169.6 17.9L175.9 17.9L176.2 17.6C176.5 17.3 176.6 17.2 176.5 16.5C176.5 16.0 176.4 15.0 176.2 14.2C175.9 12.8 175.8 12.5 175.4 11.9C174.6 10.7 173.6 10.1 172.2 9.8C170.6 9.5 169.1 9.5 167.8 9.6C165.8 9.9 165.1 10.1 164.2 10.8C163.4 11.4 163.3 11.6 162.8 12.5C162.3 13.4 162.2 13.9 162.0 15.0C161.9 15.8 161.9 16.7 161.9 16.9C162.0 17.7 162.5 18.1 163.2 17.9C163.3 17.9 166.2 17.9 169.6 17.9Z"/><path fill="#FFD048" d="M52.5 69.1L52.6 58.3L52.8 58.0C53.3 57.4 54.0 57.9 54.0 58.9C54.0 59.2 54.0 64.1 54.0 69.7L54.0 80.0L53.2 80.0L52.5 80.0L52.5 69.1ZM210.0 69.3L209.9 58.7L210.1 58.2L210.3 57.8L210.6 57.8C210.7 57.8 211.0 57.8 211.1 58.0L211.4 58.2L211.5 69.1L211.5 80.0L210.8 80.0L210.0 80.0L210.0 69.3Z"/></svg></div>
+      <div class="top-r">
+        <a class="ghost" href="./"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Dashboard</a>
+        <a class="ghost" href="mapa-3d.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-8M12 14l-4-4M12 14l4-4M12 10V6"/><circle cx="12" cy="5" r="2"/><circle cx="7" cy="9" r="2"/><circle cx="17" cy="9" r="2"/></svg>Mapa de campañas</a>
+        <button class="ghost" id="reload" title="Volver a leer el Sheet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>Actualizar</button>
+        <button class="ghost" id="theme" aria-label="Cambiar tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg></button>
+        <div class="acct"><button class="avatar" id="avatar" aria-haspopup="true" aria-expanded="false"></button>
+          <div class="menu" id="menu" hidden><div class="n" id="m-name"></div><div class="e" id="m-mail"></div><button id="signout">Cerrar sesión</button></div></div>
+      </div>
+    </div>
+
+    <div class="head">
+      <div>
+        <div class="eyebrow">Samsung MX · Performance Brief</div>
+        <h1 id="title">Gráficas de desempeño</h1>
+        <div class="meta num" id="meta">Leyendo la base…</div>
+      </div>
+      <div class="controls">
+        <select class="sel" id="period" aria-label="Periodo"></select>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Gráfica">
+      <button role="tab" data-tab="flujo" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6c8 0 10 12 18 12M3 12c8 0 10-6 18-6M3 18h18"/></svg>Flujo del alcance</button>
+      <button role="tab" data-tab="ola" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l4-1 3-5 3 5 8 1M3 15l5-1 2-3 3 3 8 1M3 21h18"/></svg>Ola semanal</button>
+      <button role="tab" data-tab="espiral" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 12a2 2 0 1 1 2-2c0 3-2 5-5 5a5 5 0 0 1-5-5 8 8 0 0 1 8-8 9 9 0 0 1 9 9"/></svg>El año en espiral</button>
+      <button role="tab" data-tab="duracion" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="16" r="1.5"/><circle cx="10" cy="9" r="1.5"/><circle cx="14" cy="12" r="1.5"/><circle cx="18" cy="17" r="1.5"/><path d="M3 18c4-10 8-10 18 0"/></svg>Duración contra retención</button>
+    </div>
+
+    <div class="filters">
+      <div class="pf" id="pf" role="group" aria-label="Plataformas"></div>
+      <div class="ff" id="ff"></div>
+    </div>
+
+    <div class="grid">
+      <div class="stage" id="stage">
+        <svg id="viz" class="vz" role="img" aria-label="Gráfica"></svg>
+        <div class="ov"><div class="cap" id="cap"></div><div class="seg" id="opts" role="radiogroup" aria-label="Medida"></div></div>
+        <div class="tip" id="tip" hidden></div>
+        <div class="state" id="state"><div class="spin"></div><div>Leyendo las 7 pestañas del Sheet…</div></div>
+      </div>
+      <aside>
+        <div class="card" id="summary"></div>
+        <div class="card" id="side"></div>
+        <div class="card notes" id="notes"></div>
+      </aside>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+  <script>
+  'use strict';
+  // ============================================================
+  // CONFIG — mismo Sheet y mismo cliente de Google que el dashboard
+  // ============================================================
+  const SHEET_ID = '1TcmeDE08Df6Qk4lzRe6PhIBq5qOBUCC_vvHZq4UWD98';
+  const SHEET_TABS = { Facebook: '📘 Facebook', Instagram: '📷 Instagram', YouTube: '▶️ YouTube', TikTok: '🎵 TikTok', X: '𝕏 X', LinkedIn: '💼 LinkedIn', Threads: '🧵 Threads' };
+  const SHEET_GIDS = { Facebook: '108585329', Instagram: '47698819', YouTube: '1302908273', TikTok: '17033369', X: '406488930', LinkedIn: '493682597', Threads: '2058997613' };
+  const PLATFORMS = Object.keys(SHEET_TABS);
+  const AUTH_CLIENT_ID = '548072100911-573b2rkd1m5ajk2cccqd6luf0iuik32v.apps.googleusercontent.com';
+  const AUTH_DOMAIN = 'ganem.mx';
+  const AUTH_SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+  const AUTH_SCOPES = 'openid email profile ' + AUTH_SHEETS_SCOPE;
+  const AUTH_KEY = 'smx-auth';            // misma sesión que el dashboard (pestaña actual)
+  // KPIs de cuenta (mismas reglas que el dashboard y el script semanal)
+  const KPI = {
+    vtr: { goal: 25, dec: 1, label: 'VTR promedio', unit: 'videos de 0 a 30 s', rule: 'Videos de 0 a 30 s con VTR en todas las plataformas (incluye Shorts), sin Stories. Promedio simple por video.' },
+    er: { goal: 5, dec: 2, label: 'ER básico', unit: 'posts sin Stories', rule: 'Todas las plataformas, sin Stories. Promedio simple por post. La meta de 5% solo aplica a Instagram (toda la cuenta, solo feed); el resto de las plataformas se muestra sin meta.' },
+    erig: { goal: 5, dec: 2, label: 'ER básico Instagram', unit: 'posts de feed de Instagram', rule: 'Instagram, toda la cuenta, solo feed (sin Stories). Promedio simple por post.' },
+  };
+  const PLAT_COLORS = { Facebook: '#4F8CFF', Instagram: '#E3579F', YouTube: '#FF6B3D', TikTok: '#26C7C7', X: '#A3ADBA', LinkedIn: '#3AA6D8', Threads: '#A98BFF' };
+  const WEEK1 = new Date(2025, 11, 28);
+
+  // ============================================================
+  // ACCESO — copia del flujo del dashboard (v68)
+  // ============================================================
+  const auth = { token: null, exp: 0, email: null, name: null, picture: null };
+  let needConsent = false;
+  const authValid = () => !!auth.token && auth.exp > Date.now() + 30e3;
+  function authLoad() {
+    try {
+      const v = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
+      if (v && v.token && v.exp > Date.now() + 60e3 && String(v.email || '').toLowerCase().endsWith('@' + AUTH_DOMAIN)) { Object.assign(auth, v); return true; }
+    } catch (e) {}
+    return false;
+  }
+  function authSave() { try { sessionStorage.setItem(AUTH_KEY, JSON.stringify(auth)); } catch (e) {} }
+  function authClear() { Object.assign(auth, { token: null, exp: 0, email: null, name: null, picture: null }); try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {} }
+  let gis = null;
+  function loadGis() {
+    if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+    if (!gis) gis = new Promise((res, rej) => {
+      const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+      s.onload = res; s.onerror = () => { gis = null; rej(new Error('No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.')); };
+      document.head.appendChild(s);
+    });
+    return gis;
+  }
+  async function signIn() {
+    await loadGis();
+    let hint; try { hint = localStorage.getItem('smx-auth-hint') || undefined; } catch (e) {}
+    return new Promise((resolve, reject) => {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: AUTH_CLIENT_ID, scope: AUTH_SCOPES, hd: AUTH_DOMAIN, login_hint: hint, include_granted_scopes: true,
+        callback: async (resp) => {
+          if (!resp || resp.error) { reject(new Error(resp && resp.error === 'access_denied' ? 'No se concedió el acceso.' : 'No se pudo iniciar sesión.')); return; }
+          if (!google.accounts.oauth2.hasGrantedAllScopes(resp, AUTH_SHEETS_SCOPE)) {
+            needConsent = true; try { google.accounts.oauth2.revoke(resp.access_token, () => {}); } catch (e) {}
+            reject(new Error('Falta el permiso para leer la base. Vuelve a dar clic en «Continuar con Google» y marca la casilla «Ver todas tus hojas de cálculo de Google Sheets».')); return;
+          }
+          try {
+            const u = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + resp.access_token } }).then(r => r.json());
+            const email = String(u.email || '').toLowerCase();
+            if (!email.endsWith('@' + AUTH_DOMAIN) || u.email_verified === false) {
+              try { google.accounts.oauth2.revoke(resp.access_token, () => {}); } catch (e) {}
+              reject(new Error((u.email || 'Esa cuenta') + ' no es una cuenta de Ganem. Entra con tu correo @' + AUTH_DOMAIN + '.')); return;
+            }
+            Object.assign(auth, { token: resp.access_token, exp: Date.now() + (+resp.expires_in || 3600) * 1000, email, name: u.name || email, picture: u.picture || null });
+            authSave(); try { localStorage.setItem('smx-auth-hint', email); } catch (e) {}
+            resolve();
+          } catch (e) { reject(new Error('No se pudo verificar tu cuenta de Google.')); }
+        },
+        error_callback: (e) => reject(new Error(e && e.type === 'popup_closed' ? 'Se cerró la ventana de Google antes de terminar.'
+          : e && e.type === 'popup_failed_to_open' ? 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio e intenta de nuevo.' : 'No se pudo iniciar sesión.')),
+      });
+      client.requestAccessToken({ prompt: needConsent ? 'consent' : '' });
+    });
+  }
+  function signOut(msg) {
+    const tk = auth.token; authClear();
+    try { tk && google.accounts.oauth2.revoke(tk, () => {}); } catch (e) {}
+    showLogin(msg);
+  }
+  async function sheetsValues(range) {
+    if (!authValid()) { const e = new Error('Tu sesión expiró. Vuelve a entrar con tu cuenta de Ganem.'); e.expired = true; throw e; }
+    const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + encodeURIComponent(range) + '?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS';
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + auth.token }, cache: 'no-store' });
+    if (res.status === 401) { const e = new Error('Tu sesión expiró. Vuelve a entrar con tu cuenta de Ganem.'); e.expired = true; throw e; }
+    if (res.status === 403 || res.status === 404) throw new Error('Tu cuenta (' + auth.email + ') no tiene acceso al Sheet de Samsung. Pide acceso a quien administra la base.');
+    if (!res.ok) throw new Error('No se pudo leer «' + range.split('!')[0].replace(/'/g, '') + '» (HTTP ' + res.status + ').');
+    const j = await res.json();
+    return (j.values || []).map(r => r.map(c => c == null ? '' : String(c)));
+  }
+
+  // ============================================================
+  // LECTURA Y LIMPIEZA
+  // ============================================================
+  function toNum(v) {                     // mismo parser que el dashboard
+    if (v == null || v === '') return null;
+    let s = String(v).trim();
+    if (s === '' || s === '—' || s === '-' || s === '#N/A' || s === '#DIV/0!') return null;
+    s = s.replace(/%\s*$/, '');
+    if (s.includes(',') && s.includes('.')) s = s.replace(/,/g, '');
+    else if (s.includes(',') && !s.includes('.')) {
+      const last = s.lastIndexOf(','), after = s.length - last - 1;
+      if (after <= 2 && s.split(',').length === 2) s = s.replace(',', '.'); else s = s.replace(/,/g, '');
+    }
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+  }
+  const BLANK = /^(|n\/?a|na|-|—|sin campaña|ninguna?)$/i;
+  const clean = v => { const s = String(v == null ? '' : v).trim(); return BLANK.test(s) ? null : s; };
+  const fold = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '').toLowerCase();
+  function parseDate(s) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '').trim());
+    if (!m) return null;
+    const d = new Date(+m[3], +m[2] - 1, +m[1]);
+    return isNaN(d) || d.getMonth() !== +m[2] - 1 ? null : d;
+  }
+  async function loadPosts() {
+    const out = [], errors = [];
+    const res = await Promise.allSettled(PLATFORMS.map(p => sheetsValues("'" + SHEET_TABS[p] + "'!A2:AL10000")));
+    res.forEach((r, k) => {
+      const plat = PLATFORMS[k];
+      if (r.status !== 'fulfilled') { if (r.reason && r.reason.expired) throw r.reason; errors.push(plat + ': ' + (r.reason && r.reason.message)); return; }
+      const vals = r.value, hdr = (vals[0] || []).map(h => String(h).trim()), ix = {};
+      hdr.forEach((h, j) => { if (h && !(h in ix)) ix[h] = j; });
+      const g = (row, c) => ix[c] != null ? (row[ix[c]] || '') : '';
+      for (let i = 1; i < vals.length; i++) {
+        const row = vals[i];
+        if (!row.some(c => String(c).trim())) continue;
+        const d = parseDate(g(row, 'Fecha'));
+        const fmt = clean(g(row, 'Formato'));
+        out.push({
+          plat, row: i + 2, d, link: clean(g(row, 'Link')), fmt,
+          stories: /stor/i.test(fmt || ''),
+          camp: clean(g(row, 'Campaña')), sub: clean(g(row, 'Subcampaña')), stage: clean(g(row, 'Etapa')),
+          prod: (clean(g(row, 'Producto')) || '').split('\n')[0].trim() || null,
+          pauta: clean(g(row, 'Tipo Pauta')), tipo: clean(g(row, 'Tipo Contenido')),
+          reach: toNum(g(row, 'Alcance')) || 0, views: toNum(g(row, 'Views')),
+          dur: toNum(g(row, 'Duración (seg)')), vtr: toNum(g(row, 'VTR %')), ber: toNum(g(row, 'ER Básico %')),
+          infl: clean(g(row, 'Nombre Influencer')),
+        });
+      }
+    });
+    return { posts: out.filter(p => p.d), undated: out.filter(p => !p.d).length, errors };
+  }
+
+  // ============================================================
+  // MODELO DEL PERIODO
+  // ============================================================
+  let ALL = [], META = {}, VIEW = null;
+  let lens = 'vtr', focus = null, hover = null, pinned = null, PID = null;
+  let PLATS = new Set(PLATFORMS), PAUTA = 'all', TIPO = 'all';
+  try { PAUTA = localStorage.getItem('smx-mapa-pauta') || 'all'; TIPO = localStorage.getItem('smx-mapa-tipo') || 'all'; } catch (e) {}
+  // Normaliza «Paid», «Pauta», «Pagado» → Paid; «Orgánico», «Organico» → Orgánico
+  const pautaOf = p => !p.pauta ? null : /paid|pauta|pagad/i.test(p.pauta) ? 'Paid' : /org/i.test(p.pauta) ? 'Orgánico' : null;
+  const tipoOf = p => { const f = String(p.tipo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); return f.startsWith('loc') ? 'Local' : f.startsWith('glo') ? 'Global' : f.startsWith('reg') ? 'Regional' : null; };
+  const passPT = p => (PAUTA === 'all' || pautaOf(p) === PAUTA) && (TIPO === 'all' || tipoOf(p) === TIPO);
+  const passes = p => PLATS.has(p.plat) && passPT(p);
+  try { const s = JSON.parse(localStorage.getItem('smx-mapa-plats') || 'null'); if (Array.isArray(s) && s.some(x => PLATFORMS.includes(x))) PLATS = new Set(s.filter(x => PLATFORMS.includes(x))); } catch (e) {}
+  const fmtInt = n => Math.round(n).toLocaleString('en-US');
+  const pct = (v, d) => v == null ? '—' : v.toFixed(d) + '%';
+  const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const fdate = d => d ? d.getDate() + ' ' + MES[d.getMonth()] + ' ' + d.getFullYear() : '—';
+  const week = d => Math.floor((d - WEEK1) / 864e5 / 7) + 1;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const rgb = (n, a) => 'rgb(' + tok(n) + (a != null ? ' / ' + a : '') + ')';
+
+  function eligible(p, lz) {
+    if (lz === 'vtr') return !p.stories && (p.vtr || 0) > 0 && (p.dur || 0) > 0 && p.dur <= 30;
+    if (lz === 'er') return !p.stories && p.reach > 0 && p.ber != null;
+    if (lz === 'erig') return p.plat === 'Instagram' && !p.stories && p.reach > 0 && p.ber != null;
+    return false;
+  }
+  const val = (p, lz) => lz === 'vtr' ? p.vtr : p.ber;
+  // La meta de ER básico (5%) solo aplica a Instagram; en las demás plataformas el ER se muestra sin meta
+  const hasGoal = (p, lz) => lz !== 'er' || p.plat === 'Instagram';
+  const erMixed = () => lens === 'er' && [...PLATS].some(pl => pl !== 'Instagram');
+  const meetsP = (p, lz) => val(p, lz) >= KPI[lz].goal;
+  // clase ok/bad de un promedio: solo si todo lo que promedia tiene meta
+  const tcls = (s, lz) => s && s.n && s.g === s.n ? (s.avg >= KPI[lz].goal ? 'ok' : 'bad') : '';
+  function stats(list, lz) {
+    const e = list.filter(p => eligible(p, lz));
+    const gl = e.filter(p => hasGoal(p, lz));
+    return { n: e.length, avg: e.length ? d3.mean(e, p => val(p, lz)) : null, ok: gl.filter(p => meetsP(p, lz)).length, g: gl.length };
+  }
+
+  function periods() {
+    const years = [...new Set(ALL.map(p => p.d.getFullYear()))].sort((a, b) => b - a);
+    return [{ id: 'w13', label: 'Últimas 13 semanas' }, { id: 'w4', label: 'Últimas 4 semanas' }].concat(years.map(y => ({ id: 'y' + y, label: 'Año ' + y })));
+  }
+  function inPeriod(id) {
+    if (id[0] === 'y') return ALL.filter(p => p.d.getFullYear() === +id.slice(1));
+    const maxD = d3.max(ALL, p => p.d), days = id === 'w4' ? 28 : 91;
+    const from = new Date(maxD - days * 864e5);
+    return ALL.filter(p => p.d > from);
+  }
+
+
+
+  // ============================================================
+  // ESTADO DE LA PÁGINA
+  // ============================================================
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), tip = $('tip');
+  const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const DUR = REDUCED ? 0 : 1;
+  let VP = [], TAB = 'flujo', PIN = null, HL = null;
+  const OPT = { flujo: 'reach', ola: 'vtr', espiral: 'vtr', duracion: 'vtr' };
+  try { const t = localStorage.getItem('smx-viz-tab'); if (['flujo', 'ola', 'espiral', 'duracion'].includes(t)) TAB = t; Object.assign(OPT, JSON.parse(localStorage.getItem('smx-viz-opt') || '{}')); } catch (e) {}
+  const DOW = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  // colores en sintaxis con comas: d3.interpolate no entiende «rgb(r g b)»
+  const col = (n, a) => { const p = tok(n).split(/\s+/).join(','); return a == null ? 'rgb(' + p + ')' : 'rgba(' + p + ',' + a + ')'; };
+  const short = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  const share = (a, b) => b ? Math.round(a / b * 1000) / 10 + '%' : '—';
+  const canonCamp = posts => {
+    const by = d3.group(posts.filter(p => p.camp), p => fold(p.camp)), canon = new Map();
+    by.forEach(list => { const top = d3.rollups(list, v => v.length, p => p.camp).sort((a, b) => b[1] - a[1])[0][0]; list.forEach(p => canon.set(p.camp, top)); });
+    posts.forEach(p => { p.cc = p.camp ? canon.get(p.camp) : 'Sin campaña'; });
+  };
+  function size() { const b = stage.getBoundingClientRect(); return { W: Math.max(320, b.width), H: Math.max(360, b.height) }; }
+  function showTip(html, x, y, pin) {
+    tip.innerHTML = html; tip.hidden = false; tip.classList.toggle('pin', !!pin);
+    tip.classList.remove('in'); void tip.offsetWidth; tip.classList.add('in');
+    placeTip(x, y);
+  }
+  function placeTip(x, y) {
+    const b = stage.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    let tx = x + 16, ty = y - h / 2;
+    if (tx + w > b.width - 10) tx = x - w - 16;
+    ty = Math.min(b.height - h - 10, Math.max(10, ty));
+    tip.style.transform = 'translate(' + Math.max(10, tx).toFixed(0) + 'px,' + ty.toFixed(0) + 'px)';
+  }
+  const hideTip = () => { if (!PIN) tip.hidden = true; };
+  const local = e => { const b = stage.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  const kpiCls = (v, lz) => v == null ? 'na' : v >= KPI[lz].goal ? 'ok' : 'bad';
+
+  // ============================================================
+  // 1 · FLUJO DEL ALCANCE — pauta → plataforma → formato → campaña
+  // ============================================================
+  const PAUTA_COL = { 'Paid': '--c-accent2', 'Orgánico': '--c-success', 'Sin dato': '--c-txt4' };
+  function topN(posts, key, v, n, other) {
+    const tot = d3.rollups(posts, l => d3.sum(l, v), key).sort((a, b) => b[1] - a[1]);
+    const keep = new Set(tot.slice(0, n).map(d => d[0]));
+    return p => keep.has(key(p)) ? key(p) : other;
+  }
+  function renderFlow(svg, W, H) {
+    const m = OPT.flujo, v = m === 'reach' ? (p => p.reach) : (() => 1);
+    const posts = VP.filter(p => m !== 'reach' || p.reach > 0);
+    if (!posts.length) return empty(svg, 'No hay alcance capturado en esta selección.');
+    const fA = p => pautaOf(p) || 'Sin dato', fP = p => p.plat;
+    const fF = topN(posts, p => p.fmt || 'Sin formato', v, W < 760 ? 6 : 9, 'Otros formatos');
+    const fC = topN(posts, p => p.cc, v, W < 760 ? 7 : 12, 'Otras campañas');
+    const keys = [['a', fA], ['p', fP], ['f', fF], ['c', fC]].slice(0, W < 560 ? 3 : 4), LAST = keys.length - 1;   // en el teléfono, sin la columna de campañas
+    const nodes = new Map(), links = new Map();
+    posts.forEach(p => {
+      const ids = keys.map(([k, f]) => k + ':' + f(p));
+      ids.forEach((id, i) => { if (!nodes.has(id)) nodes.set(id, { id, name: id.slice(2), col: i, posts: [] }); nodes.get(id).posts.push(p); });
+      for (let i = 0; i < LAST; i++) {
+        const k = ids[i] + '>' + ids[i + 1];
+        if (!links.has(k)) links.set(k, { source: ids[i], target: ids[i + 1], value: 0, posts: [] });
+        const L = links.get(k); L.value += v(p); L.posts.push(p);
+      }
+    });
+    const top = 84, bottom = 24, left = 8, right = 8;
+    const sk = d3.sankey().nodeId(d => d.id).nodeWidth(11).nodePadding(W < 760 ? 8 : 12)
+      .nodeSort((a, b) => b.value - a.value).linkSort(null)
+      .extent([[left, top], [W - right, H - bottom]]);
+    const g = sk({ nodes: [...nodes.values()].map(d => Object.assign({}, d)), links: [...links.values()].map(d => Object.assign({}, d)) });
+    const total = d3.sum(posts, v);
+    const ncol = n => n.col === 0 ? col(PAUTA_COL[n.name] || '--c-txt4') : n.col === 1 ? PLAT_COLORS[n.name] : col('--c-txt3');
+    const lcol = l => l.source.col === 0 ? PLAT_COLORS[l.target.name] : l.source.col === 1 ? PLAT_COLORS[l.source.name] : col('--c-txt3');
+    // encabezados de columna
+    const xs = [0, 1, 2, 3].map(c => { const n = g.nodes.find(d => d.depth === c); return n ? n.x0 : 0; });
+    svg.append('g').selectAll('text').data(['Pauta', 'Plataforma', 'Formato', 'Campaña'].slice(0, LAST + 1)).join('text')
+      .attr('class', 'mono').attr('x', (d, i) => i === LAST ? W - right : xs[i]).attr('y', top - 14).attr('text-anchor', (d, i) => i === LAST ? 'end' : 'start').text(d => d);
+    const path = d3.sankeyLinkHorizontal();
+    const gl = svg.append('g');
+    const link = gl.selectAll('path').data(g.links).join('path').attr('class', 'link')
+      .attr('d', path).attr('stroke', lcol).attr('stroke-width', d => Math.max(1, d.width)).attr('stroke-opacity', 0.28);
+    if (!REDUCED) link.each(function () { const L = this.getTotalLength(); d3.select(this).attr('stroke-dasharray', L + ' ' + L).attr('stroke-dashoffset', L); })
+      .transition().duration(1100).delay(d => 120 + d.source.depth * 260).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0)
+      .on('end', function () { d3.select(this).attr('stroke-dasharray', null); });
+    const over = svg.append('g').attr('pointer-events', 'none');
+    const node = svg.append('g').selectAll('g').data(g.nodes).join('g').attr('class', 'node');
+    node.append('rect').attr('x', d => d.x0).attr('y', d => d.y0).attr('width', d => d.x1 - d.x0).attr('rx', 2).attr('fill', ncol)
+      .attr('height', 0).transition().duration(700 * DUR).delay(d => d.depth * 200).attr('height', d => Math.max(1, d.y1 - d.y0));
+    const lab = node.filter(d => d.y1 - d.y0 > 9).append('text').attr('class', 'halo')
+      .attr('x', d => d.depth === LAST ? d.x0 - 8 : d.x1 + 8).attr('y', d => (d.y0 + d.y1) / 2).attr('dy', '0.35em')
+      .attr('text-anchor', d => d.depth === LAST ? 'end' : 'start').attr('opacity', 0);
+    lab.append('tspan').attr('class', 'lbl').text(d => short(d.name, W < 900 ? 16 : 26));
+    lab.append('tspan').attr('class', 'val').attr('dx', 7).text(d => share(d.value, total));
+    lab.transition().duration(500 * DUR).delay(d => 500 + d.depth * 220).attr('opacity', 1);
+    // resaltado: la parte de cada flujo que pertenece al nodo elegido
+    const match = n => { const f = keys[n.depth][1]; return p => f(p) === n.name; };
+    function highlight(n) {
+      over.selectAll('*').remove();
+      if (!n) { link.attr('stroke-opacity', 0.28); node.select('rect').attr('opacity', 1); return; }
+      const f = match(n);
+      link.attr('stroke-opacity', 0.07);
+      const sub = g.links.map(l => { const hv = d3.sum(l.posts.filter(f), v); return { l, hv }; }).filter(x => x.hv > 0);
+      over.selectAll('path').data(sub).join('path').attr('d', x => path(x.l)).attr('fill', 'none')
+        .attr('stroke', x => n.depth >= 2 ? col('--c-accent') : lcol(x.l)).attr('stroke-opacity', 0.75)
+        .attr('stroke-width', x => Math.max(1, x.l.width * x.hv / x.l.value));
+      const touched = new Set(); sub.forEach(x => { touched.add(x.l.source.id); touched.add(x.l.target.id); }); touched.add(n.id);
+      node.select('rect').attr('opacity', d => touched.has(d.id) ? 1 : 0.25);
+    }
+    HL = highlight;
+    const tipNode = (e, d) => {
+      const vtr = stats(d.posts, 'vtr'), er = stats(d.posts, 'er');
+      const [x, y] = local(e);
+      showTip('<div class="t"><i style="background:' + ncol(d) + '"></i>' + esc(d.name) + '</div><div class="m">' + ['Pauta', 'Plataforma', 'Formato', 'Campaña'][d.depth] + '</div><dl>' +
+        '<dt>Alcance</dt><dd>' + fmtInt(d3.sum(d.posts, p => p.reach)) + '</dd><dt>Parte del ' + (m === 'reach' ? 'alcance' : 'total de posts') + '</dt><dd>' + share(d.value, total) + '</dd>' +
+        '<dt>Posts</dt><dd>' + fmtInt(d.posts.length) + ' (' + share(d.posts.length, posts.length) + ')</dd>' +
+        '<dt>VTR</dt><dd class="' + kpiCls(vtr.avg, 'vtr') + '">' + (vtr.n ? pct(vtr.avg, 1) + ' · ' + vtr.n + ' videos' : 'no aplica') + '</dd>' +
+        '<dt>ER básico</dt><dd>' + (er.n ? pct(er.avg, 2) : '—') + '</dd></dl><div class="hint">' + (PIN ? 'Clic en el fondo para soltar' : 'Clic para fijar el resaltado') + '</div>', x, y, false);
+    };
+    node.on('mouseenter', (e, d) => { if (!PIN) highlight(d); tipNode(e, d); }).on('mousemove', e => { const [x, y] = local(e); placeTip(x, y); })
+      .on('mouseleave', () => { if (!PIN) highlight(null); hideTip(); })
+      .on('click', (e, d) => { e.stopPropagation(); PIN = PIN === d.id ? null : d.id; highlight(PIN ? d : null); tip.hidden = true; });
+    link.on('mouseenter', (e, l) => {
+      if (!PIN) d3.select(e.currentTarget).attr('stroke-opacity', 0.55);
+      const [x, y] = local(e);
+      showTip('<div class="t">' + esc(l.source.name) + ' → ' + esc(l.target.name) + '</div><dl><dt>' + (m === 'reach' ? 'Alcance' : 'Posts') + '</dt><dd>' + fmtInt(l.value) + '</dd>' +
+        '<dt>Del total</dt><dd>' + share(l.value, total) + '</dd><dt>De «' + esc(short(l.source.name, 18)) + '»</dt><dd>' + share(l.value, l.source.value) + '</dd><dt>Posts</dt><dd>' + fmtInt(l.posts.length) + '</dd></dl>', x, y);
+    }).on('mousemove', e => { const [x, y] = local(e); placeTip(x, y); })
+      .on('mouseleave', e => { if (!PIN) d3.select(e.currentTarget).attr('stroke-opacity', 0.28); hideTip(); });
+    if (PIN) { const n = g.nodes.find(d => d.id === PIN); if (n) highlight(n); else PIN = null; }
+    $('cap').textContent = m === 'reach' ? 'Grosor = alcance' : 'Grosor = número de posts';
+
+    // panel
+    const totR = d3.sum(VP, p => p.reach), byA = d3.rollup(VP, l => ({ r: d3.sum(l, p => p.reach), n: l.length }), fA);
+    const paid = byA.get('Paid') || { r: 0, n: 0 };
+    $('summary').innerHTML = '<div class="eyebrow">Alcance total' + esc(filterLabel()) + '</div><div class="big"><span class="n">' + fmtInt(totR) + '</span></div>' +
+      '<div class="sub">La pauta aporta <strong>' + share(paid.r, totR) + ' del alcance</strong> con ' + share(paid.n, VP.length) + ' de los posts.</div>' +
+      '<div class="eff">' + PLATFORMS.filter(pl => VP.some(p => p.plat === pl)).map(pl => {
+        const l = VP.filter(p => p.plat === pl), r = d3.sum(l, p => p.reach) / (totR || 1), n = l.length / VP.length, mx = 1;
+        return '<span class="nm"><i style="background:' + PLAT_COLORS[pl] + '"></i>' + pl + '</span><span class="bars"><span style="width:' + (n * 100).toFixed(1) + '%;background:' + col('--c-txt3', .55) + '"></span><span style="width:' + (r * 100).toFixed(1) + '%;background:' + PLAT_COLORS[pl] + '"></span></span><span class="v">×' + (n ? (r / n).toFixed(1) : '—') + '</span>';
+      }).join('') + '</div><div class="key"><span><i style="background:' + col('--c-txt3', .55) + '"></i>Parte de los posts</span><span><i style="background:' + col('--c-accent2') + '"></i>Parte del alcance</span></div>';
+    const routes = d3.rollups(posts, l => ({ v: d3.sum(l, v), n: l.length }), p => fA(p) + ' · ' + p.plat + ' · ' + (p.fmt || 'Sin formato')).sort((a, b) => b[1].v - a[1].v).slice(0, 6);
+    $('side').innerHTML = '<h2>Rutas con más ' + (m === 'reach' ? 'alcance' : 'posts') + '</h2><div class="hint2">Pauta · plataforma · formato. El número es su parte del total.</div>' +
+      routes.map((r, i) => '<div class="route"><b>' + String(i + 1).padStart(2, '0') + '</b><span>' + esc(r[0]) + '</span><em>' + share(r[1].v, total) + '</em></div>').join('');
+    $('notes').innerHTML = '<h3>Cómo leerlo</h3><ul><li>Cada banda es un grupo de posts que va de izquierda a derecha: tipo de pauta, plataforma, formato y campaña. Su grosor es el alcance (o el número de posts con «Posts»).</li>' +
+      '<li>Pasa el cursor por un bloque para ver qué parte de cada flujo le pertenece; con clic se queda fijo.</li>' +
+      '<li>En el panel, «×» compara la parte del alcance de cada plataforma contra su parte de los posts: ×2.0 significa que rinde el doble de lo que pesa en publicaciones.</li>' +
+      '<li>Se muestran los ' + (W < 760 ? 6 : 9) + ' formatos y las ' + (W < 760 ? 7 : 12) + ' campañas con más ' + (m === 'reach' ? 'alcance' : 'posts') + '; el resto se agrupa en «Otros».</li></ul>';
+  }
+
+  // ============================================================
+  // 2 · OLA SEMANAL — cómo se reparte el KPI de los posts, semana a semana
+  // ============================================================
+  function renderRidge(svg, W, H) {
+    const lz = OPT.ola, K = KPI[lz];
+    const el = VP.filter(p => eligible(p, lz));
+    if (el.length < 3) return empty(svg, 'No hay suficientes ' + K.unit + ' en esta selección.');
+    const wk0 = d3.min(el, p => week(p.d)), wk1 = d3.max(el, p => week(p.d));
+    const by = d3.group(el, p => week(p.d));
+    const weeks = d3.range(wk0, wk1 + 1).map(w => ({ w, list: by.get(w) || [] }));
+    const vals = el.map(p => val(p, lz)).sort(d3.ascending);
+    const xmax = Math.max(K.goal * 2.2, d3.quantile(vals, 0.96));
+    const ml = W < 700 ? 64 : 92, mr = W < 700 ? 48 : 70, top = 96, bottom = 40;
+    const x = d3.scaleLinear([0, xmax], [ml, W - mr]).clamp(true);
+    const step = (H - top - bottom) / Math.max(1, weeks.length), amp = Math.min(110, step * 4.2);
+    const bw = xmax / 22, xs = d3.range(0, 81).map(i => xmax * i / 80);
+    weeks.forEach(o => {
+      const v = o.list.map(p => Math.min(xmax, val(p, lz)));
+      o.dens = xs.map(t => d3.sum(v, u => { const z = (t - u) / bw; return Math.abs(z) < 1 ? 0.75 * (1 - z * z) : 0; }) / bw);
+      o.n = v.length; o.avg = v.length ? d3.mean(o.list, p => val(p, lz)) : null;
+      o.ok = o.list.filter(p => val(p, lz) >= K.goal).length;
+      o.from = new Date(WEEK1.getTime() + (o.w - 1) * 7 * 864e5); o.to = new Date(o.from.getTime() + 6 * 864e5);
+    });
+    const dmax = d3.max(weeks, o => d3.max(o.dens)) || 1;
+    const y = d3.scaleLinear([0, dmax], [0, amp]);
+    const base = i => top + (i + 1) * step;
+    const defs = svg.append('defs');
+    const gx = x(K.goal) / W;
+    const gr = defs.append('linearGradient').attr('id', 'rg').attr('gradientUnits', 'userSpaceOnUse').attr('x1', 0).attr('x2', W).attr('y1', 0).attr('y2', 0);
+    gr.append('stop').attr('offset', 0).attr('stop-color', col('--c-bad'));
+    gr.append('stop').attr('offset', gx).attr('stop-color', col('--c-bad'));
+    gr.append('stop').attr('offset', gx).attr('stop-color', col('--c-success'));
+    gr.append('stop').attr('offset', 1).attr('stop-color', col('--c-success'));
+    // eje y meta
+    const ax = svg.append('g').attr('class', 'axis').attr('transform', 'translate(0,' + (H - bottom + 10) + ')')
+      .call(d3.axisBottom(x).ticks(W < 700 ? 4 : 8).tickFormat(d => d + '%').tickSizeOuter(0));
+    ax.select('.domain').remove();
+    svg.append('line').attr('class', 'goal').attr('x1', x(K.goal)).attr('x2', x(K.goal)).attr('y1', top - 20).attr('y2', H - bottom + 6);
+    svg.append('text').attr('class', 'goaltxt').attr('x', x(K.goal) + 6).attr('y', top - 22).text('Meta ' + K.goal + '%');
+    svg.append('text').attr('class', 'mono').attr('x', ml).attr('y', top - 50).text(K.label + ' por post · cada línea es una semana');
+    const area = d3.area().x((d, i) => x(xs[i])).y0(0).y1(d => -y(d)).curve(d3.curveBasis);
+    const line = d3.line().x((d, i) => x(xs[i])).y(d => -y(d)).curve(d3.curveBasis);
+    const flat = xs.map(() => 0);
+    const rows = svg.append('g').selectAll('g').data(weeks).join('g').attr('transform', (o, i) => 'translate(0,' + base(i) + ')');
+    rows.append('path').attr('class', 'fill').attr('fill', col('--c-surface')).attr('d', area(flat));
+    rows.append('path').attr('class', 'tint').attr('fill', 'url(#rg)').attr('fill-opacity', 0.1).attr('d', area(flat));
+    rows.append('path').attr('class', 'ln').attr('fill', 'none').attr('stroke', o => o.n >= 3 ? 'url(#rg)' : col('--c-txt4')).attr('stroke-width', 1.3)
+      .attr('stroke-dasharray', o => o.n >= 3 ? null : '2 3').attr('d', line(flat));
+    rows.selectAll('path.fill, path.tint').transition().duration(900 * DUR).delay((o, i) => 80 + i * 22).ease(d3.easeCubicOut).attr('d', o => area(o.dens));
+    rows.select('path.ln').transition().duration(900 * DUR).delay((o, i) => 80 + i * 22).ease(d3.easeCubicOut).attr('d', o => line(o.dens));
+    const labEvery = Math.max(1, Math.ceil(13 / step));
+    rows.filter((o, i) => i % labEvery === 0 || i === weeks.length - 1).append('text').attr('class', 'mono').attr('x', ml - 10).attr('y', -2).attr('text-anchor', 'end')
+      .text(o => 'S' + o.w + ' · ' + o.from.getDate() + ' ' + MES[o.from.getMonth()]);
+    rows.filter(o => o.avg != null).append('circle').attr('cx', o => x(Math.min(xmax, o.avg))).attr('cy', 0).attr('r', 2.6)
+      .attr('fill', o => o.avg >= K.goal ? col('--c-success') : col('--c-bad')).attr('opacity', 0).transition().delay((o, i) => 600 + i * 22).attr('opacity', 1);
+    rows.filter((o, i) => o.avg != null && (i % labEvery === 0 || i === weeks.length - 1)).append('text').attr('class', 'val').attr('x', W - mr + 10).attr('y', -2)
+      .attr('fill', o => o.avg >= K.goal ? col('--c-success') : col('--c-bad')).text(o => pct(o.avg, K.dec));
+    // interacción: la semana más cercana al cursor
+    const hit = svg.append('rect').attr('x', 0).attr('y', top - 10).attr('width', W).attr('height', H - top - bottom + 20).attr('fill', 'transparent');
+    const mark = svg.append('g').attr('pointer-events', 'none');
+    hit.on('mousemove', e => {
+      const [px, py] = local(e);
+      const i = Math.max(0, Math.min(weeks.length - 1, Math.round((py - top) / step - 0.6)));
+      const o = weeks[i];
+      rows.attr('opacity', (r, j) => j === i ? 1 : 0.35);
+      rows.select('path.ln').attr('stroke-width', (r, j) => j === i ? 2.4 : 1.3);
+      mark.selectAll('*').remove();
+      const best = o.list.slice().sort((a, b) => val(b, lz) - val(a, lz))[0];
+      showTip('<div class="t">Semana ' + o.w + '</div><div class="m">' + fdate(o.from) + ' a ' + fdate(o.to) + '</div><dl>' +
+        '<dt>' + K.unit[0].toUpperCase() + K.unit.slice(1) + '</dt><dd>' + o.n + '</dd>' +
+        '<dt>Promedio</dt><dd class="' + kpiCls(o.avg, lz) + '">' + pct(o.avg, K.dec) + '</dd>' +
+        '<dt>En la meta</dt><dd>' + (o.n ? o.ok + ' de ' + o.n + ' (' + share(o.ok, o.n) + ')' : '—') + '</dd>' +
+        (best ? '<dt>Mejor</dt><dd>' + pct(val(best, lz), K.dec) + ' · ' + esc(best.plat) + ' · ' + esc(best.fmt || '') + '</dd>' : '') + '</dl>', px, py);
+    }).on('mouseleave', () => { rows.attr('opacity', 1); rows.select('path.ln').attr('stroke-width', 1.3); tip.hidden = true; });
+    $('cap').textContent = '';
+
+    const ev = weeks.filter(o => o.n >= 3), okW = ev.filter(o => o.avg >= K.goal).length;
+    const half = Math.floor(ev.length / 2), a1 = d3.mean(ev.slice(0, half), o => o.avg), a2 = d3.mean(ev.slice(half), o => o.avg);
+    const bestW = ev.slice().sort((a, b) => b.avg - a.avg)[0], worstW = ev.slice().sort((a, b) => a.avg - b.avg)[0];
+    const q1 = d3.quantile(vals, 0.25), q3 = d3.quantile(vals, 0.75);
+    $('summary').innerHTML = '<div class="eyebrow">Semanas con promedio en la meta · ' + K.label + esc(filterLabel()) + '</div><div class="big"><span class="n">' + (ev.length ? Math.round(okW / ev.length * 100) : 0) + '%</span></div>' +
+      '<div class="sub"><strong>' + okW + ' de ' + ev.length + ' semanas</strong> con 3 o más ' + K.unit + ' cerraron en ' + K.goal + '% o más.</div>' +
+      '<dl class="kv"><dt>Mitad del periodo → segunda mitad</dt><dd>' + (a1 != null ? pct(a1, K.dec) + ' → <span class="' + (a2 >= a1 ? 'ok' : 'bad') + '">' + pct(a2, K.dec) + '</span>' : '—') + '</dd>' +
+      (bestW ? '<dt>Mejor semana</dt><dd class="ok">S' + bestW.w + ' · ' + pct(bestW.avg, K.dec) + '</dd><dt>Peor semana</dt><dd class="bad">S' + worstW.w + ' · ' + pct(worstW.avg, K.dec) + '</dd>' : '') +
+      '<dt>La mitad de los posts cae entre</dt><dd>' + pct(q1, K.dec) + ' y ' + pct(q3, K.dec) + '</dd></dl>';
+    $('side').innerHTML = '<h2>Lo que dice la forma</h2><div class="hint2" style="margin-bottom:0">Una montaña angosta cerca de la meta es una semana pareja. Una montaña ancha o con dos picos es una semana que depende de unos cuantos posts.</div>';
+    $('notes').innerHTML = '<h3>Cómo leerlo</h3><ul><li>Cada línea es una semana, de la más antigua (arriba) a la más reciente (abajo). Entre más alta la montaña en un punto, más posts tuvieron ese ' + (lz === 'vtr' ? 'VTR' : 'ER') + '.</li>' +
+      '<li>La línea punteada vertical es la meta; lo que queda a su derecha cumple y se pinta en verde.</li><li>El punto sobre cada línea es el promedio de la semana. Las semanas con menos de 3 posts van punteadas.</li>' +
+      '<li>' + K.rule + '</li></ul>';
+  }
+
+  // ============================================================
+  // 3 · EL AÑO EN ESPIRAL — una vuelta por mes, un segmento por día
+  // ============================================================
+  function renderSpiral(svg, W, H) {
+    const lz = OPT.espiral, isK = lz !== 'reach', K = KPI[lz] || null;
+    if (!VP.length) return empty(svg, 'No hay posts en esta selección.');
+    const d0 = d3.timeDay.floor(d3.min(VP, p => p.d)), d1 = d3.timeDay.floor(d3.max(VP, p => p.d));
+    const months = d3.timeMonth.range(d3.timeMonth.floor(d0), d3.timeMonth.offset(d3.timeMonth.floor(d1), 1));
+    const byDay = d3.group(VP, p => +d3.timeDay.floor(p.d));
+    const days = d3.timeDay.range(months[0], d3.timeMonth.offset(months[months.length - 1], 1)).map(d => {
+      const list = byDay.get(+d) || [], e = isK ? list.filter(p => eligible(p, lz)) : [];
+      return { d, list, reach: d3.sum(list, p => p.reach), n: list.length, kn: e.length, k: e.length ? d3.mean(e, p => val(p, lz)) : null,
+        ok: isK ? e.filter(p => val(p, lz) >= K.goal).length : 0, inRange: d >= d0 && d <= d1 };
+    });
+    const cx = W / 2, cy = H / 2 + 22, R = Math.min(W, H - 40) / 2 - 34, r0 = R * 0.16, gap = (R - r0) / (months.length + 0.35);
+    const pos = d => { const mi = months.findIndex(m => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()), dim = d3.timeDay.count(months[mi], d3.timeMonth.offset(months[mi], 1)); return { mi, f: (d.getDate() - 1) / dim, df: 1 / dim }; };
+    const pt = (f, r) => [cx + r * Math.sin(f * 2 * Math.PI), cy - r * Math.cos(f * 2 * Math.PI)];
+    const seg = o => {
+      const { mi, f, df } = pos(o.d), pad = df * 0.1, a = f + pad / 2, b = f + df - pad / 2, th = gap * 0.36;
+      const rad = t => r0 + (mi + t) * gap;
+      const pts = [];
+      for (let k = 0; k <= 3; k++) { const t = a + (b - a) * k / 3; pts.push(pt(t, rad(t) + th)); }
+      for (let k = 3; k >= 0; k--) { const t = a + (b - a) * k / 3; pts.push(pt(t, rad(t) - th)); }
+      return 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L') + 'Z';
+    };
+    const rmax = d3.max(days, o => o.reach) || 1;
+    const mixBad = d3.interpolateRgb(col('--c-bad'), col('--c-txt3')), mixOk = d3.interpolateRgb(col('--c-txt3'), col('--c-success'));
+    const seq = d3.interpolateRgb(col('--c-accent2', 0.12), col('--c-accent'));
+    const fill = o => {
+      if (!o.n) return col('--c-txt', o.inRange ? 0.045 : 0.015);
+      if (!isK) return seq(Math.sqrt(o.reach / rmax));
+      if (o.k == null) return col('--c-txt', 0.16);
+      return o.k < K.goal ? mixBad(Math.max(0, o.k / K.goal) * 0.85) : mixOk(0.35 + 0.65 * Math.min(1, (o.k - K.goal) / K.goal));
+    };
+    // guía de la espiral y etiquetas de mes
+    const guide = d3.range(0, months.length * 120 + 1).map(i => { const t = i / 120; return pt(t % 1, r0 + t * gap); });
+    svg.append('path').attr('d', d3.line()(guide)).attr('fill', 'none').attr('stroke', col('--c-txt', 0.05));
+    svg.append('g').selectAll('text').data(months).join('text').attr('class', 'mono')
+      .attr('x', cx + 6).attr('y', (m, i) => cy - (r0 + i * gap) + 3).text(m => MES[m.getMonth()] + (m.getMonth() === 0 || m === months[0] ? ' ' + m.getFullYear() : ''));
+    // semanas del calendario: marcas finas en los domingos
+    const cells = svg.append('g').selectAll('path').data(days).join('path').attr('d', seg).attr('fill', fill)
+      .attr('stroke', 'none').style('cursor', o => o.n ? 'pointer' : 'default');
+    if (!REDUCED) cells.attr('opacity', 0).transition().duration(400).delay((o, i) => i * 2.4).attr('opacity', 1);
+    // picos de alcance: una aguja hacia afuera, proporcional al alcance del día
+    const spike = svg.append('g').attr('pointer-events', 'none');
+    spike.selectAll('line').data(days.filter(o => o.reach > 0)).join('line')
+      .attr('x1', o => { const { mi, f, df } = pos(o.d); return pt(f + df / 2, r0 + (mi + f + df / 2) * gap + gap * 0.36)[0]; })
+      .attr('y1', o => { const { mi, f, df } = pos(o.d); return pt(f + df / 2, r0 + (mi + f + df / 2) * gap + gap * 0.36)[1]; })
+      .attr('x2', o => { const { mi, f, df } = pos(o.d); return pt(f + df / 2, r0 + (mi + f + df / 2) * gap + gap * 0.36 + gap * 0.58 * Math.sqrt(o.reach / rmax))[0]; })
+      .attr('y2', o => { const { mi, f, df } = pos(o.d); return pt(f + df / 2, r0 + (mi + f + df / 2) * gap + gap * 0.36 + gap * 0.58 * Math.sqrt(o.reach / rmax))[1]; })
+      .attr('stroke', col('--c-txt', 0.32)).attr('stroke-width', 1).attr('stroke-linecap', 'round');
+    // centro
+    const tot = isK ? stats(VP, lz) : null;
+    const ctr = svg.append('g').attr('text-anchor', 'middle').attr('pointer-events', 'none');
+    ctr.append('text').attr('x', cx).attr('y', cy - 4).attr('font-size', Math.max(18, r0 * 0.42)).attr('font-weight', 600).attr('fill', col('--c-txt'))
+      .attr('class', tot ? kpiCls(tot.avg, lz) : '').style('fill', tot ? (tot.avg >= K.goal ? col('--c-success') : col('--c-bad')) : col('--c-txt'))
+      .text(tot ? pct(tot.avg, K.dec) : fmtInt(VP.length));
+    ctr.append('text').attr('class', 'mono').attr('x', cx).attr('y', cy + 14).text(tot ? (lz === 'vtr' ? 'VTR del periodo' : 'ER IG del periodo') : 'posts');
+    // campañas resaltadas
+    const ring = svg.append('g').attr('pointer-events', 'none');
+    function hlCamp(c) {
+      ring.selectAll('*').remove();
+      if (!c) { cells.attr('opacity', 1); return; }
+      cells.attr('opacity', o => o.list.some(p => p.cc === c) ? 1 : 0.12);
+      ring.selectAll('path').data(days.filter(o => o.list.some(p => p.cc === c))).join('path').attr('d', seg).attr('fill', 'none').attr('stroke', col('--c-txt')).attr('stroke-width', 1.2);
+    }
+    HL = hlCamp;
+    cells.on('mouseenter', (e, o) => {
+      if (!o.n) return;
+      d3.select(e.currentTarget).attr('stroke', col('--c-txt')).attr('stroke-width', 1.4);
+      const camps = d3.rollups(o.list, l => l.length, p => p.cc).sort((a, b) => b[1] - a[1]).slice(0, 3).map(c => esc(c[0]) + ' (' + c[1] + ')').join(', ');
+      const [x, y] = local(e);
+      showTip('<div class="t">' + DOW[o.d.getDay()] + ' ' + fdate(o.d) + '</div><div class="m">Semana ' + week(o.d) + '</div><dl><dt>Posts</dt><dd>' + o.n + '</dd>' +
+        '<dt>Plataformas</dt><dd>' + esc([...new Set(o.list.map(p => p.plat))].join(', ')) + '</dd><dt>Alcance</dt><dd>' + fmtInt(o.reach) + '</dd>' +
+        (isK ? '<dt>' + K.label + '</dt><dd class="' + kpiCls(o.k, lz) + '">' + (o.kn ? pct(o.k, K.dec) + ' · ' + o.ok + '/' + o.kn : 'no aplica') + '</dd>' : '') +
+        '<dt>Campañas</dt><dd>' + camps + '</dd></dl>', x, y);
+    }).on('mouseleave', e => { d3.select(e.currentTarget).attr('stroke', 'none'); tip.hidden = true; });
+    $('cap').textContent = isK ? 'Color = ' + (lz === 'vtr' ? 'VTR' : 'ER IG') + ' del día · aguja = alcance' : 'Color y aguja = alcance del día';
+
+    // panel
+    const rng = days.filter(o => o.inRange), act = rng.filter(o => o.n);
+    let best = { len: 0 }, cur = null;
+    rng.forEach(o => { if (!o.n) { if (!cur) cur = { from: o.d, len: 0 }; cur.len++; cur.to = o.d; if (cur.len > best.len) best = Object.assign({}, cur); } else cur = null; });
+    const byM = months.map(m => { const l = VP.filter(p => p.d.getMonth() === m.getMonth() && p.d.getFullYear() === m.getFullYear()); return { m, s: isK ? stats(l, lz) : null, r: d3.sum(l, p => p.reach), n: l.length }; }).filter(x => x.n);
+    const topM = isK ? byM.filter(x => x.s.n >= 3).sort((a, b) => b.s.avg - a.s.avg)[0] : byM.slice().sort((a, b) => b.r - a.r)[0];
+    const peak = rng.slice().sort((a, b) => b.reach - a.reach)[0];
+    $('summary').innerHTML = '<div class="eyebrow">Días con al menos un post' + esc(filterLabel()) + '</div><div class="big"><span class="n">' + act.length + '</span><span class="sub" style="margin:0">de ' + rng.length + ' días</span></div>' +
+      '<dl class="kv"><dt>Hueco más largo sin publicar</dt><dd>' + (best.len ? best.len + ' días · ' + best.from.getDate() + ' ' + MES[best.from.getMonth()] + ' a ' + best.to.getDate() + ' ' + MES[best.to.getMonth()] : 'ninguno') + '</dd>' +
+      (topM ? '<dt>Mejor mes</dt><dd>' + MES[topM.m.getMonth()] + ' · ' + (isK ? '<span class="' + kpiCls(topM.s.avg, lz) + '">' + pct(topM.s.avg, K.dec) + '</span>' : fmtInt(topM.r)) + '</dd>' : '') +
+      (peak && peak.reach ? '<dt>Día de mayor alcance</dt><dd>' + fdate(peak.d) + ' · ' + fmtInt(peak.reach) + '</dd>' : '') + '</dl>';
+    const camps = d3.rollups(VP, l => l.length, p => p.cc).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    $('side').innerHTML = '<h2>Campañas en el año</h2><div class="hint2">Pasa el cursor o toca una campaña para encender sus días.</div><div class="clist">' +
+      camps.map(c => '<button data-c="' + esc(c[0]) + '"><span>' + esc(c[0]) + '</span><small>' + c[1] + ' posts</small></button>').join('') + '</div>';
+    $('side').querySelectorAll('.clist button').forEach(b => {
+      b.addEventListener('mouseenter', () => { if (!PIN) hlCamp(b.dataset.c); });
+      b.addEventListener('mouseleave', () => { if (!PIN) hlCamp(null); });
+      b.addEventListener('click', () => { PIN = PIN === b.dataset.c ? null : b.dataset.c; $('side').querySelectorAll('.clist button').forEach(x => x.classList.toggle('on', x.dataset.c === PIN)); hlCamp(PIN); });
+    });
+    if (PIN) { if (camps.some(c => c[0] === PIN)) { hlCamp(PIN); $('side').querySelector('.clist button[data-c="' + CSS.escape(PIN) + '"]').classList.add('on'); } else PIN = null; }
+    $('notes').innerHTML = '<h3>Cómo leerlo</h3><ul><li>La espiral arranca al centro con el primer mes del periodo y da una vuelta por mes, en el sentido de las manecillas del reloj. Cada segmento es un día.</li>' +
+      (isK ? '<li>El color es el ' + (lz === 'vtr' ? 'VTR promedio de los videos de 0 a 30 s' : 'ER básico promedio de los posts de feed de Instagram') + ' de ese día: rojo debajo de la meta, verde arriba. Gris claro: hubo posts pero ninguno aplica al KPI.</li>' : '<li>El color es el alcance del día.</li>') +
+      '<li>La aguja que sale de cada día es su alcance. Los segmentos vacíos son días sin publicar.</li></ul>';
+  }
+
+  // ============================================================
+  // 4 · DURACIÓN CONTRA RETENCIÓN — cuántos segundos rinden mejor por plataforma
+  // ============================================================
+  const EDGES = [0, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600];
+  function renderDuration(svg, W, H) {
+    const pts = VP.filter(p => !p.stories && p.dur > 0 && p.vtr > 0);
+    if (pts.length < 5) return empty(svg, 'No hay videos con duración y VTR en esta selección.');
+    const ml = 56, mr = 24, top = 92, bottom = 50;
+    const xmax = Math.min(600, Math.max(60, d3.quantile(pts.map(p => p.dur).sort(d3.ascending), 0.97)));
+    const ymax = Math.min(100, Math.max(50, d3.quantile(pts.map(p => p.vtr).sort(d3.ascending), 0.985) * 1.08));
+    const x = d3.scaleSqrt([0, xmax], [ml, W - mr]).clamp(true), y = d3.scaleLinear([0, ymax], [H - bottom, top]).clamp(true);
+    // zona del KPI (0 a 30 s) y meta
+    svg.append('rect').attr('x', x(0)).attr('y', top).attr('width', x(30) - x(0)).attr('height', H - bottom - top).attr('fill', col('--c-accent2', 0.07));
+    svg.append('text').attr('class', 'mono').attr('x', x(0) + 8).attr('y', top + 16).text('Zona KPI · 0 a 30 s');
+    svg.append('g').attr('class', 'grid').selectAll('line').data(y.ticks(6)).join('line').attr('x1', ml).attr('x2', W - mr).attr('y1', d => y(d)).attr('y2', d => y(d));
+    const ticks = [5, 10, 15, 30, 60, 90, 120, 180, 300, 600].filter(t => t <= xmax);
+    svg.append('g').attr('class', 'axis').attr('transform', 'translate(0,' + (H - bottom) + ')').call(d3.axisBottom(x).tickValues(ticks).tickFormat(d => d + ' s').tickSizeOuter(0));
+    svg.append('g').attr('class', 'axis').attr('transform', 'translate(' + ml + ',0)').call(d3.axisLeft(y).ticks(6).tickFormat(d => d + '%').tickSize(0)).select('.domain').remove();
+    svg.append('text').attr('class', 'mono').attr('x', W - mr).attr('y', H - 12).attr('text-anchor', 'end').text('Duración del video');
+    svg.append('text').attr('class', 'mono').attr('x', ml).attr('y', top - 22).text('VTR del video');
+    svg.append('line').attr('class', 'goal').attr('x1', ml).attr('x2', W - mr).attr('y1', y(25)).attr('y2', y(25));
+    svg.append('text').attr('class', 'goaltxt').attr('x', W - mr).attr('y', y(25) - 6).attr('text-anchor', 'end').text('Meta 25%');
+    // puntos
+    const dots = svg.append('g').selectAll('circle').data(pts).join('circle')
+      .attr('cx', p => x(p.dur)).attr('cy', p => y(p.vtr)).attr('r', 0).attr('fill', p => PLAT_COLORS[p.plat]).attr('fill-opacity', 0.5);
+    dots.transition().duration(500 * DUR).delay((p, i) => REDUCED ? 0 : 200 + (x(p.dur) - ml) / (W - ml) * 700).attr('r', 2.6);
+    // curvas: mediana de VTR por rango de duración, por plataforma
+    const bins = EDGES.slice(0, -1).map((a, i) => [a, EDGES[i + 1]]).filter(b => b[0] < xmax);
+    const plats = PLATFORMS.filter(pl => pts.filter(p => p.plat === pl).length >= 12);
+    const curves = plats.map(pl => {
+      const l = pts.filter(p => p.plat === pl);
+      const pts2 = bins.map(([a, b]) => { const v = l.filter(p => p.dur > a && p.dur <= b).map(p => p.vtr).sort(d3.ascending); return { a, b, n: v.length, med: v.length >= 4 ? d3.median(v) : null, mid: Math.sqrt((a * a + b * b) / 2) }; }).filter(o => o.med != null);
+      const best = pts2.slice().sort((p, q) => q.med - p.med)[0];
+      const kp = l.filter(p => p.dur <= 30).map(p => p.vtr), lp = l.filter(p => p.dur > 30).map(p => p.vtr);
+      return { pl, pts: pts2, best, n: l.length, in30: kp.length ? d3.median(kp) : null, out30: lp.length ? d3.median(lp) : null, nk: kp.length };
+    }).filter(c => c.pts.length >= 2);
+    const ln = d3.line().x(o => x(o.mid)).y(o => y(o.med)).curve(d3.curveMonotoneX);
+    const cg = svg.append('g').attr('pointer-events', 'none');
+    cg.selectAll('path.halo2').data(curves).join('path').attr('fill', 'none').attr('stroke', col('--c-surface')).attr('stroke-width', 6).attr('d', c => ln(c.pts));
+    const cl = cg.selectAll('path.crv').data(curves).join('path').attr('class', 'crv').attr('fill', 'none').attr('stroke', c => PLAT_COLORS[c.pl]).attr('stroke-width', 2.4).attr('d', c => ln(c.pts));
+    if (!REDUCED) cl.each(function () { const L = this.getTotalLength(); d3.select(this).attr('stroke-dasharray', L + ' ' + L).attr('stroke-dashoffset', L); })
+      .transition().duration(1200).delay(700).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0);
+    // punto ideal de cada plataforma
+    const bestG = cg.selectAll('g.best').data(curves.filter(c => c.best)).join('g').attr('class', 'best').attr('opacity', 0)
+      .attr('transform', c => 'translate(' + x(c.best.mid) + ',' + y(c.best.med) + ')');
+    bestG.append('circle').attr('r', 6).attr('fill', col('--c-surface')).attr('stroke', c => PLAT_COLORS[c.pl]).attr('stroke-width', 2);
+    bestG.append('circle').attr('r', 2.4).attr('fill', c => PLAT_COLORS[c.pl]);
+    bestG.transition().delay(1500 * DUR).duration(400).attr('opacity', 1);
+    // etiquetas del punto ideal, sin encimarse
+    const labs = curves.filter(c => c.best).map(c => ({ c, x: x(c.best.mid), y: y(c.best.med) - 16 }));
+    labs.sort((a, b) => a.y - b.y).forEach((l, i, arr) => { if (i && l.y - arr[i - 1].y < 15 && Math.abs(l.x - arr[i - 1].x) < 170) l.y = arr[i - 1].y + 15; });
+    cg.selectAll('text.bl').data(labs).join('text').attr('class', 'bl halo').attr('x', l => Math.min(W - mr - 4, l.x + 10)).attr('y', l => l.y).attr('text-anchor', l => l.x > W - 190 ? 'end' : 'start')
+      .attr('font-size', 11.5).attr('font-weight', 600).attr('fill', l => PLAT_COLORS[l.c.pl]).attr('opacity', 0)
+      .text(l => l.c.pl + ' · ' + l.c.best.a + '–' + l.c.best.b + ' s · ' + pct(l.c.best.med, 1)).transition().delay(1600 * DUR).duration(400).attr('opacity', 1);
+    // hover con el punto más cercano
+    const dl = d3.Delaunay.from(pts, p => x(p.dur), p => y(p.vtr));
+    const ring = svg.append('circle').attr('r', 7).attr('fill', 'none').attr('stroke', col('--c-txt')).attr('stroke-width', 1.5).attr('opacity', 0).attr('pointer-events', 'none');
+    const hit = svg.append('rect').attr('x', ml).attr('y', top).attr('width', W - ml - mr).attr('height', H - top - bottom).attr('fill', 'transparent');
+    let curP = null;
+    hit.on('mousemove', e => {
+      const [px, py] = local(e), i = dl.find(px, py), p = pts[i];
+      if (Math.hypot(x(p.dur) - px, y(p.vtr) - py) > 30) { ring.attr('opacity', 0); curP = null; if (!PIN) tip.hidden = true; return; }
+      if (PIN) return;
+      curP = p; ring.attr('cx', x(p.dur)).attr('cy', y(p.vtr)).attr('opacity', 1);
+      showTip(postTip(p, false), x(p.dur), y(p.vtr));
+    }).on('mouseleave', () => { if (!PIN) { ring.attr('opacity', 0); tip.hidden = true; } })
+      .on('click', e => { e.stopPropagation(); if (curP) { PIN = curP; showTip(postTip(curP, true), x(curP.dur), y(curP.vtr), true); } });
+    HL = null;
+    $('cap').textContent = 'Curva = mediana de VTR por rango de duración';
+
+    const all30 = pts.filter(p => p.dur <= 30).map(p => p.vtr), allL = pts.filter(p => p.dur > 30).map(p => p.vtr);
+    const m30 = all30.length ? d3.median(all30) : null, mL = allL.length ? d3.median(allL) : null;
+    $('summary').innerHTML = '<div class="eyebrow">VTR mediano · videos de 0 a 30 s' + esc(filterLabel()) + '</div><div class="big"><span class="n ' + kpiCls(m30, 'vtr') + '">' + pct(m30, 1) + '</span></div>' +
+      '<div class="sub">Contra <strong>' + pct(mL, 1) + '</strong> en los videos de más de 30 s. ' + fmtInt(all30.length) + ' y ' + fmtInt(allL.length) + ' videos.</div>';
+    $('side').innerHTML = '<h2>Punto ideal por plataforma</h2><div class="hint2">Rango de duración con la mediana de VTR más alta (mínimo 4 videos en el rango).</div>' +
+      '<table class="ptab"><thead><tr><th>Plataforma</th><th>Ideal</th><th>VTR</th><th>≤30 s</th><th>&gt;30 s</th></tr></thead><tbody>' +
+      curves.sort((a, b) => b.n - a.n).map(c => '<tr><td><i style="background:' + PLAT_COLORS[c.pl] + '"></i>' + c.pl + '</td><td>' + (c.best ? c.best.a + '–' + c.best.b + ' s' : '—') + '</td><td class="' + kpiCls(c.best && c.best.med, 'vtr') + '">' + (c.best ? pct(c.best.med, 1) : '—') + '</td>' +
+        '<td class="' + kpiCls(c.in30, 'vtr') + '">' + pct(c.in30, 1) + '</td><td>' + pct(c.out30, 1) + '</td></tr>').join('') + '</tbody></table>' +
+      (PLATFORMS.filter(pl => !curves.some(c => c.pl === pl) && pts.some(p => p.plat === pl)).length ? '<div class="thin">Sin curva por tener pocos videos: ' + PLATFORMS.filter(pl => !curves.some(c => c.pl === pl) && pts.some(p => p.plat === pl)).join(', ') + '.</div>' : '');
+    $('notes').innerHTML = '<h3>Cómo leerlo</h3><ul><li>Cada punto es un video (sin Stories): a la derecha más largo, arriba mejor VTR. El eje de duración se abre en los primeros segundos para que se lean los videos cortos.</li>' +
+      '<li>La curva de cada plataforma es la mediana de VTR por rango de duración; el círculo marca su punto ideal.</li><li>La franja azul es la ventana del KPI de VTR (0 a 30 s). La línea punteada es la meta de 25%.</li>' +
+      '<li>Se usa la mediana y no el promedio para que un par de videos atípicos no muevan la curva.</li></ul>';
+  }
+  function postTip(p, pin) {
+    const sheet = SHEET_GIDS[p.plat] ? 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/edit#gid=' + SHEET_GIDS[p.plat] + '&range=A' + p.row : null;
+    return '<div class="t"><i style="background:' + PLAT_COLORS[p.plat] + '"></i>' + esc(p.plat) + ' · ' + esc(p.fmt || 'Sin formato') + '</div><div class="m">' + fdate(p.d) + ' · ' + esc(p.cc) + '</div><dl>' +
+      '<dt>Duración</dt><dd>' + Math.round(p.dur) + ' s</dd><dt>VTR</dt><dd class="' + (p.dur <= 30 ? kpiCls(p.vtr, 'vtr') : '') + '">' + pct(p.vtr, 1) + '</dd>' +
+      '<dt>Alcance</dt><dd>' + fmtInt(p.reach) + '</dd><dt>Producto</dt><dd>' + esc(p.prod || '—') + '</dd></dl>' +
+      (pin ? '<div class="links">' + (p.link && /^https?:/i.test(p.link) ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener">Abrir post ↗</a>' : '') + (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' ↗</a>' : '') + '</div>' : '<div class="hint">Clic para fijar y abrir el post</div>');
+  }
+
+  // ============================================================
+  // CONTROL
+  // ============================================================
+  const TABS = {
+    flujo: { title: 'Flujo del alcance', render: renderFlow, opts: [['reach', 'Alcance'], ['posts', 'Posts']] },
+    ola: { title: 'Ola semanal', render: renderRidge, opts: [['vtr', 'VTR ≥ 25%'], ['erig', 'ER IG ≥ 5%']] },
+    espiral: { title: 'El año en espiral', render: renderSpiral, opts: [['vtr', 'VTR'], ['erig', 'ER IG'], ['reach', 'Alcance']] },
+    duracion: { title: 'Duración contra retención', render: renderDuration, opts: [] },
+  };
+  function empty(svg, msg) {
+    svg.append('text').attr('x', size().W / 2).attr('y', size().H / 2).attr('text-anchor', 'middle').attr('fill', col('--c-txt3')).text(msg);
+    ['summary', 'side', 'notes'].forEach(id => { $(id).innerHTML = ''; }); $('cap').textContent = '';
+  }
+  let lastW = 0, lastH = 0;
+  function draw() {
+    if (!PID) return;
+    const t = TABS[TAB];
+    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === TAB)));
+    $('title').textContent = t.title; document.title = 'Samsung MX — ' + t.title;
+    $('opts').hidden = !t.opts.length;
+    $('opts').innerHTML = t.opts.map(([k, l]) => '<button role="radio" data-o="' + k + '" aria-checked="' + (OPT[TAB] === k) + '">' + l + '</button>').join('');
+    if (t.opts.length && !t.opts.some(o => o[0] === OPT[TAB])) OPT[TAB] = t.opts[0][0];
+    $('opts').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { OPT[TAB] = b.dataset.o; PIN = null; save(); draw(); }));
+    tip.hidden = true;
+    const { W, H } = size(); lastW = W; lastH = H;
+    const svg = d3.select('#viz'); svg.selectAll('*').remove();
+    svg.attr('viewBox', '0 0 ' + W + ' ' + H).attr('aria-label', t.title);
+    if (!VP.length) { empty(svg, 'No hay posts con esta selección en el periodo' + filterLabel() + '.'); return; }
+    t.render(svg, W, H);
+  }
+  function save() { try { localStorage.setItem('smx-viz-tab', TAB); localStorage.setItem('smx-viz-opt', JSON.stringify(OPT)); } catch (e) {} }
+  function filterLabel() {
+    const f = [];
+    if (PLATS.size !== PLATFORMS.length) f.push([...PLATS].join(' + '));
+    if (PAUTA !== 'all') f.push(PAUTA);
+    if (TIPO !== 'all') f.push(TIPO);
+    return f.length ? ' · ' + f.join(' · ') : '';
+  }
+  function renderPlatFilter() {
+    const base = PID ? inPeriod(PID).filter(passPT) : [], cnt = d3.rollup(base, v => v.length, p => p.plat), all = PLATS.size === PLATFORMS.length;
+    $('pf').innerHTML = '<button data-p="*" aria-pressed="' + all + '">Todas<small>' + fmtInt(base.length) + '</small></button>' +
+      PLATFORMS.map(pl => '<button data-p="' + pl + '" aria-pressed="' + PLATS.has(pl) + '"><i style="background:' + PLAT_COLORS[pl] + '"></i>' + pl + '<small>' + fmtInt(cnt.get(pl) || 0) + '</small></button>').join('') +
+      '<span class="lbl">' + (all ? 'Toca una plataforma para verla sola.' : 'Toca otras para sumarlas.') + '</span>';
+    $('pf').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      const pl = b.dataset.p;
+      if (pl === '*') PLATS = new Set(PLATFORMS);
+      else if (PLATS.size === PLATFORMS.length) PLATS = new Set([pl]);
+      else { PLATS.has(pl) ? PLATS.delete(pl) : PLATS.add(pl); if (!PLATS.size) PLATS = new Set(PLATFORMS); }
+      try { localStorage.setItem('smx-mapa-plats', JSON.stringify([...PLATS])); } catch (e) {}
+      setPeriod(PID);
+    }));
+  }
+  function renderPTFilter() {
+    const base = PID ? inPeriod(PID).filter(p => PLATS.has(p.plat)) : [];
+    const grp = (label, key, cur, opts, of) => {
+      const cnt = d3.rollup(base.filter(p => key === 'pauta' ? (TIPO === 'all' || tipoOf(p) === TIPO) : (PAUTA === 'all' || pautaOf(p) === PAUTA)), v => v.length, of);
+      return '<div class="fgroup"><span>' + label + '</span><div class="seg" role="radiogroup" aria-label="' + label + '">' +
+        [['all', 'Todo']].concat(opts.map(o => [o, o])).map(([v, l]) => '<button role="radio" data-k="' + key + '" data-v="' + v + '" aria-checked="' + (cur === v) + '">' + l +
+          (v === 'all' ? '' : '<small>' + fmtInt(cnt.get(v) || 0) + '</small>') + '</button>').join('') + '</div></div>';
+    };
+    $('ff').innerHTML = grp('Pauta', 'pauta', PAUTA, ['Orgánico', 'Paid'], pautaOf) + grp('Contenido', 'tipo', TIPO, ['Local', 'Global', 'Regional'], tipoOf);
+    $('ff').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.k === 'pauta') PAUTA = b.dataset.v; else TIPO = b.dataset.v;
+      try { localStorage.setItem('smx-mapa-pauta', PAUTA); localStorage.setItem('smx-mapa-tipo', TIPO); } catch (e) {}
+      setPeriod(PID);
+    }));
+  }
+  function setPeriod(pid) {
+    PID = pid; PIN = null; renderPlatFilter(); renderPTFilter();
+    VP = inPeriod(pid).filter(passes).sort((a, b) => a.d - b.d);
+    canonCamp(VP);
+    $('meta').textContent = fmtInt(VP.length) + ' posts' + filterLabel() + (VP.length ? ' · ' + fdate(VP[0].d) + ' a ' + fdate(VP[VP.length - 1].d) : '') + ' · leído ' + META.at;
+    try { localStorage.setItem('smx-mapa-period', pid); } catch (e) {}
+    draw();
+  }
+
+  // ============================================================
+  // ARRANQUE
+  // ============================================================
+  function showLogin(msg) {
+    $('app').hidden = true; $('login').hidden = false;
+    $('login-err').hidden = !msg; $('login-err').textContent = msg || '';
+  }
+  function setAccount() {
+    const a = $('avatar');
+    a.innerHTML = auth.picture ? '<img src="' + esc(auth.picture) + '" alt="" referrerpolicy="no-referrer">' : esc((auth.name || auth.email || '?').trim()[0].toUpperCase());
+    a.setAttribute('aria-label', 'Cuenta: ' + auth.email);
+    $('m-name').textContent = auth.name || ''; $('m-mail').textContent = auth.email || '';
+  }
+  async function start() {
+    $('login').hidden = true; $('app').hidden = false; setAccount();
+    $('state').hidden = false; $('state').innerHTML = '<div class="spin"></div><div>Leyendo las 7 pestañas del Sheet…</div>';
+    try {
+      const r = await loadPosts();
+      ALL = r.posts; META = { undated: r.undated, errors: r.errors, at: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) };
+      if (!ALL.length) throw new Error('El Sheet no devolvió posts con fecha.');
+      const sel = $('period'), ps = periods();
+      let saved; try { saved = localStorage.getItem('smx-mapa-period'); } catch (e) {}
+      const cur = ps.some(p => p.id === saved) ? saved : (ps.find(p => p.id === 'y' + new Date().getFullYear()) || ps[0]).id;
+      sel.innerHTML = ps.map(p => '<option value="' + p.id + '"' + (p.id === cur ? ' selected' : '') + '>' + p.label + '</option>').join('');
+      $('state').hidden = true;
+      setPeriod(cur);
+    } catch (e) {
+      if (e.expired) { signOut(e.message); return; }
+      $('state').innerHTML = '<div style="max-width:420px">' + esc(e.message) + '</div><button class="ghost" id="retry">Intentar de nuevo</button>';
+      $('retry').onclick = start;
+    }
+  }
+  $('g-btn').addEventListener('click', async () => {
+    const b = $('g-btn'); b.disabled = true; b.querySelector('span').textContent = 'Conectando con Google…';
+    try { await signIn(); start(); } catch (e) { showLogin(e.message); }
+    finally { b.disabled = false; b.querySelector('span').textContent = 'Continuar con Google'; }
+  });
+  $('signout').addEventListener('click', () => signOut());
+  $('avatar').addEventListener('click', e => { e.stopPropagation(); const m = $('menu'); m.hidden = !m.hidden; $('avatar').setAttribute('aria-expanded', String(!m.hidden)); });
+  document.addEventListener('click', e => { if (!$('menu').contains(e.target)) $('menu').hidden = true; });
+  $('reload').addEventListener('click', start);
+  $('period').addEventListener('change', e => setPeriod(e.target.value));
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { if (TAB === b.dataset.tab) return; TAB = b.dataset.tab; PIN = null; save(); draw(); }));
+  stage.addEventListener('click', e => {
+    if (tip.contains(e.target) || e.target.closest('.ov')) return;
+    if (PIN) { PIN = null; tip.hidden = true; if (HL) HL(null); $('side').querySelectorAll('.clist button.on').forEach(x => x.classList.remove('on')); }
+  });
+  $('theme').addEventListener('click', () => {
+    const light = !document.documentElement.classList.contains('light');
+    document.documentElement.classList.toggle('light', light);
+    try { localStorage.setItem('smx-theme', light ? 'light' : 'dark'); } catch (e) {}
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#F8F7F2' : '#0A0A0F');
+    draw();
+  });
+  let rz = 0;
+  new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => { const { W, H } = size(); if (Math.abs(W - lastW) > 4 || Math.abs(H - lastH) > 4) draw(); }, 160); }).observe(stage);
+  if (authLoad()) start(); else showLogin();
+  </script>
+</body>
+</html>
