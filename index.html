@@ -1583,6 +1583,7 @@
           { id: 'sec-catalogo',     name: 'Catálogo' },
           { id: 'sec-tiktok',       name: 'TikTok creativo' },
           { id: 'sec-copy',         name: 'Copy y mensaje' },
+          { id: 'sec-threads',      name: 'Threads · copy' },
           { id: 'sec-simulador',    name: 'Simulador' },
           { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-calidad',      name: 'Calidad de datos' },
@@ -1646,7 +1647,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-28-v85';
+    const BUILD_VERSION = '2026-10-28-v86';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2276,6 +2277,7 @@
       { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
       { id: 'tiktok',       label: 'TikTok creativo',    Icon: PlayIcon,     group: 'analisis' },
       { id: 'copy',         label: 'Copy y mensaje',     Icon: QuoteIcon,    group: 'analisis' },
+      { id: 'threads',      label: 'Threads · copy',     Icon: QuoteIcon,    group: 'analisis' },
       { id: 'simulador',    label: 'Simulador',          Icon: TargetIcon,   group: 'analisis' },
       { id: 'anomalias',    label: 'Anomalías',          Icon: AlertIcon,    group: 'control' },
       { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
@@ -7239,7 +7241,7 @@
         </div>`;
     }
 
-    function CopySection({ D, rawPosts, filters, onPick }) {
+    function CopySection({ D, rawPosts, filters, onPick, setFilters }) {
       const [span, setSpan] = useState('filtro');
       const [dimX, setDimX] = useState('stage');
       const pool = useMemo(() => span === 'hist' && rawPosts ? applyFilters(rawPosts, { ...filters, year: 'all', weeks: [], months: [] }) : (D.allPosts || []), [span, rawPosts, filters, D]);
@@ -7349,6 +7351,12 @@
             </div>
           </div>
 
+          ${cur === 'Threads' && setFilters && !(filters.platforms.length === 1 && filters.platforms[0] === 'Threads') && html`
+            <div className="rounded-xl bg-surface px-5 py-4 mb-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[12px] text-txt3 max-w-2xl leading-snug">En Threads el copy es toda la pieza. El laboratorio de Threads lo lee a fondo: la respuesta que provoca, sus fórmulas, la tensión detrás del chiste y el muro de copys.</p>
+              <button onClick=${() => { setFilters(f => ({ ...f, platforms: ['Threads'] })); setTimeout(() => { const el = document.getElementById('sec-threads'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 500); }}
+                className="text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt shrink-0">Abrir el laboratorio de Threads</button>
+            </div>`}
           <${CopyPreflight} byPl=${histPl} defPl=${cur} onPick=${onPick}/>
 
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 mb-3">
@@ -7459,6 +7467,336 @@
               </div>
             <//>`}
           <p className="text-[10px] font-mono text-faint mt-3">La clasificación es por reglas de texto (palabras, signos, posición del producto); puede fallar en copys ambiguos. ${withCopy} de ${allCopy.length} posts de TikTok, X y Threads en este periodo tienen copy.</p>
+        </section>`;
+    }
+
+    // ============================================================
+    // v86 — THREADS · LABORATORIO DE COPY
+    // En Threads el copy es toda la pieza. Aquí se lee cada texto con más
+    // detalle que la intención: qué respuesta provoca (aplauso, conversación,
+    // difusión), qué fórmula usa, qué tensión de vida toca, cómo está armado
+    // el chiste y dónde cae la marca. Solo orgánico.
+    // ============================================================
+    const TH_FORMULAS = [
+      ['Firma del CM',              /\batte\b|atentamente|\bel cm\b/],
+      ['Hay dos tipos de…',         /hay dos tipos/],
+      ['Red flag / green flag',     /red flag|green flag|🚩/],
+      ['Diálogo (Yo: / Él:)',       /(?:^|\s)(?:yo|el|ella|santa|mama|jefe|tu)\s*:|^\s*-\s/m],
+      ['El Galaxy habla o mira',    /(?:mi |tu )?(?:galaxy(?: watch\d*| buds\d*)?|samsung health|la camara de mi galaxy)[^.!?]{0,40}(?:dice|diciendo|viendo|preguntando|felicitando|mandando)/],
+      ['Completen la frase',        /completen|completa la frase|_{3,}/],
+      ['Confiesen / levanten la mano', /confiesen|levanten la mano|🙋|respuestas honestas|confirmen si/],
+      ['Sube tu foto',              /\bsube\b|\bsuban\b|muestren|presumela|comparte(?:n)? (?:tu|la|sus) (?:foto|captura)/],
+      ['Manifestando / mood',       /manifestando|\bmood\b|motivacion de|proposito/],
+      ['Lista o ranking',           /ranking|cosas que|senales de|✓|🥇|★|●/],
+      ['Spoiler / plot twist',      /spoiler|plot twist|friendly reminder/],
+      ['El verdadero…',             /el verdadero|la verdadera|evento canonico|main character/],
+      ['Refrán volteado',           /no tengo pruebas|dicen que|el dinero no compra|repitan conmigo/],
+      ['POV / cuando…',             /\bpov\b|^\s*cuando /],
+    ];
+    const TH_TENSIONS = [
+      ['Trabajo y jefe',            /\bjefe|\bjefa|oficina|trabaj|juntas?\b|laboral|\blic\b|sueldo|despid|administrando/],
+      ['Fútbol y fandom',           /\bgol\b|partido|mexico|mundial|seleccion|portero|\bbts\b|harry|concierto|\bfan\b|festival|ilusion/],
+      ['Amor, ex y crush',          /\bex\b|crush|\bcita\b|novi[oa]|enamor|flechad|relacion|soltero|red flag|green flag|te apareciste|tu signo/],
+      ['Dinero y compras',          /dinero|ahorr|oferta|compr|carrito|precio|gasto|buen ?fin|hot ?sale|descuento|\bmsi\b|tarjetazo|samsung week|promos/],
+      ['Cuerpo, salud y cansancio', /\bgym\b|caloria|cardio|pasos|dormi|descans|cansad|salud|ritmo cardiaco|correr|runner|energia|flojera|ejercicio|hike/],
+      ['Fotos y recuerdos',         /\bfoto|galeria|camara|selfie|zoom|nightography|wallpaper|portada|best face|fotografo/],
+      ['Vida digital',              /\bchat|mensaje|bateria|alarma|notificacion|conversaciones|\bresponde|bluetooth|privacidad|stalkear|whats/],
+      ['Emociones y autoestima',    /emociones|llorar|feliz|humilde|brillo|amor propio|fuerte|felicidad|crisis|identidad|sentir|obsesion|romantizando/],
+      ['Fechas y temporadas',       /navidad|santa\b|reyes|ano nuevo|otono|\bfrio\b|lunes|fin de semana|\bmayo\b|madres|dia del nino|halloween|fin de ano/],
+    ];
+    const TH_FORM_C = ['#E8590C', '#7A5AF8', '#C2255C', '#4C6EF5', '#1FA9B0', '#2F9E6B', '#B08900', '#D6336C', '#5C7CFA', '#0CA678', '#F08C00', '#845EF7', '#1098AD', '#E64980'];
+    function thProfile(p) {
+      const cp = copyProfile(p); if (!cp) return null;
+      if (p._th && p._thSrc === p.copy) return p._th;
+      const raw = String(p.copy).trim(), t = cpFold(raw);
+      const forms = TH_FORMULAS.filter(([, rx]) => rx.test(t) || rx.test(raw)).map(([k]) => k);
+      const tens = TH_TENSIONS.filter(([, rx]) => rx.test(t)).map(([k]) => k);
+      const lines = raw.split(/\n|​\s*(?=\S)/).map(s => s.trim()).filter(Boolean);
+      const sents = raw.split(/(?<=[.!?…])\s+/).filter(s => s.trim().length > 2);
+      const est = forms.includes('Diálogo (Yo: / Él:)') ? 'Diálogo' : forms.includes('Lista o ranking') || forms.includes('Hay dos tipos de…') ? 'Lista o comparación'
+        : /^\s*[¿?]/.test(raw) || /\?\s*\S{0,6}\s*$/.test(raw) ? 'Pregunta' : (sents.length >= 2 || lines.length >= 2) ? 'Planteamiento y remate' : 'Una línea';
+      const out = { forms, tens: tens.length ? tens : ['Producto puro'], est, brand: cp.prod };
+      p._th = out; p._thSrc = p.copy;
+      return out;
+    }
+    const thRate = (n, reach) => reach > 0 && n != null ? n / reach * 1000 : null;
+    function thRows(posts) {
+      const rows = (copyRows(posts)['Threads'] || { rows: [] }).rows.map(r => ({
+        ...r, th: thProfile(r.p),
+        apl: thRate(r.p.reactions, r.p.reach), conv: thRate(r.p.comments, r.p.reach), dif: thRate((r.p.shares || 0) + (r.p.repost || 0), r.p.reach),
+        t: (parseDate(r.p.date) || new Date(0)).getTime(),
+      }));
+      return rows.filter(r => r.th);
+    }
+    const thAgg = (rs) => ({ n: rs.length, idx: medianOf(rs.map(r => r.idx)), apl: medianOf(rs.map(r => r.apl).filter(v => v != null)), conv: medianOf(rs.map(r => r.conv).filter(v => v != null)),
+      dif: rs.length ? rs.reduce((a, r) => a + (r.dif || 0), 0) / rs.length : null });
+    const thMulti = (rows, keyFn) => {
+      const m = new Map();
+      for (const r of rows) for (const k of keyFn(r)) { if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+      return [...m].map(([k, rs]) => ({ k, rows: rs, ...thAgg(rs) }));
+    };
+    const th1 = (v) => v == null ? '—' : v.toFixed(v >= 10 ? 0 : 1);
+    // Desgaste: índice de cada uso en orden; compara los primeros usos contra los últimos
+    function thWear(rs) {
+      const s = [...rs].sort((a, b) => a.t - b.t);
+      if (s.length < 6) return { k: 'pocos', s };
+      const h = Math.max(3, Math.floor(s.length / 3));
+      const a = medianOf(s.slice(0, h).map(r => r.idx)), b = medianOf(s.slice(-h).map(r => r.idx));
+      const q = b / Math.max(0.01, a);
+      return { k: q <= 0.7 ? 'gasta' : q >= 1.4 ? 'crece' : 'estable', q, a, b, s };
+    }
+    function ThSpark({ s }) {
+      const W = 84, H = 22, ys = s.map(r => Math.log2(Math.max(0.05, r.idx || 0.05)));
+      const lo = Math.min(-1, ...ys), hi = Math.max(1, ...ys);
+      const pts = ys.map((y, i) => `${(s.length === 1 ? W / 2 : i / (s.length - 1) * (W - 4) + 2).toFixed(1)},${(H - 2 - (y - lo) / (hi - lo) * (H - 4)).toFixed(1)}`).join(' ');
+      const y1 = (H - 2 - (0 - lo) / (hi - lo) * (H - 4)).toFixed(1);
+      return html`<svg width=${W} height=${H} viewBox=${`0 0 ${W} ${H}`} className="shrink-0" aria-hidden="true">
+        <rect x="0" y=${y1} width=${W} height=${H - y1} rx="2" fill="rgba(142,142,153,.08)"/>
+        <polyline points=${pts} fill="none" stroke="rgba(142,142,153,.9)" strokeWidth="1.4" strokeLinejoin="round"/>
+        ${s.length ? html`<circle cx=${pts.split(' ').pop().split(',')[0]} cy=${pts.split(' ').pop().split(',')[1]} r="2.2" fill="currentColor"/>` : ''}
+      </svg>`;
+    }
+    function thReading(rows, forms, tens, base) {
+      const L = [], minN = 4;
+      const cm = rows.filter(r => r.th.forms.includes('Firma del CM')), rest = rows.filter(r => !r.th.forms.includes('Firma del CM'));
+      if (cm.length >= minN && rest.length >= minN) {
+        const a = thAgg(cm), b = thAgg(rest);
+        if (a.apl / Math.max(0.01, b.apl) >= 1.3) L.push(`Firmar como el CM ${a.apl / b.apl >= 1.9 ? 'duplica' : 'sube'} el aplauso: ${th1(a.apl)} reacciones por cada 1,000 de alcance contra ${th1(b.apl)} del resto. La cuenta funciona cuando tiene una persona con nombre detrás.`);
+      }
+      const ft = forms.filter(f => f.n >= minN).sort((a, b) => b.idx - a.idx);
+      if (ft.length >= 2) L.push(`La fórmula que mejor rinde es «${ft[0].k}» (${cpIdxTxt(ft[0].idx)}, ${ft[0].n} usos); la que menos, «${ft[ft.length - 1].k}» (${cpIdxTxt(ft[ft.length - 1].idx)}).`);
+      const tt = tens.filter(f => f.n >= minN && f.k !== 'Producto puro').sort((a, b) => b.idx - a.idx);
+      const pp = tens.find(f => f.k === 'Producto puro');
+      if (tt.length) L.push(`La tensión que más conecta es «${tt[0].k}» (${cpIdxTxt(tt[0].idx)})${pp && pp.n >= minN ? `; los copys que solo hablan del producto, sin una tensión de vida, rinden ${cpIdxTxt(pp.idx)}` : ''}.`);
+      const conv = [...forms, ...tens].filter(f => f.n >= minN).sort((a, b) => b.conv - a.conv)[0];
+      if (conv && base.conv && conv.conv / base.conv >= 1.5) L.push(`Para conversación, «${conv.k}»: ${th1(conv.conv)} comentarios por cada 1,000 de alcance, ${(conv.conv / base.conv).toFixed(1)} veces lo normal de Threads.`);
+      const worn = forms.map(f => ({ f, w: thWear(f.rows) })).filter(x => x.w.k === 'gasta').sort((a, b) => a.w.q - b.w.q)[0];
+      if (worn) L.push(`«${worn.f.k}» se está gastando: sus primeros usos rendían ${cpIdxTxt(worn.w.a)} y los últimos ${cpIdxTxt(worn.w.b)}. Conviene rotarla.`);
+      return L.slice(0, 4);
+    }
+
+    function ThreadsLabSection({ D, rawPosts, filters, onPick }) {
+      const [span, setSpan] = useState('filtro');
+      const [mapBy, setMapBy] = useState('forms');
+      const [openF, setOpenF] = useState(null);
+      const [wallF, setWallF] = useState(null);
+      const [wallSort, setWallSort] = useState('idx');
+      const [wallN, setWallN] = useState(24);
+      const pool = useMemo(() => span === 'hist' && rawPosts ? applyFilters(rawPosts, { ...filters, year: 'all', weeks: [], months: [] }) : (D.allPosts || []), [span, rawPosts, filters, D]);
+      const rows = useMemo(() => thRows(pool), [pool]);
+      const A = useMemo(() => {
+        if (rows.length < 8) return null;
+        const base = thAgg(rows);
+        const forms = thMulti(rows, r => r.th.forms.length ? r.th.forms : ['Sin fórmula']).sort((a, b) => b.n - a.n);
+        const tens = thMulti(rows, r => r.th.tens).sort((a, b) => b.n - a.n);
+        const intents = thMulti(rows, r => [r.cp.intent]).sort((a, b) => b.n - a.n);
+        const ests = ['Una línea', 'Planteamiento y remate', 'Pregunta', 'Lista o comparación', 'Diálogo'];
+        const brands = ['Al inicio', 'En medio', 'Como remate', 'No lo nombra'];
+        const cell = (e, b) => { const rs = rows.filter(r => r.th.est === e && r.th.brand === b); return { n: rs.length, idx: rs.length ? medianOf(rs.map(r => r.idx)) : null }; };
+        return { base, forms, tens, intents, ests: ests.filter(e => rows.some(r => r.th.est === e)), brands, cell,
+          reading: thReading(rows, forms.filter(f => f.k !== 'Sin fórmula'), tens, base) };
+      }, [rows]);
+
+      const header = html`
+        <div className="mb-5">
+          <h2 className="text-[18px] font-medium text-txt">Threads · Laboratorio de copy</h2>
+          <p className="text-txt4 text-[12px] mt-1 max-w-3xl">En Threads el copy es toda la pieza. Cada texto se lee por la respuesta que provoca, la fórmula que usa, la tensión de vida que toca y cómo está armado el chiste. Índice = ER básico contra un post típico de Threads (1.0×). Solo orgánico.</p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Periodo del laboratorio de Threads">
+              ${[['filtro', 'Periodo del filtro'], ['hist', 'Histórico 2025 + 2026']].map(([k, l]) => html`
+                <button key=${k} role="radio" aria-checked=${span === k} onClick=${() => setSpan(k)}
+                        className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (span === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+            </div>
+          </div>
+        </div>`;
+      if (!A) return html`
+        <section id="sec-threads" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-threads" name="Threads copy" />
+          ${header}
+          <div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">Hay ${rows.length} copys orgánicos de Threads en este periodo: muy pocos para leer patrones.
+            ${span === 'filtro' && html`<div><button onClick=${() => setSpan('hist')} className="mt-3 text-[12px] text-accent2 hover:underline">Ver el histórico 2025 + 2026</button></div>`}</div>
+        </section>`;
+
+      const groups = mapBy === 'forms' ? A.forms.filter(f => f.k !== 'Sin fórmula') : mapBy === 'tens' ? A.tens : A.intents;
+      const pts = groups.filter(g => g.n >= 3 && g.apl != null && g.conv != null).map((g, i) => ({ x: g.conv, y: g.apl, z: g.n, g, c: mapBy === 'int' ? CP_INTENT_C[g.k] : TH_FORM_C[i % TH_FORM_C.length] }));
+      const xMax = Math.max(A.base.conv * 2, ...pts.map(p => p.x)) * 1.12, yMax = Math.max(A.base.apl * 2, ...pts.map(p => p.y)) * 1.12;
+      // Evita que las etiquetas se encimen: dentro de la misma columna, cada una baja lo necesario
+      { const H = 290, Wd = 560, placed = [];
+        [...pts].sort((a, b) => b.y - a.y).forEach(p => {
+          const px = p.x / xMax * Wd, py = (1 - p.y / yMax) * H;
+          let ly = py;
+          for (const q of placed.filter(q => Math.abs(q.px - px) < 120).sort((a, b) => a.ly - b.ly)) if (Math.abs(q.ly - ly) < 13) ly = q.ly + 13;
+          placed.push({ px, ly }); p.dy = ly - py;
+        }); }
+      const Label = (pr) => { const { cx, cy, payload } = pr; const r = 5 + Math.sqrt(payload.z) * 1.6;
+        return html`<g><circle cx=${cx} cy=${cy} r=${r} fill=${payload.c} fillOpacity="0.28" stroke=${payload.c} strokeWidth="1.5"/>
+          ${payload.dy > 6 ? html`<path d=${`M${cx + r * 0.7},${cy + r * 0.7} L${cx + r + 2},${cy + payload.dy}`} stroke="currentColor" strokeOpacity="0.3" fill="none"/>` : ''}
+          <text x=${cx + r + 4} y=${cy + (payload.dy || 0) + 3.5} fontSize="10.5" fill="currentColor" className="text-txt2" style=${{ fontFamily: 'inherit' }}>${payload.g.k.length > 24 ? payload.g.k.slice(0, 23) + '…' : payload.g.k}</text></g>`; };
+      const fRows = A.forms.filter(f => f.k !== 'Sin fórmula');
+      const sinF = A.forms.find(f => f.k === 'Sin fórmula');
+      const wall = rows.filter(r => !wallF || (wallF.t === 'f' ? r.th.forms.includes(wallF.k) : r.th.tens.includes(wallF.k)))
+        .sort((a, b) => wallSort === 'idx' ? b.idx - a.idx : b.t - a.t);
+      const TONE = (v) => v >= 1.5 ? 'bg-success/[0.13]' : v >= 1.15 ? 'bg-success/[0.07]' : v <= 0.6 ? 'bg-amber/[0.12]' : v <= 0.87 ? 'bg-amber/[0.06]' : 'bg-onSurface/[0.035]';
+      const pick = (e, p) => { window.__smxPickY = e.clientY; onPick && onPick(p); };
+
+      return html`
+        <section id="sec-threads" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-threads" name="Threads copy" />
+          ${header}
+
+          <div className="rounded-xl bg-surface px-5 py-5 mb-3">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-3">La lectura · ${rows.length} copys orgánicos · por cada 1,000 de alcance: ${th1(A.base.apl)} reacciones, ${th1(A.base.conv)} comentarios</div>
+            <div className="space-y-2.5 max-w-4xl">
+              ${A.reading.map((s, i) => html`<p key=${i} className=${i === 0 ? "text-[16px] md:text-[18px] text-txt leading-snug font-medium" : "text-[13px] text-txt2 leading-relaxed"}>${s}</p>`)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 mb-3">
+            <div className="xl:col-span-3 rounded-xl bg-surface p-5 min-w-0">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium text-txt">Qué respuesta provoca cada copy</div>
+                  <div className="text-[11px] text-txt4 mt-0.5 max-w-xl">Arriba, más aplauso (reacciones); a la derecha, más conversación (comentarios). Ambos por cada 1,000 de alcance, mediana. El tamaño es cuántos copys. Las guías marcan lo normal de Threads.</div>
+                </div>
+                <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Agrupar el mapa por">
+                  ${[['forms', 'Fórmula'], ['tens', 'Tensión'], ['int', 'Intención']].map(([k, l]) => html`<button key=${k} role="radio" aria-checked=${mapBy === k} onClick=${() => setMapBy(k)}
+                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (mapBy === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+                </div>
+              </div>
+              <div className="h-[340px] text-txt2 relative">
+                <span className="absolute top-1 right-2 text-[10px] font-mono uppercase tracking-[0.15em] text-success/80">Aplauso y conversación</span>
+                <span className="absolute top-1 left-14 text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Aplauso</span>
+                <span className="absolute bottom-9 right-2 text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Conversación</span>
+                <${ResponsiveContainer}>
+                  <${ScatterChart} margin=${{ top: 18, right: 90, left: 0, bottom: 14 }}>
+                    <${XAxis} type="number" dataKey="x" domain=${[0, xMax]} tickFormatter=${th1} fontSize=${10} stroke="#8E8E99" tickLine=${false} axisLine=${false}
+                      label=${{ value: 'Comentarios por 1,000', position: 'insideBottom', offset: -8, fontSize: 10, fill: '#8E8E99' }}/>
+                    <${YAxis} type="number" dataKey="y" domain=${[0, yMax]} tickFormatter=${th1} fontSize=${10} stroke="#8E8E99" tickLine=${false} axisLine=${false} width=${44}
+                      label=${{ value: 'Reacciones por 1,000', angle: -90, position: 'insideLeft', offset: 14, fontSize: 10, fill: '#8E8E99' }}/>
+                    <${ZAxis} type="number" dataKey="z" range=${[60, 60]}/>
+                    <${ReferenceLine} x=${A.base.conv} stroke="#8E8E99" strokeOpacity=${0.45} strokeDasharray="3 4"/>
+                    <${ReferenceLine} y=${A.base.apl} stroke="#8E8E99" strokeOpacity=${0.45} strokeDasharray="3 4"/>
+                    <${Tooltip} cursor=${false} content=${({ active, payload }) => active && payload && payload[0] ? html`<div className="rounded-lg bg-surface border border-line px-3 py-2 text-[11px] shadow-lg">
+                      <div className="text-txt font-medium mb-1">${payload[0].payload.g.k}</div>
+                      <div className="text-txt3">${payload[0].payload.g.n} copys · índice ${cpIdxTxt(payload[0].payload.g.idx)}</div>
+                      <div className="text-txt3">${th1(payload[0].payload.y)} reacciones · ${th1(payload[0].payload.x)} comentarios por 1,000</div></div>` : null}/>
+                    <${Scatter} data=${pts} shape=${Label} isAnimationActive=${false}/>
+                  <//>
+                <//>
+              </div>
+            </div>
+
+            <div className="xl:col-span-2 rounded-xl bg-surface p-5 min-w-0">
+              <div className="text-[13px] font-medium text-txt">La tensión detrás del chiste</div>
+              <div className="text-[11px] text-txt4 mt-0.5 mb-3">De qué parte de la vida habla el copy. Un copy puede tocar varias. Abajo, las que casi no hemos escrito.</div>
+              <div className="space-y-2">
+                ${A.tens.map(g => html`<button key=${g.k} onClick=${() => { setWallF({ t: 't', k: g.k }); setWallN(24); }}
+                    className="w-full text-left flex items-center gap-2 text-[12px] rounded-md hover:bg-onSurface/[0.04] px-1 -mx-1 py-0.5">
+                  <span className="flex-1 min-w-0 truncate text-txt2">${g.k}</span>
+                  <span className="text-[10px] font-mono text-txt4 w-6 text-right">${g.n}</span>
+                  <${CpBar} v=${g.idx} n=${g.n}/><${CpIdx} v=${g.idx} n=${g.n}/>
+                </button>`)}
+              </div>
+              ${(() => { const thin = TH_TENSIONS.map(([k]) => k).filter(k => (A.tens.find(g => g.k === k) || { n: 0 }).n < 3);
+                return thin.length ? html`<div className="mt-3 text-[11px] text-txt3 leading-snug"><span className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mr-1.5">Casi sin escribir</span>${thin.join(' · ')}</div>` : ''; })()}
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-surface p-5 mb-3 min-w-0">
+            <div className="text-[13px] font-medium text-txt">Biblioteca de fórmulas</div>
+            <div className="text-[11px] text-txt4 mt-0.5 mb-3">Los recursos de escritura que se repiten. La línea muestra el índice de cada uso en orden; el punto es el último. Clic en una fórmula para ver sus copys.</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px] border-separate" style=${{ borderSpacing: '0 3px' }}>
+                <thead><tr className="text-[10px] font-mono uppercase tracking-[0.12em] text-txt4">
+                  <th className="text-left font-normal pl-2 pr-3 min-w-[170px]">Fórmula</th><th className="text-right font-normal px-2">Usos</th><th className="text-right font-normal px-2">Índice</th>
+                  <th className="text-right font-normal px-2 whitespace-nowrap">Aplauso</th><th className="text-right font-normal px-2 whitespace-nowrap">Conversación</th>
+                  <th className="text-left font-normal px-2 min-w-[150px]">Uso a uso</th><th className="text-left font-normal px-2 whitespace-nowrap">Último uso</th>
+                </tr></thead>
+                <tbody>
+                  ${fRows.map(f => { const w = thWear(f.rows), last = [...f.rows].sort((a, b) => b.t - a.t)[0]; const open = openF === f.k;
+                    return html`<${Fragment} key=${f.k}>
+                    <tr onClick=${() => setOpenF(open ? null : f.k)} className=${"cursor-pointer " + (open ? 'bg-onSurface/[0.05]' : 'bg-onSurface/[0.025] hover:bg-onSurface/[0.045]')}>
+                      <td className="py-2 pl-2 pr-3 rounded-l-md text-txt">${f.k}</td>
+                      <td className="py-2 px-2 text-right font-mono tabular-nums text-txt3">${f.n}</td>
+                      <td className="py-2 px-2 text-right"><${CpIdx} v=${f.idx} n=${f.n}/></td>
+                      <td className=${"py-2 px-2 text-right font-mono tabular-nums " + (f.apl >= A.base.apl * 1.3 ? 'text-success' : 'text-txt3')}>${th1(f.apl)}</td>
+                      <td className=${"py-2 px-2 text-right font-mono tabular-nums " + (f.conv >= A.base.conv * 1.5 ? 'text-success' : 'text-txt3')}>${th1(f.conv)}</td>
+                      <td className="py-2 px-2"><div className="flex items-center gap-2"><span className=${w.k === 'gasta' ? 'text-amber' : w.k === 'crece' ? 'text-success' : 'text-txt3'}><${ThSpark} s=${w.s}/></span>
+                        <span className=${"text-[10px] whitespace-nowrap " + (w.k === 'gasta' ? 'text-amber' : w.k === 'crece' ? 'text-success' : 'text-txt4')}>${w.k === 'gasta' ? 'se está gastando' : w.k === 'crece' ? 'va al alza' : w.k === 'estable' ? 'se sostiene' : 'pocos usos'}</span></div></td>
+                      <td className="py-2 px-2 rounded-r-md font-mono text-[11px] text-txt4 whitespace-nowrap">${last ? dateShort(last.p.date) : '—'}</td>
+                    </tr>
+                    ${open && html`<tr><td colSpan="7" className="pb-2">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                        ${[...f.rows].sort((a, b) => b.idx - a.idx).slice(0, 3).map((r, i) => html`<button key=${i} onClick=${(e) => pick(e, r.p)}
+                          className=${"text-left rounded-lg p-3 hover:brightness-95 transition " + TONE(r.idx)}>
+                          <div className="flex items-center justify-between gap-2 mb-1"><span className="text-[10px] font-mono text-txt4">${dateShort(r.p.date)}</span><${CpIdx} v=${r.idx} n=${99}/></div>
+                          <p className="text-[12px] text-txt leading-snug line-clamp-4">${String(r.p.copy).trim()}</p></button>`)}
+                      </div>
+                      <button onClick=${() => { setWallF({ t: 'f', k: f.k }); setWallN(24); const el = document.getElementById('th-wall'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                        className="mt-2 text-[11px] text-accent2 hover:underline">Ver los ${f.n} en el muro</button>
+                    </td></tr>`}
+                  <//>`; })}
+                  ${sinF && html`<tr className="bg-onSurface/[0.015]"><td className="py-2 pl-2 pr-3 rounded-l-md text-txt4">Sin fórmula reconocible</td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-txt4">${sinF.n}</td><td className="py-2 px-2 text-right"><${CpIdx} v=${sinF.idx} n=${sinF.n}/></td>
+                    <td className="py-2 px-2 text-right font-mono tabular-nums text-txt4">${th1(sinF.apl)}</td><td className="py-2 px-2 text-right font-mono tabular-nums text-txt4">${th1(sinF.conv)}</td>
+                    <td className="py-2 px-2 rounded-r-md" colSpan="2"></td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-surface p-5 mb-3 min-w-0">
+            <div className="text-[13px] font-medium text-txt">Cómo está armado el chiste y dónde cae la marca</div>
+            <div className="text-[11px] text-txt4 mt-0.5 mb-3">Índice de cada combinación contra un post típico de Threads. Celdas con un solo copy, en gris.</div>
+            <div className="overflow-x-auto">
+              <table className="text-[12px] w-full border-separate" style=${{ borderSpacing: '4px' }}>
+                <thead><tr>
+                  <th className="text-left font-normal text-[10px] font-mono uppercase tracking-[0.12em] text-txt4 pr-2 min-w-[160px]">Estructura</th>
+                  ${A.brands.map(b => html`<th key=${b} className="font-normal text-[10px] text-txt4 px-1 min-w-[86px]">${b === 'No lo nombra' ? 'Sin marca' : 'Marca ' + b.toLowerCase()}</th>`)}
+                </tr></thead>
+                <tbody>${A.ests.map(e => html`<tr key=${e}>
+                  <td className="pr-2 text-txt2 whitespace-nowrap">${e}</td>
+                  ${A.brands.map(b => { const x = A.cell(e, b); return html`<td key=${b} className=${"text-center rounded-md py-2 font-mono tabular-nums " + (x.n ? cpTone(x.idx, x.n, 2) : 'text-faint')}>
+                    ${x.n ? cpIdxTxt(x.idx) : '·'}${x.n ? html`<div className="text-[9px] opacity-70">${x.n}</div>` : ''}</td>`; })}
+                </tr>`)}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="th-wall" className="rounded-xl bg-surface p-5 min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium text-txt">El muro de Threads</div>
+                <div className="text-[11px] text-txt4 mt-0.5">Todos los copys, como banco de referencias. Verde = conectó más que un post típico; ámbar = menos.</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                ${wallF && html`<button onClick=${() => setWallF(null)} className="text-[11px] px-2.5 py-1 rounded-md bg-accent2/[0.12] text-txt">${wallF.k} ✕</button>`}
+                <select value=${wallF ? wallF.t + ':' + wallF.k : ''} onChange=${(e) => { const v = e.target.value; setWallF(v ? { t: v[0], k: v.slice(2) } : null); setWallN(24); }}
+                  aria-label="Filtrar el muro" className="h-7 rounded-md bg-onSurface/[0.04] text-[11px] text-txt2 px-2 border-0 max-w-[200px]">
+                  <option value="">Todas las fórmulas y tensiones</option>
+                  <optgroup label="Fórmula">${fRows.map(f => html`<option key=${f.k} value=${'f:' + f.k}>${f.k}</option>`)}</optgroup>
+                  <optgroup label="Tensión">${A.tens.map(f => html`<option key=${f.k} value=${'t:' + f.k}>${f.k}</option>`)}</optgroup>
+                </select>
+                <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Orden del muro">
+                  ${[['idx', 'Mejor índice'], ['date', 'Más recientes']].map(([k, l]) => html`<button key=${k} role="radio" aria-checked=${wallSort === k} onClick=${() => setWallSort(k)}
+                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (wallSort === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+                </div>
+              </div>
+            </div>
+            <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-2.5">
+              ${wall.slice(0, wallN).map((r, i) => html`<button key=${i} onClick=${(e) => pick(e, r.p)}
+                  className=${"w-full mb-2.5 break-inside-avoid text-left rounded-lg p-3.5 hover:brightness-95 transition block " + TONE(r.idx)}>
+                <p className="text-[13px] text-txt leading-snug break-words">${String(r.p.copy).trim()}</p>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5">
+                  <${CpIdx} v=${r.idx} n=${99}/>
+                  <span className="text-[10px] font-mono text-txt4">${dateShort(r.p.date)} · ${th1(r.apl)} reac. · ${th1(r.conv)} com. por 1,000</span>
+                </div>
+                ${(r.th.forms.length > 0 || r.th.tens[0] !== 'Producto puro') && html`<div className="text-[10px] text-txt3 mt-1.5 leading-snug">${[...r.th.forms, ...r.th.tens.filter(k => k !== 'Producto puro')].join(' · ')}</div>`}
+              </button>`)}
+            </div>
+            ${wall.length > wallN && html`<button onClick=${() => setWallN(n => n + 36)} className="mt-1 text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt">Ver más (${wall.length - wallN})</button>`}
+          </div>
+          <p className="text-[10px] font-mono text-faint mt-3">Fórmulas y tensiones se detectan por reglas de texto y pueden fallar en copys ambiguos. Aplauso = reacciones y conversación = comentarios, por cada 1,000 de alcance (mediana del grupo).</p>
         </section>`;
     }
 
@@ -11157,7 +11495,9 @@
       const ttOnly = filters.platforms.length === 1 && filters.platforms[0] === 'TikTok';
       // v84 — Copy y mensaje solo aplica si el filtro incluye TikTok, X o Threads
       const copyOn = !filters.platforms.length || filters.platforms.some(p => COPY_PLATS.includes(p));
-      const navHidden = [...(ttOnly ? [] : ['tiktok']), ...(copyOn ? [] : ['copy'])];
+      // v86 — el laboratorio de Threads aparece cuando el filtro es solo Threads (igual que TikTok creativo)
+      const thOnly = filters.platforms.length === 1 && filters.platforms[0] === 'Threads';
+      const navHidden = [...(ttOnly ? [] : ['tiktok']), ...(copyOn ? [] : ['copy']), ...(thOnly ? [] : ['threads'])];
 
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
@@ -11268,8 +11608,8 @@
                 <${SectionGuard} name="VTR" resetKey=${guardKey}><${VtrSection}         D=${D} onPick=${setSelected}/><//>
                 <${SectionGuard} name="Influencers" resetKey=${guardKey}><${InfluencersSection} D=${D} onPick=${setSelected}/><//>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint=${`Mezcla, cadencia, horarios, promedios, comparativas, catálogo${ttOnly ? ', TikTok creativo' : ''}${copyOn ? ', copy y mensaje' : ''} y simulador`}
-                  count=${7 + (ttOnly ? 1 : 0) + (copyOn ? 1 : 0)} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint=${`Mezcla, cadencia, horarios, promedios, comparativas, catálogo${ttOnly ? ', TikTok creativo' : ''}${copyOn ? ', copy y mensaje' : ''}${thOnly ? ', Threads · copy' : ''} y simulador`}
+                  count=${7 + (ttOnly ? 1 : 0) + (copyOn ? 1 : 0) + (thOnly ? 1 : 0)} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
                   <${SectionGuard} name="Mezcla" resetKey=${guardKey}><${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/><//>
                   <${SectionGuard} name="Cadencia" resetKey=${guardKey}><${CadenceSection}     D=${D}/><//>
                   <${SectionGuard} name="Horarios" resetKey=${guardKey}><${HorariosSection}    D=${D}/><//>
@@ -11277,7 +11617,8 @@
                   <${SectionGuard} name="Comparativas" resetKey=${guardKey}><${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme} setFilters=${setFilters}/><//>
                   <${SectionGuard} name="Catálogo" resetKey=${guardKey}><${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/><//>
                   ${ttOnly && html`<${SectionGuard} name="TikTok creativo" resetKey=${guardKey}><${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme} rawPosts=${allPosts} filters=${filters}/><//>`}
-                  ${copyOn && html`<${SectionGuard} name="Copy y mensaje" resetKey=${guardKey}><${CopySection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected}/><//>`}
+                  ${copyOn && html`<${SectionGuard} name="Copy y mensaje" resetKey=${guardKey}><${CopySection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected} setFilters=${setFilters}/><//>`}
+                  ${thOnly && html`<${SectionGuard} name="Threads · copy" resetKey=${guardKey}><${ThreadsLabSection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected}/><//>`}
                   <${SectionGuard} name="Simulador" resetKey=${guardKey}><${SimuladorSection}   allPosts=${allPosts}/><//>
                 <//>
 
