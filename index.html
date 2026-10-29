@@ -332,7 +332,7 @@
     import React, { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'https://esm.sh/react@18.3.1';
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
     import {
-      ResponsiveContainer, BarChart, Bar, LineChart, Line, ComposedChart, ScatterChart, Scatter, ZAxis, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
+      ResponsiveContainer, BarChart, Bar, LineChart, Line, AreaChart, Area, ComposedChart, ScatterChart, Scatter, ZAxis, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
     } from 'https://esm.sh/recharts@2.12.7?deps=react@18.3.1';
     import Papa from 'https://esm.sh/papaparse@5.4.1';
     import htm from 'https://esm.sh/htm@3.1.1';
@@ -1647,7 +1647,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-28-v86';
+    const BUILD_VERSION = '2026-10-29-v87';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -6968,6 +6968,23 @@
     }
 
     // Base del análisis: posts orgánicos con copy y ER básico válido, con su índice contra la mediana de la plataforma
+    // v87 — Momento: cada post se compara contra lo normal de su plataforma en esos mismos días
+    // (mediana del ER básico de los 7 posts orgánicos anteriores y los 7 posteriores). Así el índice
+    // mide el efecto del copy y no el del calendario (en el Mundial todo subía).
+    const CP_MOM = new WeakMap();
+    let CP_MOM_SRC = null;
+    function cpSetUniverse(all) {
+      if (all === CP_MOM_SRC) return; CP_MOM_SRC = all;
+      for (const pl of COPY_PLATS) {
+        const L = (all || []).filter(p => p.platform === pl && !isPaidP(p) && p.basic_er > 0 && !(p._flags || []).includes('er'))
+          .map(p => ({ p, t: (parseDate(p.date) || new Date(0)).getTime() })).filter(x => x.t > 0).sort((a, b) => a.t - b.t);
+        if (L.length < 12) continue;
+        L.forEach((x, i) => {
+          const nb = L.slice(Math.max(0, i - 7), i).concat(L.slice(i + 1, i + 8)).map(y => y.p.basic_er);
+          const m = medianOf(nb); if (m) CP_MOM.set(x.p, m);
+        });
+      }
+    }
     function copyRows(posts) {
       const byPl = new Map();
       for (const p of posts || []) {
@@ -6979,7 +6996,7 @@
       const out = {};
       for (const [pl, rows] of byPl) {
         const med = medianOf(rows.map(r => r.p.basic_er));
-        rows.forEach(r => { r.idx = med ? r.p.basic_er / med : null; });
+        rows.forEach(r => { r.raw = med ? r.p.basic_er / med : null; const m = CP_MOM.get(r.p); r.idx = m ? r.p.basic_er / m : r.raw; });
         out[pl] = { rows, med };
       }
       return out;
@@ -7017,11 +7034,11 @@
       const bigWeak = intents.filter(g => g.idx < 0.9 && g.share >= 15).sort((a, b) => b.n - a.n)[0];
       const spread = intents.length ? Math.max(...intents.map(g => g.idx)) / Math.max(0.01, Math.min(...intents.map(g => g.idx))) : 1;
       if (spread < 1.35 && intents.length >= 2) {
-        L.push(`En ${pl} la intención del copy casi no mueve el resultado: todas quedan entre ${cpIdxTxt(Math.min(...intents.map(g => g.idx)))} y ${cpIdxTxt(Math.max(...intents.map(g => g.idx)))} de un post típico. Aquí manda la pieza; el copy acompaña.`);
+        L.push(`En ${pl} la intención del copy casi no mueve el resultado: todas quedan entre ${cpIdxTxt(Math.min(...intents.map(g => g.idx)))} y ${cpIdxTxt(Math.max(...intents.map(g => g.idx)))} de lo normal. Aquí manda la pieza; el copy acompaña.`);
       } else if (best && bigWeak && best.k !== bigWeak.k && best.share < bigWeak.share && best.idx >= 1.3 * bigWeak.idx) {
-        L.push(`${Math.round(bigWeak.share)}% de los copys de ${pl} buscan «${bigWeak.k}» y rinden ${cpIdxTxt(bigWeak.idx)} un post típico; «${best.k}» rinde ${cpIdxTxt(best.idx)} y es apenas ${Math.round(best.share)}% de lo publicado. Lo que más decimos no es lo que más conecta.`);
+        L.push(`${Math.round(bigWeak.share)}% de los copys de ${pl} buscan «${bigWeak.k}» y rinden ${cpIdxTxt(bigWeak.idx)} lo normal; «${best.k}» rinde ${cpIdxTxt(best.idx)} y es apenas ${Math.round(best.share)}% de lo publicado. Lo que más decimos no es lo que más conecta.`);
       } else if (best) {
-        L.push(`La intención que mejor rinde en ${pl} es «${best.k}» (${cpIdxTxt(best.idx)} un post típico, ${Math.round(best.share)}% de lo publicado)${worst && worst.k !== best.k ? `; la que menos, «${worst.k}» (${cpIdxTxt(worst.idx)}, ${Math.round(worst.share)}%)` : ''}.`);
+        L.push(`La intención que mejor rinde en ${pl} es «${best.k}» (${cpIdxTxt(best.idx)} lo normal, ${Math.round(best.share)}% de lo publicado)${worst && worst.k !== best.k ? `; la que menos, «${worst.k}» (${cpIdxTxt(worst.idx)}, ${Math.round(worst.share)}%)` : ''}.`);
       }
       const prod = cpGroup(rows, r => r.cp.prod);
       const pNo = prod.find(g => g.k === 'No lo nombra'), pRem = prod.find(g => g.k === 'Como remate'), pIni = prod.find(g => g.k === 'Al inicio');
@@ -7083,7 +7100,7 @@
     const cpTone = (v, n, minN = 4) => v == null || n < minN ? 'text-txt4 bg-onSurface/[0.04]' : v >= 1.15 ? 'text-success bg-success/10' : v <= 0.87 ? 'text-amber bg-amber/10' : 'text-txt2 bg-onSurface/[0.05]';
     function CpIdx({ v, n, minN }) {
       return html`<span className=${"inline-flex items-center justify-center min-w-[46px] px-1.5 py-0.5 rounded-md font-mono text-[11px] tabular-nums " + cpTone(v, n, minN)}
-        title=${n < (minN || 4) ? `Solo ${n} ${n === 1 ? 'post' : 'posts'}: lectura direccional` : `${cpIdxTxt(v)} el ER básico de un post típico de la plataforma`}>${cpIdxTxt(v)}</span>`;
+        title=${n < (minN || 4) ? `Solo ${n} ${n === 1 ? 'post' : 'posts'}: lectura direccional` : `${cpIdxTxt(v)} el ER básico de lo normal de la plataforma en esos días`}>${cpIdxTxt(v)}</span>`;
     }
     // Barra divergente: centro = post típico; a la derecha suma, a la izquierda resta (escala logarítmica)
     function CpBar({ v, n, minN = 4 }) {
@@ -7125,7 +7142,7 @@
             ${cp && html`<div className="mt-3"><${CpTags} cp=${cp}/></div>`}
             ${cp && ctx && ctx.idx != null && html`
               <p className="text-[12px] text-txt3 mt-3 leading-snug">
-                ${ctx.paid ? 'Post con pauta: el índice se calcula contra el orgánico y tómalo con cuidado. ' : ''}Rindió <b className="text-txt">${cpIdxTxt(ctx.idx)}</b> el ER básico de un post típico de ${post.platform}.
+                ${ctx.paid ? 'Post con pauta: el índice se calcula contra el orgánico y tómalo con cuidado. ' : ''}Rindió <b className="text-txt">${cpIdxTxt(ctx.idx)}</b> el ER básico de lo normal de ${post.platform} en esos días.
                 ${ctx.intN >= 4 ? html` Los copys de «${cp.intent}» en ${post.platform} rinden ${cpIdxTxt(ctx.intIdx)} (${ctx.intN} posts orgánicos).` : ''}
               </p>`}
           </div>
@@ -7311,7 +7328,7 @@
       const header = html`
         <div className="mb-5">
           <h2 className="text-[18px] font-medium text-txt">Copy y mensaje</h2>
-          <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Qué intenta hacer cada copy y cómo le fue. Cada texto se clasifica por intención, voz, gancho, territorio, CTA y lugar del producto, y se compara con un post típico de su plataforma: 1.0× es un post típico, 1.5× rinde 50% más ER básico. Solo orgánico, porque la pauta mueve el ER por razones que no son el texto.</p>
+          <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Qué intenta hacer cada copy y cómo le fue. Cada texto se clasifica por intención, voz, gancho, territorio, CTA y lugar del producto, y se compara con lo normal de su plataforma en esos mismos días (así se descuenta el momento, como un partido del Mundial que sube todo): 1.0× es lo normal, 1.5× rinde 50% más ER básico. Solo orgánico, porque la pauta mueve el ER por razones que no son el texto.</p>
           <div className="flex flex-wrap gap-2 mt-3">
             ${plats.length > 0 && html`<div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Plataforma del copy">
               ${plats.map(k => html`<button key=${k} role="radio" aria-checked=${cur === k} onClick=${() => setPl(k)}
@@ -7360,7 +7377,7 @@
           <${CopyPreflight} byPl=${histPl} defPl=${cur} onPick=${onPick}/>
 
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 mb-3">
-            <${Card} className="xl:col-span-3" title="Lo que decimos vs. lo que conecta" sub="La barra es cuánto se publica de cada intención; el número, cómo rinde contra un post típico de la plataforma.">
+            <${Card} className="xl:col-span-3" title="Lo que decimos vs. lo que conecta" sub="La barra es cuánto se publica de cada intención; el número, cómo rinde contra lo normal de la plataforma en esos días.">
               <div className="space-y-2.5">
                 ${A.intents.map(g => html`
                   <div key=${g.k} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[180px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
@@ -7395,7 +7412,7 @@
             <//>
           </div>
 
-          <${Card} title="Anatomía del copy" sub="Cada rasgo, contra un post típico de la plataforma. A la derecha del centro suma; a la izquierda resta." className="mb-3">
+          <${Card} title="Anatomía del copy" sub="Cada rasgo, contra lo normal de la plataforma en esos días. A la derecha del centro suma; a la izquierda resta." className="mb-3">
             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-x-6 gap-y-5">
               ${A.anat.map(([t, gs]) => html`
                 <div key=${t} className="min-w-0">
@@ -7417,7 +7434,7 @@
               <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                 <div className="min-w-0">
                   <div className="text-[13px] font-medium text-txt">Qué intención funciona en qué momento</div>
-                  <div className="text-[11px] text-txt4 mt-0.5">Índice de cada cruce contra un post típico. Celdas con un solo copy, en gris.</div>
+                  <div className="text-[11px] text-txt4 mt-0.5">Índice de cada cruce contra lo normal. Celdas con un solo copy, en gris.</div>
                 </div>
                 <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Cruzar intención con">
                   ${Object.entries(DIMS).map(([k, [l]]) => html`<button key=${k} role="radio" aria-checked=${dimX === k} onClick=${() => setDimX(k)}
@@ -7442,7 +7459,7 @@
             <//>`}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-3">
-            <${Card} title="Los copys que más conectaron" sub="Contra un post típico de la plataforma. Clic para ver el post.">
+            <${Card} title="Los copys que más conectaron" sub="Contra lo normal de la plataforma en esos días. Clic para ver el post.">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">${A.top.map((r, i) => html`<${CopyCard} key=${i} r=${r} good/>`)}</div>
             <//>
             <${Card} title="Los que menos" sub="Sirven para ver qué patrón se repite cuando no conecta.">
@@ -7575,228 +7592,385 @@
       return L.slice(0, 4);
     }
 
+    // ---------- v87 — lenguaje para el equipo creativo: palabras, no índices ----------
+    const TH_WORD = (v, n, minN = 4) => v == null || n < minN ? { w: 'Pocos casos', c: 'text-txt4 bg-onSurface/[0.05]', k: 0 }
+      : v >= 1.35 ? { w: 'Funciona muy bien', c: 'text-success bg-success/[0.14]', k: 2 }
+      : v >= 1.12 ? { w: 'Funciona', c: 'text-success bg-success/[0.08]', k: 1 }
+      : v > 0.88 ? { w: 'Normal', c: 'text-txt2 bg-onSurface/[0.06]', k: 0 }
+      : v >= 0.7 ? { w: 'Flojo', c: 'text-amber bg-amber/[0.09]', k: -1 }
+      : { w: 'No funciona', c: 'text-amber bg-amber/[0.15]', k: -2 };
+    function ThWord({ v, n, minN }) {
+      const x = TH_WORD(v, n, minN);
+      return html`<span className=${"inline-flex items-center px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap " + x.c}>${x.w}</span>`;
+    }
+    // Huella de respuesta: aplauso, conversación y difusión contra lo normal de Threads
+    function ThPrint({ r, base }) {
+      const bar = (v, b) => v == null || !b ? 0.08 : Math.max(0.08, Math.min(1, v / b / 3));
+      const items = [['Aplauso', r.apl, base.apl, '#E8590C'], ['Conversación', r.conv, base.conv, '#7A5AF8'], ['Difusión', r.dif, Math.max(0.05, base.dif || 0.05), '#1FA9B0']];
+      const t = items.map(([l, v, b]) => `${l}: ${v == null || !b ? 'sin dato' : v / b >= 1.5 ? 'mucho más que lo normal' : v / b >= 1.1 ? 'más que lo normal' : v / b > 0.9 ? 'lo normal' : 'menos que lo normal'}`).join(' · ');
+      return html`<span className="inline-flex items-end gap-[3px] h-4 shrink-0" title=${t} aria-label=${t}>
+        ${items.map(([l, v, b, c]) => html`<span key=${l} className="w-[5px] rounded-sm" style=${{ height: `${bar(v, b) * 100}%`, background: c, opacity: 0.85 }}></span>`)}
+      </span>`;
+    }
+    const thResp = (g, base) => {
+      const a = g.apl && base.apl ? g.apl / base.apl : 1, c = g.conv && base.conv ? g.conv / base.conv : 1;
+      return c >= 1.5 && c >= a ? 'Saca comentarios' : a >= 1.25 ? 'Saca likes' : c >= 1.25 ? 'Saca comentarios' : null;
+    };
+    // Rasgos que se pueden evaluar en un copy (y en un borrador)
+    const thTraits = (r) => [
+      ...r.th.forms.map(f => 'f:' + f),
+      ...r.th.tens.filter(t => t !== 'Producto puro').map(t => 't:' + t),
+      ['Diálogo', 'Lista o comparación'].includes(r.th.est) ? null : 's:' + r.th.est,   // diálogo y lista ya los cubren sus fórmulas
+      'b:' + r.th.brand,
+      r.cp.nh >= 3 ? 'x:Tres hashtags o más' : r.cp.nh === 0 ? 'x:Sin hashtags' : 'x:Uno o dos hashtags',
+      r.cp.cta === 'Link o compra' ? 'x:Manda a un link o a comprar' : r.cp.cta === 'Pide comentar' ? 'x:Pide comentar' : null,
+      r.cp.len <= 60 ? 'x:Corto (una idea)' : r.cp.len > 140 ? 'x:Largo' : null,
+    ].filter(Boolean);
+    const thTraitName = (k) => { const [t, v] = [k[0], k.slice(2)];
+      return t === 'f' ? v : t === 't' ? `Habla de ${v.toLowerCase()}` : t === 's' ? `Estructura: ${v.toLowerCase()}` : t === 'b' ? (v === 'No lo nombra' ? 'No nombra la marca' : `Marca ${v.toLowerCase()}`) : v; };
+    function thTraitStats(rows) {
+      const m = new Map();
+      for (const r of rows) for (const k of thTraits(r)) { if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+      const out = new Map();
+      for (const [k, rs] of m) { const v = medianOf(rs.map(r => r.idx)); out.set(k, { k, n: rs.length, v, sign: rs.length >= 5 ? (v >= 1.12 ? 1 : v <= 0.88 ? -1 : 0) : 0 }); }
+      return out;
+    }
+    // Semáforo: lo que tiene a favor y en contra, según cómo les fue a esos rasgos (descontando el momento)
+    function thSemaforo(r, TS) {
+      const ks = thTraits(r).map(k => TS.get(k)).filter(Boolean);
+      const pro = ks.filter(x => x.sign > 0).sort((a, b) => b.v - a.v), con = ks.filter(x => x.sign < 0).sort((a, b) => a.v - b.v);
+      const light = pro.length > con.length ? 'verde' : con.length > pro.length ? 'rojo' : 'ambar';
+      return { pro, con, light };
+    }
+    const TH_LIGHT = {
+      verde: { l: 'Tiene más a favor', d: 'Sus rasgos han funcionado en Threads.', c: 'bg-success', t: 'text-success' },
+      ambar: { l: 'Sin señales claras', d: 'Nada en el texto suma o resta de forma consistente: lo decide el momento y la ejecución.', c: 'bg-amber/60', t: 'text-txt2' },
+      rojo:  { l: 'Tiene más en contra', d: 'Tiene rasgos que suelen restar en Threads.', c: 'bg-amber', t: 'text-amber' },
+    };
+    // Momento de la cuenta: ER de los últimos posts contra lo normal del histórico
+    function thMomentum(allPosts) {
+      const L = (allPosts || []).filter(p => p.platform === 'Threads' && !isPaidP(p) && p.basic_er > 0 && !(p._flags || []).includes('er'))
+        .map(p => ({ p, t: (parseDate(p.date) || new Date(0)).getTime() })).filter(x => x.t > 0).sort((a, b) => a.t - b.t);
+      if (L.length < 20) return null;
+      const all = medianOf(L.map(x => x.p.basic_er));
+      const win = 15, series = [];
+      for (let i = win - 1; i < L.length; i++) {
+        const s = L.slice(i - win + 1, i + 1);
+        series.push({ t: L[i].t, v: medianOf(s.map(x => x.p.basic_er)) / all, camps: s.map(x => x.p.campaign).filter(Boolean) });
+      }
+      const now = series[series.length - 1];
+      const state = now.v >= 1.25 ? 'racha' : now.v <= 0.8 ? 'fria' : 'normal';
+      // mejores rachas: picos separados por al menos 45 días, con la campaña que dominaba
+      const peaks = [], used = [];
+      [...series].sort((a, b) => b.v - a.v).forEach(s => {
+        if (peaks.length >= 3 || s.v < 1.3 || used.some(t => Math.abs(t - s.t) < 45 * 864e5)) return;
+        used.push(s.t);
+        const cnt = {}; s.camps.forEach(c => { cnt[c] = (cnt[c] || 0) + 1; });
+        const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+        peaks.push({ t: s.t, camp: top ? top[0] : null });
+      });
+      return { series, state, peaks: peaks.sort((a, b) => a.t - b.t), last: L[L.length - 1].t };
+    }
+    const thMonth = (t) => { const d = new Date(t); return `${MONTH_NAMES[d.getMonth()].toLowerCase()} ${d.getFullYear()}`; };
+
     function ThreadsLabSection({ D, rawPosts, filters, onPick }) {
-      const [span, setSpan] = useState('filtro');
-      const [mapBy, setMapBy] = useState('forms');
-      const [openF, setOpenF] = useState(null);
+      const [tab, setTab] = useState(() => { try { return sessionStorage.getItem('smx-th-tab') || 'hoy'; } catch (e) { return 'hoy'; } });
+      useEffect(() => { try { sessionStorage.setItem('smx-th-tab', tab); } catch (e) {} }, [tab]);
       const [wallF, setWallF] = useState(null);
       const [wallSort, setWallSort] = useState('idx');
       const [wallN, setWallN] = useState(24);
-      const pool = useMemo(() => span === 'hist' && rawPosts ? applyFilters(rawPosts, { ...filters, year: 'all', weeks: [], months: [] }) : (D.allPosts || []), [span, rawPosts, filters, D]);
-      const rows = useMemo(() => thRows(pool), [pool]);
+      const [drafts, setDrafts] = useState(() => { try { const v = JSON.parse(sessionStorage.getItem('smx-th-drafts') || 'null'); return Array.isArray(v) && v.length ? v : ['', '']; } catch (e) { return ['', '']; } });
+      useEffect(() => { try { sessionStorage.setItem('smx-th-drafts', JSON.stringify(drafts)); } catch (e) {} }, [drafts]);
+      const [outF, setOutF] = useState(null);
+      // Threads tiene pocos posts: el laboratorio lee todo el histórico (respeta pauta y demás filtros, no el periodo)
+      const pool = useMemo(() => rawPosts ? applyFilters(rawPosts, { ...filters, year: 'all', weeks: [], months: [] }) : (D.allPosts || []), [rawPosts, filters, D]);
+      const rows = useMemo(() => thRows(pool).sort((a, b) => a.t - b.t), [pool]);
+      const mom = useMemo(() => thMomentum(rawPosts || pool), [rawPosts, pool]);
       const A = useMemo(() => {
-        if (rows.length < 8) return null;
+        if (rows.length < 20) return null;
         const base = thAgg(rows);
-        const forms = thMulti(rows, r => r.th.forms.length ? r.th.forms : ['Sin fórmula']).sort((a, b) => b.n - a.n);
+        const TS = thTraitStats(rows);
+        const forms = thMulti(rows, r => r.th.forms).filter(g => g.k).sort((a, b) => b.n - a.n).map(g => ({ ...g, wear: thWear(g.rows) }));
         const tens = thMulti(rows, r => r.th.tens).sort((a, b) => b.n - a.n);
-        const intents = thMulti(rows, r => [r.cp.intent]).sort((a, b) => b.n - a.n);
-        const ests = ['Una línea', 'Planteamiento y remate', 'Pregunta', 'Lista o comparación', 'Diálogo'];
-        const brands = ['Al inicio', 'En medio', 'Como remate', 'No lo nombra'];
-        const cell = (e, b) => { const rs = rows.filter(r => r.th.est === e && r.th.brand === b); return { n: rs.length, idx: rs.length ? medianOf(rs.map(r => r.idx)) : null }; };
-        return { base, forms, tens, intents, ests: ests.filter(e => rows.some(r => r.th.est === e)), brands, cell,
-          reading: thReading(rows, forms.filter(f => f.k !== 'Sin fórmula'), tens, base) };
+        const ests = ['Una línea', 'Planteamiento y remate', 'Pregunta', 'Lista o comparación', 'Diálogo'].filter(e => rows.some(r => r.th.est === e));
+        const tensK = TH_TENSIONS.map(([k]) => k).concat(['Producto puro']);
+        const cell = (t, e) => { const rs = rows.filter(r => r.th.tens.includes(t) && r.th.est === e); return { n: rs.length, v: rs.length ? medianOf(rs.map(r => r.idx)) : null, rs }; };
+        // Recetas: tensión + estructura (o fórmula) que funcionan y se usan poco
+        const combos = [];
+        for (const t of tensK) for (const e of ests) { const c = cell(t, e); if (c.n >= 3 && c.v >= 1.12) combos.push({ title: `${t === 'Producto puro' ? 'Solo producto' : t} · ${e.toLowerCase()}`, ...c, ...thAgg(c.rs) }); }
+        forms.filter(f => f.n >= 4 && f.idx >= 1.12 && f.wear.k !== 'gasta').forEach(f => combos.push({ title: f.k, n: f.n, v: f.idx, rs: f.rows, ...thAgg(f.rows) }));
+        const recipes = combos.sort((a, b) => (b.v - a.v) || (a.n - b.n)).filter((c, i, arr) => arr.findIndex(x => x.title === c.title) === i).slice(0, 3);
+        const against = [...TS.values()].filter(x => x.sign < 0).sort((a, b) => a.v - b.v).slice(0, 4);
+        const worn = forms.filter(f => f.wear.k === 'gasta');
+        // Semáforo aplicado a lo ya publicado (para medir si sirve)
+        const judged = rows.map(r => ({ r, s: thSemaforo(r, TS), ok: r.idx >= 1 }));
+        const rate = (light) => { const j = judged.filter(x => x.s.light === light); return j.length >= 5 ? { n: j.length, ok: j.filter(x => x.ok).length } : null; };
+        return { base, TS, forms, tens, ests, tensK, cell, recipes, against, worn, judged, track: { verde: rate('verde'), ambar: rate('ambar'), rojo: rate('rojo') } };
       }, [rows]);
 
+      const TABS = [
+        ['hoy', 'Qué escribo hoy', 'El momento, lo que está funcionando y dónde hay oportunidad'],
+        ['mesa', 'Revisa tus borradores', 'Compara versiones antes de publicar'],
+        ['fue', 'Cómo nos fue', 'Lo último que publicamos, sus sorpresas y lo que aprendimos'],
+        ['bib', 'Biblioteca', 'Fórmulas, tensiones y el muro de copys'],
+      ];
+      const pick = (e, p) => { window.__smxPickY = e.clientY; onPick && onPick(p); };
+      const TONE = (v) => v >= 1.35 ? 'bg-success/[0.13]' : v >= 1.12 ? 'bg-success/[0.07]' : v < 0.7 ? 'bg-amber/[0.12]' : v <= 0.88 ? 'bg-amber/[0.06]' : 'bg-onSurface/[0.035]';
+      const CopyTile = ({ r, compact }) => html`<button onClick=${(e) => pick(e, r.p)}
+          className=${"w-full text-left rounded-lg p-3.5 hover:brightness-95 transition block " + TONE(r.idx)}>
+        <p className=${"text-[13px] text-txt leading-snug break-words " + (compact ? 'line-clamp-3' : '')}>${String(r.p.copy).trim()}</p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5">
+          <${ThWord} v=${r.idx} n=${99}/><${ThPrint} r=${r} base=${A.base}/>
+          <span className="text-[10px] font-mono text-txt4">${dateShort(r.p.date)}</span>
+        </div>
+      </button>`;
+
       const header = html`
-        <div className="mb-5">
+        <div className="mb-4">
           <h2 className="text-[18px] font-medium text-txt">Threads · Laboratorio de copy</h2>
-          <p className="text-txt4 text-[12px] mt-1 max-w-3xl">En Threads el copy es toda la pieza. Cada texto se lee por la respuesta que provoca, la fórmula que usa, la tensión de vida que toca y cómo está armado el chiste. Índice = ER básico contra un post típico de Threads (1.0×). Solo orgánico.</p>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Periodo del laboratorio de Threads">
-              ${[['filtro', 'Periodo del filtro'], ['hist', 'Histórico 2025 + 2026']].map(([k, l]) => html`
-                <button key=${k} role="radio" aria-checked=${span === k} onClick=${() => setSpan(k)}
-                        className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (span === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
-            </div>
-          </div>
+          <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Para el equipo que escribe Threads. Todo se compara contra lo normal de la cuenta en esos mismos días, así que lo que ves es el efecto del copy y no el del momento (un partido del Mundial sube todo). Usa todo el histórico orgánico de Threads.</p>
         </div>`;
       if (!A) return html`
         <section id="sec-threads" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-threads" name="Threads copy" />
           ${header}
-          <div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">Hay ${rows.length} copys orgánicos de Threads en este periodo: muy pocos para leer patrones.
-            ${span === 'filtro' && html`<div><button onClick=${() => setSpan('hist')} className="mt-3 text-[12px] text-accent2 hover:underline">Ver el histórico 2025 + 2026</button></div>`}</div>
+          <div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">Hay ${rows.length} copys orgánicos de Threads con los filtros actuales: muy pocos para leer patrones. Revisa el filtro de pauta.</div>
         </section>`;
 
-      const groups = mapBy === 'forms' ? A.forms.filter(f => f.k !== 'Sin fórmula') : mapBy === 'tens' ? A.tens : A.intents;
-      const pts = groups.filter(g => g.n >= 3 && g.apl != null && g.conv != null).map((g, i) => ({ x: g.conv, y: g.apl, z: g.n, g, c: mapBy === 'int' ? CP_INTENT_C[g.k] : TH_FORM_C[i % TH_FORM_C.length] }));
-      const xMax = Math.max(A.base.conv * 2, ...pts.map(p => p.x)) * 1.12, yMax = Math.max(A.base.apl * 2, ...pts.map(p => p.y)) * 1.12;
-      // Evita que las etiquetas se encimen: dentro de la misma columna, cada una baja lo necesario
-      { const H = 290, Wd = 560, placed = [];
-        [...pts].sort((a, b) => b.y - a.y).forEach(p => {
-          const px = p.x / xMax * Wd, py = (1 - p.y / yMax) * H;
-          let ly = py;
-          for (const q of placed.filter(q => Math.abs(q.px - px) < 120).sort((a, b) => a.ly - b.ly)) if (Math.abs(q.ly - ly) < 13) ly = q.ly + 13;
-          placed.push({ px, ly }); p.dy = ly - py;
-        }); }
-      const Label = (pr) => { const { cx, cy, payload } = pr; const r = 5 + Math.sqrt(payload.z) * 1.6;
-        return html`<g><circle cx=${cx} cy=${cy} r=${r} fill=${payload.c} fillOpacity="0.28" stroke=${payload.c} strokeWidth="1.5"/>
-          ${payload.dy > 6 ? html`<path d=${`M${cx + r * 0.7},${cy + r * 0.7} L${cx + r + 2},${cy + payload.dy}`} stroke="currentColor" strokeOpacity="0.3" fill="none"/>` : ''}
-          <text x=${cx + r + 4} y=${cy + (payload.dy || 0) + 3.5} fontSize="10.5" fill="currentColor" className="text-txt2" style=${{ fontFamily: 'inherit' }}>${payload.g.k.length > 24 ? payload.g.k.slice(0, 23) + '…' : payload.g.k}</text></g>`; };
-      const fRows = A.forms.filter(f => f.k !== 'Sin fórmula');
-      const sinF = A.forms.find(f => f.k === 'Sin fórmula');
-      const wall = rows.filter(r => !wallF || (wallF.t === 'f' ? r.th.forms.includes(wallF.k) : r.th.tens.includes(wallF.k)))
+      // ---------- pestaña 1: Qué escribo hoy
+      const M = mom && { racha: ['La cuenta viene en racha', 'Los últimos posts están rindiendo arriba de lo normal. Buen momento para arriesgar.', 'text-success'],
+        normal: ['La cuenta viene normal', 'Los últimos posts rinden como siempre.', 'text-txt'], fria: ['La cuenta viene fría', 'Los últimos posts rinden abajo de lo normal. Apuesta por lo que ya funciona.', 'text-amber'] }[mom.state];
+      const chartM = mom ? mom.series.filter(s => s.t >= mom.last - 400 * 864e5).map(s => ({ t: s.t, v: Math.log2(Math.max(0.2, s.v)) })) : [];
+      const hoy = html`
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-3">
+          <div className="rounded-xl bg-surface p-5 min-w-0">
+            <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-2">El momento</div>
+            ${M ? html`<div className=${"text-[18px] font-medium leading-snug " + M[2]}>${M[0]}</div>
+              <p className="text-[12px] text-txt3 mt-1 leading-snug">${M[1]}</p>
+              <div className="h-20 mt-3 -mx-1">
+                <${ResponsiveContainer}>
+                  <${AreaChart} data=${chartM} margin=${{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                    <${ReferenceLine} y=${0} stroke="#8E8E99" strokeOpacity=${0.5} strokeDasharray="3 4"/>
+                    <${YAxis} hide domain=${[-1.6, 1.6]}/><${XAxis} dataKey="t" hide/>
+                    <${Area} type="monotone" dataKey="v" stroke="#7A5AF8" fill="#7A5AF8" fillOpacity=${0.14} strokeWidth=${1.6} isAnimationActive=${false}/>
+                  <//>
+                <//>
+              </div>
+              <div className="flex justify-between text-[10px] text-txt4 -mt-1"><span>hace un año</span><span>arriba de la línea = mejor que lo normal</span><span>hoy</span></div>
+              ${mom.peaks.length > 0 && html`<p className="text-[12px] text-txt3 mt-3 leading-snug">Las mejores rachas coincidieron con ${mom.peaks.map(p => `${p.camp || 'contenido sin campaña'} (${thMonth(p.t)})`).join(', ')}. Hablar de lo que está pasando pesa más que cómo se escribe.</p>`}`
+              : html`<p className="text-[12px] text-txt4">Aún no hay suficientes posts para leer el momento.</p>`}
+          </div>
+          <div className="xl:col-span-2 rounded-xl bg-surface p-5 min-w-0">
+            <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-3">Lo que está funcionando</div>
+            ${!A.recipes.length ? html`<p className="text-[12px] text-txt4">Ninguna combinación destaca con claridad todavía.</p>` : html`
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                ${A.recipes.map((c, i) => { const resp = thResp(c, A.base); return html`<div key=${i} className="rounded-lg bg-onSurface/[0.03] p-3.5 flex flex-col gap-2 min-w-0">
+                  <div className="text-[13px] font-medium text-txt leading-snug">${c.title}</div>
+                  <div className="flex flex-wrap items-center gap-1.5"><${ThWord} v=${c.v} n=${c.n}/>${resp && html`<span className="text-[11px] text-txt3">${resp}</span>`}<span className="text-[10px] text-txt4">${c.n} copys</span></div>
+                  <div className="space-y-1.5 mt-1">${[...c.rs].sort((a, b) => b.idx - a.idx).slice(0, 2).map((r, j) => html`<button key=${j} onClick=${(e) => pick(e, r.p)} className="w-full text-left text-[12px] text-txt2 leading-snug rounded-md bg-surface px-2.5 py-2 hover:bg-onSurface/[0.05] line-clamp-3">«${String(r.p.copy).trim()}»</button>`)}</div>
+                </div>`; })}
+              </div>`}
+            ${(A.against.length > 0 || A.worn.length > 0) && html`
+              <div className="mt-4 rounded-lg bg-amber/[0.08] px-4 py-3">
+                <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-amber mb-1.5">Ojo con</div>
+                <ul className="space-y-1 text-[12px] text-txt2 leading-snug">
+                  ${A.against.map(x => html`<li key=${x.k}>${thTraitName(x.k)}: suele restar (${x.n} copys).</li>`)}
+                  ${A.worn.map(f => html`<li key=${f.k}>«${f.k}» se está gastando: sus últimos usos rinden menos que los primeros.</li>`)}
+                </ul>
+              </div>`}
+          </div>
+        </div>
+        <div className="rounded-xl bg-surface p-5 min-w-0">
+          <div className="text-[13px] font-medium text-txt">Mapa de oportunidades</div>
+          <div className="text-[11px] text-txt4 mt-0.5 mb-3">De qué hablamos (filas) y cómo lo armamos (columnas). Verde funciona, ámbar no; el contorno marca lo que funciona y casi no usamos; punteado, lo que nunca hemos probado. Clic en una celda para ver sus copys en la biblioteca.</div>
+          <div className="overflow-x-auto">
+            <table className="text-[12px] w-full border-separate" style=${{ borderSpacing: '4px' }}>
+              <thead><tr>
+                <th className="text-left font-normal text-[10px] font-mono uppercase tracking-[0.12em] text-txt4 pr-2 min-w-[170px]">De qué habla</th>
+                ${A.ests.map(e => html`<th key=${e} className="font-normal text-[10px] text-txt4 px-1 min-w-[96px] leading-tight align-bottom">${e}</th>`)}
+              </tr></thead>
+              <tbody>${A.tensK.map(t => html`<tr key=${t}>
+                <td className="pr-2 text-txt2 whitespace-nowrap">${t === 'Producto puro' ? 'Solo del producto' : t}</td>
+                ${A.ests.map(e => { const c = A.cell(t, e), w = TH_WORD(c.v, c.n, 3), opp = c.n >= 3 && c.n <= 5 && c.v >= 1.12;
+                  return html`<td key=${e} onClick=${() => { if (c.n) { setWallF({ t: 't', k: t, e }); setTab('bib'); } }}
+                    title=${c.n ? `${c.n} copys · ${w.w}${opp ? ' · funciona y casi no lo usamos' : ''}` : 'Nunca lo hemos probado'}
+                    className=${"text-center rounded-md py-2 px-1 text-[11px] " + (c.n ? 'cursor-pointer ' : '') + (!c.n ? 'border border-dashed border-line text-faint' : c.n < 3 ? 'bg-onSurface/[0.03] text-txt4' : w.c) + (opp ? ' ring-1 ring-success' : '')}>
+                    ${!c.n ? 'Sin probar' : c.n < 3 ? 'Poco probado' : w.w}<div className="text-[9px] opacity-60">${c.n ? c.n + (c.n === 1 ? ' copy' : ' copys') : ''}</div></td>`; })}
+              </tr>`)}</tbody>
+            </table>
+          </div>
+        </div>`;
+
+      // ---------- pestaña 2: Revisa tus borradores
+      const judgedDrafts = drafts.map((t, i) => {
+        const txt = t.trim(); if (txt.length < 8) return { i, empty: true };
+        const p = { copy: txt, platform: 'Threads' }, cp = copyProfile(p); if (!cp) return { i, empty: true };
+        const r = { p, cp, th: thProfile(p) };
+        const s = thSemaforo(r, A.TS);
+        const sims = rows.map(x => ({ x, s: cpSim(cp, x.cp) })).filter(y => y.s >= 0.2).sort((a, b) => b.s - a.s).slice(0, 3).map(y => y.x);
+        const respG = sims.length >= 2 ? thAgg(sims) : null;
+        return { i, r, s, sims, resp: respG ? thResp(respG, A.base) : null, score: s.pro.length - s.con.length };
+      });
+      const filled = judgedDrafts.filter(d => !d.empty);
+      const order = [...filled].sort((a, b) => b.score - a.score);
+      const tr = A.track;
+      const mesa = html`
+        <div className="rounded-xl bg-surface p-5 mb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div className="min-w-0 max-w-2xl">
+              <div className="text-[13px] font-medium text-txt">Pega tus versiones</div>
+              <div className="text-[11px] text-txt4 mt-0.5 leading-snug">Hasta 4 borradores del mismo post. Cada uno recibe un semáforo con lo que tiene a favor y en contra según lo que ya pasó en Threads. No es una predicción: el momento en que se publique pesa tanto como el texto.</div>
+            </div>
+            ${drafts.length < 4 && html`<button onClick=${() => setDrafts(d => [...d, ''])} className="text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt shrink-0">Agregar versión</button>`}
+          </div>
+          <div className=${"grid grid-cols-1 gap-3 " + (drafts.length >= 3 ? 'md:grid-cols-2 2xl:grid-cols-4' : 'md:grid-cols-2')}>
+            ${judgedDrafts.map((d) => { const L = d.s ? TH_LIGHT[d.s.light] : null; const rank = d.empty ? null : order.indexOf(d) + 1;
+              return html`<div key=${d.i} className="rounded-lg bg-onSurface/[0.03] p-3.5 flex flex-col gap-2.5 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Versión ${String.fromCharCode(65 + d.i)}</span>
+                  ${drafts.length > 1 && html`<button onClick=${() => setDrafts(ds => ds.filter((_, j) => j !== d.i))} aria-label=${`Quitar versión ${String.fromCharCode(65 + d.i)}`} className="text-txt4 hover:text-txt text-[12px]">✕</button>`}
+                </div>
+                <textarea value=${drafts[d.i]} onChange=${(e) => { const v = e.target.value; setDrafts(ds => ds.map((x, j) => j === d.i ? v : x)); }} rows=${3}
+                  aria-label=${`Borrador ${String.fromCharCode(65 + d.i)}`} placeholder="Escribe o pega el copy…"
+                  className="w-full rounded-md bg-surface border border-transparent focus:border-line2 focus:outline-none px-3 py-2 text-[13px] text-txt placeholder:text-txt4 leading-relaxed resize-y"></textarea>
+                ${L && html`
+                  <div className="flex items-center gap-2">
+                    <span className=${"w-2.5 h-2.5 rounded-full shrink-0 " + L.c}></span>
+                    <span className=${"text-[13px] font-medium " + L.t}>${L.l}</span>
+                    ${filled.length > 1 && rank === 1 && order[0].score > (order[1] ? order[1].score : -99) && html`<span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success">La más sólida</span>`}
+                  </div>
+                  <p className="text-[11px] text-txt4 -mt-1 leading-snug">${L.d}</p>
+                  ${d.s.pro.length > 0 && html`<div className="text-[12px] leading-snug"><span className="text-success">A favor:</span> <span className="text-txt2">${d.s.pro.map(x => thTraitName(x.k)).join(' · ')}</span></div>`}
+                  ${d.s.con.length > 0 && html`<div className="text-[12px] leading-snug"><span className="text-amber">En contra:</span> <span className="text-txt2">${d.s.con.map(x => thTraitName(x.k)).join(' · ')}</span></div>`}
+                  ${d.resp && html`<div className="text-[12px] text-txt3">Por lo parecido, suele: <b className="font-medium text-txt">${d.resp.toLowerCase()}</b></div>`}
+                  ${d.sims.length ? html`<div className="space-y-1">
+                      <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Ya publicamos algo parecido</div>
+                      ${d.sims.map((x, j) => html`<button key=${j} onClick=${(e) => pick(e, x.p)} className="w-full text-left rounded-md bg-surface px-2.5 py-1.5 hover:bg-onSurface/[0.05] flex items-start gap-2">
+                        <span className="flex-1 min-w-0 text-[11px] text-txt2 leading-snug line-clamp-2">${String(x.p.copy).trim()}</span><${ThWord} v=${x.idx} n=${99}/></button>`)}
+                    </div>`
+                    : html`<div className="text-[11px] text-txt3">No se parece a nada que hayamos publicado: territorio nuevo.</div>`}`}
+              </div>`; })}
+          </div>
+        </div>
+        ${(tr.verde || tr.rojo) && html`<div className="rounded-xl bg-surface px-5 py-4 text-[12px] text-txt3 leading-relaxed">
+          <b className="text-txt font-medium">¿Qué tan confiable es el semáforo?</b> Aplicado a lo que ya publicamos:
+          ${tr.verde ? ` de los copys en verde, ${Math.round(tr.verde.ok / tr.verde.n * 10)} de cada 10 rindieron arriba de lo normal;` : ''}
+          ${tr.ambar ? ` sin señales claras, ${Math.round(tr.ambar.ok / tr.ambar.n * 10)} de cada 10;` : ''}
+          ${tr.rojo ? ` en rojo, ${Math.round(tr.rojo.ok / tr.rojo.n * 10)} de cada 10.` : ''}
+          ${' '}Sirve para descartar riesgos y elegir entre versiones parecidas, no para garantizar resultados.</div>`}`;
+
+      // ---------- pestaña 3: Cómo nos fue
+      const recent = [...A.judged].sort((a, b) => b.r.t - a.r.t).slice(0, 12);
+      const surpUp = A.judged.filter(x => x.s.light !== 'verde' && x.r.idx >= 1.35).sort((a, b) => b.r.t - a.r.t).slice(0, 3);
+      const surpDn = A.judged.filter(x => x.s.light === 'verde' && x.r.idx <= 0.7).sort((a, b) => b.r.t - a.r.t).slice(0, 3);
+      const cutoff = rows.length ? rows[rows.length - 1].t - 56 * 864e5 : 0;
+      const lastRows = rows.filter(r => r.t >= cutoff), prevRows = rows.filter(r => r.t < cutoff);
+      const learn = (() => {
+        const L = [];
+        if (lastRows.length >= 4) {
+          const ok = lastRows.filter(r => r.idx >= 1.12).length, bad = lastRows.filter(r => r.idx <= 0.88).length;
+          L.push(`En las últimas 8 semanas publicamos ${lastRows.length} copys: ${ok} funcionaron mejor que lo normal y ${bad} quedaron flojos.`);
+          const TSl = thTraitStats(lastRows), TSp = thTraitStats(prevRows);
+          const moved = [...TSl.values()].filter(x => x.n >= 3 && TSp.get(x.k) && TSp.get(x.k).n >= 4).map(x => ({ x, p: TSp.get(x.k), d: x.v / TSp.get(x.k).v })).filter(o => o.d >= 1.5 || o.d <= 0.6).sort((a, b) => Math.abs(Math.log(b.d)) - Math.abs(Math.log(a.d)))[0];
+          if (moved) L.push(`${thTraitName(moved.x.k)} ${moved.d >= 1.5 ? 'funcionó mejor que antes' : 'funcionó peor que antes'} en estas semanas (${TH_WORD(moved.x.v, moved.x.n, 3).w.toLowerCase()}, antes ${TH_WORD(moved.p.v, moved.p.n).w.toLowerCase()}).`);
+          const best = [...lastRows].sort((a, b) => b.idx - a.idx)[0];
+          if (best && best.idx >= 1.35) L.push(`El que mejor conectó: «${String(best.p.copy).trim().slice(0, 110)}${String(best.p.copy).trim().length > 110 ? '…' : ''}»`);
+        }
+        return L;
+      })();
+      const fue = html`
+        ${learn.length > 0 && html`<div className="rounded-xl bg-surface px-5 py-5 mb-3">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-3">Lo que aprendimos</div>
+          <div className="space-y-2 max-w-4xl">${learn.map((s, i) => html`<p key=${i} className=${i === 0 ? "text-[16px] text-txt leading-snug font-medium" : "text-[13px] text-txt2 leading-relaxed"}>${s}</p>`)}</div>
+        </div>`}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-3">
+          <div className="rounded-xl bg-surface p-5 min-w-0">
+            <div className="text-[13px] font-medium text-txt">Sorpresas para bien</div>
+            <div className="text-[11px] text-txt4 mt-0.5 mb-3">El semáforo no las veía venir y funcionaron muy bien. Son las que más enseñan.</div>
+            <div className="space-y-2">${surpUp.length ? surpUp.map((x, i) => html`<${CopyTile} key=${i} r=${x.r}/>`) : html`<p className="text-[12px] text-txt4">Ninguna por ahora.</p>`}</div>
+          </div>
+          <div className="rounded-xl bg-surface p-5 min-w-0">
+            <div className="text-[13px] font-medium text-txt">Decepciones</div>
+            <div className="text-[11px] text-txt4 mt-0.5 mb-3">Tenían todo a favor y no funcionaron: casi siempre fue el momento o la ejecución.</div>
+            <div className="space-y-2">${surpDn.length ? surpDn.map((x, i) => html`<${CopyTile} key=${i} r=${x.r}/>`) : html`<p className="text-[12px] text-txt4">Ninguna por ahora.</p>`}</div>
+          </div>
+        </div>
+        <div className="rounded-xl bg-surface p-5 min-w-0">
+          <div className="text-[13px] font-medium text-txt">Lo último que publicamos</div>
+          <div className="text-[11px] text-txt4 mt-0.5 mb-3">Qué decía el semáforo y cómo le fue. Las barritas muestran la respuesta: likes, comentarios y compartidos contra lo normal.</div>
+          <div className="space-y-1.5">
+            ${recent.map((x, i) => { const L = TH_LIGHT[x.s.light]; return html`<button key=${i} onClick=${(e) => pick(e, x.r.p)}
+                className="w-full text-left rounded-lg bg-onSurface/[0.025] hover:bg-onSurface/[0.05] px-3 py-2.5 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[70px_minmax(0,1fr)_150px_auto] items-center gap-x-3 gap-y-1">
+              <span className="hidden md:block text-[10px] font-mono text-txt4">${dateShort(x.r.p.date)}</span>
+              <span className="text-[12px] text-txt leading-snug line-clamp-2 min-w-0">${String(x.r.p.copy).trim()}</span>
+              <span className="hidden md:flex items-center gap-1.5 text-[11px] text-txt3"><span className=${"w-2 h-2 rounded-full " + L.c}></span>${L.l}</span>
+              <span className="flex items-center gap-2 justify-end"><${ThPrint} r=${x.r} base=${A.base}/><${ThWord} v=${x.r.idx} n=${99}/></span>
+            </button>`; })}
+          </div>
+        </div>`;
+
+      // ---------- pestaña 4: Biblioteca
+      const wall = rows.filter(r => !wallF || (wallF.t === 'f' ? r.th.forms.includes(wallF.k) : r.th.tens.includes(wallF.k) && (!wallF.e || r.th.est === wallF.e)))
         .sort((a, b) => wallSort === 'idx' ? b.idx - a.idx : b.t - a.t);
-      const TONE = (v) => v >= 1.5 ? 'bg-success/[0.13]' : v >= 1.15 ? 'bg-success/[0.07]' : v <= 0.6 ? 'bg-amber/[0.12]' : v <= 0.87 ? 'bg-amber/[0.06]' : 'bg-onSurface/[0.035]';
-      const pick = (e, p) => { window.__smxPickY = e.clientY; onPick && onPick(p); };
+      const wearW = { gasta: ['Se está gastando', 'text-amber'], crece: ['Va al alza', 'text-success'], estable: ['Se sostiene', 'text-txt3'], pocos: ['Pocos usos', 'text-txt4'] };
+      const bib = html`
+        <div className="rounded-xl bg-surface p-5 mb-3 min-w-0">
+          <div className="text-[13px] font-medium text-txt">Fórmulas</div>
+          <div className="text-[11px] text-txt4 mt-0.5 mb-3">Los recursos de escritura que repetimos, cómo funcionan y si se están gastando (la línea es cada uso en orden). Clic para ver sus copys en el muro.</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
+            ${A.forms.map(f => { const resp = thResp(f, A.base), ww = wearW[f.wear.k]; return html`<button key=${f.k} onClick=${() => { setWallF({ t: 'f', k: f.k }); setWallN(24); const el = document.getElementById('th-wall'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                className=${"text-left rounded-lg px-3.5 py-3 hover:bg-onSurface/[0.06] transition-colors " + (wallF && wallF.k === f.k ? 'bg-onSurface/[0.07]' : 'bg-onSurface/[0.03]')}>
+              <div className="flex items-start justify-between gap-2"><span className="text-[13px] text-txt font-medium leading-snug">${f.k}</span><${ThWord} v=${f.idx} n=${f.n}/></div>
+              <div className="flex items-center gap-2 mt-2 text-[11px]"><span className=${ww[1]}><${ThSpark} s=${f.wear.s}/></span><span className=${ww[1]}>${ww[0]}</span></div>
+              <div className="text-[11px] text-txt4 mt-1">${f.n} ${f.n === 1 ? 'uso' : 'usos'} · último ${dateShort([...f.rows].sort((a, b) => b.t - a.t)[0].p.date)}${resp ? ' · ' + resp.toLowerCase() : ''}</div>
+            </button>`; })}
+          </div>
+        </div>
+        <div className="rounded-xl bg-surface p-5 mb-3 min-w-0">
+          <div className="text-[13px] font-medium text-txt">De qué hablamos</div>
+          <div className="text-[11px] text-txt4 mt-0.5 mb-3">La tensión de vida detrás de cada copy. Clic para filtrar el muro.</div>
+          <div className="flex flex-wrap gap-2">
+            ${A.tens.map(g => { const resp = thResp(g, A.base); return html`<button key=${g.k} onClick=${() => { setWallF({ t: 't', k: g.k }); setWallN(24); }}
+                className=${"rounded-lg px-3 py-2 text-left hover:bg-onSurface/[0.06] " + (wallF && wallF.t === 't' && wallF.k === g.k ? 'bg-onSurface/[0.07]' : 'bg-onSurface/[0.03]')}>
+              <div className="text-[12px] text-txt">${g.k === 'Producto puro' ? 'Solo del producto' : g.k} <span className="text-txt4 text-[10px]">${g.n}</span></div>
+              <div className="flex items-center gap-1.5 mt-1"><${ThWord} v=${g.idx} n=${g.n}/>${resp && html`<span className="text-[10px] text-txt4">${resp}</span>`}</div>
+            </button>`; })}
+          </div>
+        </div>
+        <div id="th-wall" className="rounded-xl bg-surface p-5 min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-txt">El muro</div>
+              <div className="text-[11px] text-txt4 mt-0.5">Todos los copys de Threads como banco de referencias. Clic en uno para ver el post.</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              ${wallF && html`<button onClick=${() => setWallF(null)} className="text-[11px] px-2.5 py-1 rounded-md bg-accent2/[0.12] text-txt">${wallF.k}${wallF.e ? ' · ' + wallF.e.toLowerCase() : ''} ✕</button>`}
+              <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Orden del muro">
+                ${[['idx', 'Lo que mejor funcionó'], ['date', 'Lo más reciente']].map(([k, l]) => html`<button key=${k} role="radio" aria-checked=${wallSort === k} onClick=${() => setWallSort(k)}
+                  className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (wallSort === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+              </div>
+            </div>
+          </div>
+          <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-2.5">
+            ${wall.slice(0, wallN).map((r, i) => html`<div key=${i} className="mb-2.5 break-inside-avoid"><${CopyTile} r=${r}/></div>`)}
+          </div>
+          ${!wall.length && html`<p className="text-[12px] text-txt4">No hay copys con ese filtro.</p>`}
+          ${wall.length > wallN && html`<button onClick=${() => setWallN(n => n + 36)} className="mt-1 text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt">Ver más (${wall.length - wallN})</button>`}
+        </div>`;
 
       return html`
         <section id="sec-threads" className="px-4 md:px-7 py-7 relative group">
           <${SectionExportBtn} sectionId="sec-threads" name="Threads copy" />
           ${header}
-
-          <div className="rounded-xl bg-surface px-5 py-5 mb-3">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-3">La lectura · ${rows.length} copys orgánicos · por cada 1,000 de alcance: ${th1(A.base.apl)} reacciones, ${th1(A.base.conv)} comentarios</div>
-            <div className="space-y-2.5 max-w-4xl">
-              ${A.reading.map((s, i) => html`<p key=${i} className=${i === 0 ? "text-[16px] md:text-[18px] text-txt leading-snug font-medium" : "text-[13px] text-txt2 leading-relaxed"}>${s}</p>`)}
-            </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4" role="tablist" aria-label="Laboratorio de Threads">
+            ${TABS.map(([k, l, d], i) => html`<button key=${k} role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}
+                className=${"text-left rounded-xl px-4 py-3 transition-colors " + (tab === k ? 'bg-surface shadow-sm ring-1 ring-accent2/40' : 'bg-onSurface/[0.03] hover:bg-onSurface/[0.06]')}>
+              <div className="flex items-center gap-2"><span className=${"text-[10px] font-mono " + (tab === k ? 'text-accent2' : 'text-txt4')}>${i + 1}</span><span className=${"text-[13px] font-medium " + (tab === k ? 'text-txt' : 'text-txt2')}>${l}</span></div>
+              <div className="text-[11px] text-txt4 mt-0.5 leading-snug hidden sm:block">${d}</div>
+            </button>`)}
           </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 mb-3">
-            <div className="xl:col-span-3 rounded-xl bg-surface p-5 min-w-0">
-              <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-txt">Qué respuesta provoca cada copy</div>
-                  <div className="text-[11px] text-txt4 mt-0.5 max-w-xl">Arriba, más aplauso (reacciones); a la derecha, más conversación (comentarios). Ambos por cada 1,000 de alcance, mediana. El tamaño es cuántos copys. Las guías marcan lo normal de Threads.</div>
-                </div>
-                <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Agrupar el mapa por">
-                  ${[['forms', 'Fórmula'], ['tens', 'Tensión'], ['int', 'Intención']].map(([k, l]) => html`<button key=${k} role="radio" aria-checked=${mapBy === k} onClick=${() => setMapBy(k)}
-                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (mapBy === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
-                </div>
-              </div>
-              <div className="h-[340px] text-txt2 relative">
-                <span className="absolute top-1 right-2 text-[10px] font-mono uppercase tracking-[0.15em] text-success/80">Aplauso y conversación</span>
-                <span className="absolute top-1 left-14 text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Aplauso</span>
-                <span className="absolute bottom-9 right-2 text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Conversación</span>
-                <${ResponsiveContainer}>
-                  <${ScatterChart} margin=${{ top: 18, right: 90, left: 0, bottom: 14 }}>
-                    <${XAxis} type="number" dataKey="x" domain=${[0, xMax]} tickFormatter=${th1} fontSize=${10} stroke="#8E8E99" tickLine=${false} axisLine=${false}
-                      label=${{ value: 'Comentarios por 1,000', position: 'insideBottom', offset: -8, fontSize: 10, fill: '#8E8E99' }}/>
-                    <${YAxis} type="number" dataKey="y" domain=${[0, yMax]} tickFormatter=${th1} fontSize=${10} stroke="#8E8E99" tickLine=${false} axisLine=${false} width=${44}
-                      label=${{ value: 'Reacciones por 1,000', angle: -90, position: 'insideLeft', offset: 14, fontSize: 10, fill: '#8E8E99' }}/>
-                    <${ZAxis} type="number" dataKey="z" range=${[60, 60]}/>
-                    <${ReferenceLine} x=${A.base.conv} stroke="#8E8E99" strokeOpacity=${0.45} strokeDasharray="3 4"/>
-                    <${ReferenceLine} y=${A.base.apl} stroke="#8E8E99" strokeOpacity=${0.45} strokeDasharray="3 4"/>
-                    <${Tooltip} cursor=${false} content=${({ active, payload }) => active && payload && payload[0] ? html`<div className="rounded-lg bg-surface border border-line px-3 py-2 text-[11px] shadow-lg">
-                      <div className="text-txt font-medium mb-1">${payload[0].payload.g.k}</div>
-                      <div className="text-txt3">${payload[0].payload.g.n} copys · índice ${cpIdxTxt(payload[0].payload.g.idx)}</div>
-                      <div className="text-txt3">${th1(payload[0].payload.y)} reacciones · ${th1(payload[0].payload.x)} comentarios por 1,000</div></div>` : null}/>
-                    <${Scatter} data=${pts} shape=${Label} isAnimationActive=${false}/>
-                  <//>
-                <//>
-              </div>
-            </div>
-
-            <div className="xl:col-span-2 rounded-xl bg-surface p-5 min-w-0">
-              <div className="text-[13px] font-medium text-txt">La tensión detrás del chiste</div>
-              <div className="text-[11px] text-txt4 mt-0.5 mb-3">De qué parte de la vida habla el copy. Un copy puede tocar varias. Abajo, las que casi no hemos escrito.</div>
-              <div className="space-y-2">
-                ${A.tens.map(g => html`<button key=${g.k} onClick=${() => { setWallF({ t: 't', k: g.k }); setWallN(24); }}
-                    className="w-full text-left flex items-center gap-2 text-[12px] rounded-md hover:bg-onSurface/[0.04] px-1 -mx-1 py-0.5">
-                  <span className="flex-1 min-w-0 truncate text-txt2">${g.k}</span>
-                  <span className="text-[10px] font-mono text-txt4 w-6 text-right">${g.n}</span>
-                  <${CpBar} v=${g.idx} n=${g.n}/><${CpIdx} v=${g.idx} n=${g.n}/>
-                </button>`)}
-              </div>
-              ${(() => { const thin = TH_TENSIONS.map(([k]) => k).filter(k => (A.tens.find(g => g.k === k) || { n: 0 }).n < 3);
-                return thin.length ? html`<div className="mt-3 text-[11px] text-txt3 leading-snug"><span className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mr-1.5">Casi sin escribir</span>${thin.join(' · ')}</div>` : ''; })()}
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-surface p-5 mb-3 min-w-0">
-            <div className="text-[13px] font-medium text-txt">Biblioteca de fórmulas</div>
-            <div className="text-[11px] text-txt4 mt-0.5 mb-3">Los recursos de escritura que se repiten. La línea muestra el índice de cada uso en orden; el punto es el último. Clic en una fórmula para ver sus copys.</div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px] border-separate" style=${{ borderSpacing: '0 3px' }}>
-                <thead><tr className="text-[10px] font-mono uppercase tracking-[0.12em] text-txt4">
-                  <th className="text-left font-normal pl-2 pr-3 min-w-[170px]">Fórmula</th><th className="text-right font-normal px-2">Usos</th><th className="text-right font-normal px-2">Índice</th>
-                  <th className="text-right font-normal px-2 whitespace-nowrap">Aplauso</th><th className="text-right font-normal px-2 whitespace-nowrap">Conversación</th>
-                  <th className="text-left font-normal px-2 min-w-[150px]">Uso a uso</th><th className="text-left font-normal px-2 whitespace-nowrap">Último uso</th>
-                </tr></thead>
-                <tbody>
-                  ${fRows.map(f => { const w = thWear(f.rows), last = [...f.rows].sort((a, b) => b.t - a.t)[0]; const open = openF === f.k;
-                    return html`<${Fragment} key=${f.k}>
-                    <tr onClick=${() => setOpenF(open ? null : f.k)} className=${"cursor-pointer " + (open ? 'bg-onSurface/[0.05]' : 'bg-onSurface/[0.025] hover:bg-onSurface/[0.045]')}>
-                      <td className="py-2 pl-2 pr-3 rounded-l-md text-txt">${f.k}</td>
-                      <td className="py-2 px-2 text-right font-mono tabular-nums text-txt3">${f.n}</td>
-                      <td className="py-2 px-2 text-right"><${CpIdx} v=${f.idx} n=${f.n}/></td>
-                      <td className=${"py-2 px-2 text-right font-mono tabular-nums " + (f.apl >= A.base.apl * 1.3 ? 'text-success' : 'text-txt3')}>${th1(f.apl)}</td>
-                      <td className=${"py-2 px-2 text-right font-mono tabular-nums " + (f.conv >= A.base.conv * 1.5 ? 'text-success' : 'text-txt3')}>${th1(f.conv)}</td>
-                      <td className="py-2 px-2"><div className="flex items-center gap-2"><span className=${w.k === 'gasta' ? 'text-amber' : w.k === 'crece' ? 'text-success' : 'text-txt3'}><${ThSpark} s=${w.s}/></span>
-                        <span className=${"text-[10px] whitespace-nowrap " + (w.k === 'gasta' ? 'text-amber' : w.k === 'crece' ? 'text-success' : 'text-txt4')}>${w.k === 'gasta' ? 'se está gastando' : w.k === 'crece' ? 'va al alza' : w.k === 'estable' ? 'se sostiene' : 'pocos usos'}</span></div></td>
-                      <td className="py-2 px-2 rounded-r-md font-mono text-[11px] text-txt4 whitespace-nowrap">${last ? dateShort(last.p.date) : '—'}</td>
-                    </tr>
-                    ${open && html`<tr><td colSpan="7" className="pb-2">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
-                        ${[...f.rows].sort((a, b) => b.idx - a.idx).slice(0, 3).map((r, i) => html`<button key=${i} onClick=${(e) => pick(e, r.p)}
-                          className=${"text-left rounded-lg p-3 hover:brightness-95 transition " + TONE(r.idx)}>
-                          <div className="flex items-center justify-between gap-2 mb-1"><span className="text-[10px] font-mono text-txt4">${dateShort(r.p.date)}</span><${CpIdx} v=${r.idx} n=${99}/></div>
-                          <p className="text-[12px] text-txt leading-snug line-clamp-4">${String(r.p.copy).trim()}</p></button>`)}
-                      </div>
-                      <button onClick=${() => { setWallF({ t: 'f', k: f.k }); setWallN(24); const el = document.getElementById('th-wall'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
-                        className="mt-2 text-[11px] text-accent2 hover:underline">Ver los ${f.n} en el muro</button>
-                    </td></tr>`}
-                  <//>`; })}
-                  ${sinF && html`<tr className="bg-onSurface/[0.015]"><td className="py-2 pl-2 pr-3 rounded-l-md text-txt4">Sin fórmula reconocible</td>
-                    <td className="py-2 px-2 text-right font-mono tabular-nums text-txt4">${sinF.n}</td><td className="py-2 px-2 text-right"><${CpIdx} v=${sinF.idx} n=${sinF.n}/></td>
-                    <td className="py-2 px-2 text-right font-mono tabular-nums text-txt4">${th1(sinF.apl)}</td><td className="py-2 px-2 text-right font-mono tabular-nums text-txt4">${th1(sinF.conv)}</td>
-                    <td className="py-2 px-2 rounded-r-md" colSpan="2"></td></tr>`}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-surface p-5 mb-3 min-w-0">
-            <div className="text-[13px] font-medium text-txt">Cómo está armado el chiste y dónde cae la marca</div>
-            <div className="text-[11px] text-txt4 mt-0.5 mb-3">Índice de cada combinación contra un post típico de Threads. Celdas con un solo copy, en gris.</div>
-            <div className="overflow-x-auto">
-              <table className="text-[12px] w-full border-separate" style=${{ borderSpacing: '4px' }}>
-                <thead><tr>
-                  <th className="text-left font-normal text-[10px] font-mono uppercase tracking-[0.12em] text-txt4 pr-2 min-w-[160px]">Estructura</th>
-                  ${A.brands.map(b => html`<th key=${b} className="font-normal text-[10px] text-txt4 px-1 min-w-[86px]">${b === 'No lo nombra' ? 'Sin marca' : 'Marca ' + b.toLowerCase()}</th>`)}
-                </tr></thead>
-                <tbody>${A.ests.map(e => html`<tr key=${e}>
-                  <td className="pr-2 text-txt2 whitespace-nowrap">${e}</td>
-                  ${A.brands.map(b => { const x = A.cell(e, b); return html`<td key=${b} className=${"text-center rounded-md py-2 font-mono tabular-nums " + (x.n ? cpTone(x.idx, x.n, 2) : 'text-faint')}>
-                    ${x.n ? cpIdxTxt(x.idx) : '·'}${x.n ? html`<div className="text-[9px] opacity-70">${x.n}</div>` : ''}</td>`; })}
-                </tr>`)}</tbody>
-              </table>
-            </div>
-          </div>
-
-          <div id="th-wall" className="rounded-xl bg-surface p-5 min-w-0">
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium text-txt">El muro de Threads</div>
-                <div className="text-[11px] text-txt4 mt-0.5">Todos los copys, como banco de referencias. Verde = conectó más que un post típico; ámbar = menos.</div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                ${wallF && html`<button onClick=${() => setWallF(null)} className="text-[11px] px-2.5 py-1 rounded-md bg-accent2/[0.12] text-txt">${wallF.k} ✕</button>`}
-                <select value=${wallF ? wallF.t + ':' + wallF.k : ''} onChange=${(e) => { const v = e.target.value; setWallF(v ? { t: v[0], k: v.slice(2) } : null); setWallN(24); }}
-                  aria-label="Filtrar el muro" className="h-7 rounded-md bg-onSurface/[0.04] text-[11px] text-txt2 px-2 border-0 max-w-[200px]">
-                  <option value="">Todas las fórmulas y tensiones</option>
-                  <optgroup label="Fórmula">${fRows.map(f => html`<option key=${f.k} value=${'f:' + f.k}>${f.k}</option>`)}</optgroup>
-                  <optgroup label="Tensión">${A.tens.map(f => html`<option key=${f.k} value=${'t:' + f.k}>${f.k}</option>`)}</optgroup>
-                </select>
-                <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Orden del muro">
-                  ${[['idx', 'Mejor índice'], ['date', 'Más recientes']].map(([k, l]) => html`<button key=${k} role="radio" aria-checked=${wallSort === k} onClick=${() => setWallSort(k)}
-                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (wallSort === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
-                </div>
-              </div>
-            </div>
-            <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-2.5">
-              ${wall.slice(0, wallN).map((r, i) => html`<button key=${i} onClick=${(e) => pick(e, r.p)}
-                  className=${"w-full mb-2.5 break-inside-avoid text-left rounded-lg p-3.5 hover:brightness-95 transition block " + TONE(r.idx)}>
-                <p className="text-[13px] text-txt leading-snug break-words">${String(r.p.copy).trim()}</p>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5">
-                  <${CpIdx} v=${r.idx} n=${99}/>
-                  <span className="text-[10px] font-mono text-txt4">${dateShort(r.p.date)} · ${th1(r.apl)} reac. · ${th1(r.conv)} com. por 1,000</span>
-                </div>
-                ${(r.th.forms.length > 0 || r.th.tens[0] !== 'Producto puro') && html`<div className="text-[10px] text-txt3 mt-1.5 leading-snug">${[...r.th.forms, ...r.th.tens.filter(k => k !== 'Producto puro')].join(' · ')}</div>`}
-              </button>`)}
-            </div>
-            ${wall.length > wallN && html`<button onClick=${() => setWallN(n => n + 36)} className="mt-1 text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt">Ver más (${wall.length - wallN})</button>`}
-          </div>
-          <p className="text-[10px] font-mono text-faint mt-3">Fórmulas y tensiones se detectan por reglas de texto y pueden fallar en copys ambiguos. Aplauso = reacciones y conversación = comentarios, por cada 1,000 de alcance (mediana del grupo).</p>
+          <div role="tabpanel">${tab === 'hoy' ? hoy : tab === 'mesa' ? mesa : tab === 'fue' ? fue : bib}</div>
+          <p className="text-[10px] font-mono text-faint mt-3">Fórmulas, tensiones y estructura se detectan por reglas de texto y pueden fallar en copys ambiguos. «Funciona» = rindió más ER básico que lo normal de Threads en esos mismos días.</p>
         </section>`;
     }
 
@@ -11353,6 +11527,7 @@
       }), []);
       const [kpiTrace, setKpiTrace] = useState(null);
       const allPosts = data?.allPosts || [];
+      cpSetUniverse(allPosts);   // v87 — momento por plataforma para el análisis de copy
       const { filters, setFilters, clear, isActive } = useFilters(allPosts);
       const { theme, toggleTheme, chart: chartTheme } = useTheme();
 
