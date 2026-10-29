@@ -1646,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-29-v88';
+    const BUILD_VERSION = '2026-10-29-v89';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -7670,6 +7670,108 @@
     }
     const thMonth = (t) => { const d = new Date(t); return `${MONTH_NAMES[d.getMonth()].toLowerCase()} ${d.getFullYear()}`; };
 
+    // ---------- v89 — Mapa de oportunidades: qué tan seguido lo usamos contra qué tan bien funciona ----------
+    const TH_EST_N = { 'Una línea': 'Frase corta', 'Planteamiento y remate': 'Situación + giro', 'Pregunta': 'Pregunta', 'Lista o comparación': 'Lista', 'Diálogo': 'Diálogo' };
+    const TH_EST_D = {
+      'Una línea': 'Una sola idea, sin explicación.',
+      'Planteamiento y remate': 'Primero la situación; después, el giro que la vuelve chiste.',
+      'Pregunta': 'Abre una pregunta para que la gente conteste.',
+      'Lista o comparación': 'Enumera o compara: «hay dos tipos…», rankings, señales.',
+      'Diálogo': 'Una conversación escrita: «Yo: … / Él: …».',
+    };
+    const TH_TEN_S = { 'Trabajo y jefe': 'Trabajo', 'Fútbol y fandom': 'Fútbol', 'Amor, ex y crush': 'Amor y ex', 'Dinero y compras': 'Dinero',
+      'Cuerpo, salud y cansancio': 'Cuerpo y salud', 'Fotos y recuerdos': 'Fotos', 'Vida digital': 'Vida digital', 'Emociones y autoestima': 'Emociones',
+      'Fechas y temporadas': 'Fechas', 'Producto puro': 'Solo producto' };
+    const TH_TEN_C = { 'Trabajo y jefe': '#E8590C', 'Fútbol y fandom': '#2F9E6B', 'Amor, ex y crush': '#C2255C', 'Dinero y compras': '#B08900',
+      'Cuerpo, salud y cansancio': '#1FA9B0', 'Fotos y recuerdos': '#4C6EF5', 'Vida digital': '#7A5AF8', 'Emociones y autoestima': '#D6336C',
+      'Fechas y temporadas': '#0CA678', 'Producto puro': '#8E8E99' };
+    const TH_Q = {
+      opp:  { l: 'Oportunidad', d: 'Funciona y casi no lo usamos', c: 'text-success', bg: 'bg-success/[0.10]' },
+      core: { l: 'Lo que nos sostiene', d: 'Lo usamos seguido y rinde', c: 'text-txt', bg: 'bg-onSurface/[0.06]' },
+      fix:  { l: 'Replantear', d: 'Lo usamos seguido y no rinde', c: 'text-amber', bg: 'bg-amber/[0.10]' },
+      drop: { l: 'No insistir', d: 'Lo usamos poco y no rinde', c: 'text-txt3', bg: 'bg-onSurface/[0.04]' },
+      none: { l: 'Sin señal clara', d: 'Rinde lo normal', c: 'text-txt3', bg: 'bg-onSurface/[0.04]' },
+    };
+    function ThOppMap({ A, onWall, onPick }) {
+      const USE = 8;
+      const D = useMemo(() => {
+        const combos = [];
+        for (const t of A.tensK) for (const e of A.ests) {
+          const c = A.cell(t, e);
+          const q = c.n < 3 ? null : c.v >= 1.12 ? (c.n < USE ? 'opp' : 'core') : c.v <= 0.88 ? (c.n < USE ? 'drop' : 'fix') : (c.n >= USE ? (c.v >= 1 ? 'core' : 'fix') : 'none');
+          combos.push({ t, e, ...c, q, ...(c.n ? thAgg(c.rs) : {}) });
+        }
+        const bub = combos.filter(c => c.n >= 3);
+        // ideas por probar: tema que funciona + forma que funciona, que casi nunca hemos juntado
+        const tenV = new Map(A.tens.map(g => [g.k, g]));
+        const estV = new Map(A.ests.map(e => { const rs = A.judged.map(x => x.r).filter(r => r.th.est === e); return [e, { n: rs.length, v: medianOf(rs.map(r => r.idx)), rs }]; }));
+        const ideas = combos.filter(c => c.n <= 2).map(c => {
+          const T = tenV.get(c.t), S = estV.get(c.e);
+          if (!T || !S || T.n < 4 || S.n < 4 || T.idx < 0.95 || S.v < 0.95 || Math.max(T.idx, S.v) < 1.12) return null;
+          return { ...c, T, S, score: T.idx * S.v };
+        }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 4);
+        return { combos, bub, ideas };
+      }, [A]);
+      const first = D.bub.filter(c => c.q === 'opp').sort((a, b) => b.v - a.v)[0] || D.bub.sort((a, b) => b.v - a.v)[0];
+      const [sel, setSel] = useState(first ? first.t + '|' + first.e : null);
+      const S = D.bub.find(c => c.t + '|' + c.e === sel) || first;
+      const Q = S && S.q ? TH_Q[S.q] : null;
+      const resp = S ? thResp(S, A.base) : null;
+      const LANES = ['opp', 'core', 'fix', 'drop'].map(k => ({ k, ...TH_Q[k], items: D.bub.filter(c => c.q === k).sort((a, b) => k === 'fix' || k === 'drop' ? a.v - b.v : b.v - a.v) }));
+      const quiet = D.bub.filter(c => c.q === 'none').length;
+      return html`
+        <div className="rounded-xl bg-surface p-5 min-w-0 mb-3">
+          <div className="text-[13px] font-medium text-txt">Mapa de oportunidades</div>
+          <div className="text-[11px] text-txt4 mt-0.5 mb-4 max-w-3xl">Cada tarjeta es una manera de escribir: un tema (de qué habla) con una forma (cómo está armado). Se acomodan según qué tan seguido la usamos y si funciona. Clic en una para ver cómo se escribe y sus mejores ejemplos.</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-2.5">
+            ${LANES.map(L => html`<div key=${L.k} className=${"rounded-lg p-3 min-w-0 " + L.bg}>
+              <div className="flex items-baseline justify-between gap-2"><span className=${"text-[13px] font-semibold " + L.c}>${L.l}</span><span className="text-[10px] font-mono text-txt4">${L.items.length}</span></div>
+              <div className="text-[11px] text-txt3 mb-2.5">${L.d}</div>
+              <div className="space-y-1.5">
+                ${!L.items.length ? html`<div className="text-[11px] text-txt4 px-1 py-2">Nada aquí por ahora.</div>` : L.items.map(c => { const on = S && c.t === S.t && c.e === S.e, rp = thResp(c, A.base);
+                  return html`<button key=${c.t + c.e} onClick=${() => setSel(c.t + '|' + c.e)} aria-pressed=${on}
+                    className=${"w-full text-left rounded-md px-3 py-2 transition-colors " + (on ? 'bg-surface shadow-sm ring-1 ring-accent2/50' : 'bg-surface/70 hover:bg-surface')}>
+                    <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style=${{ background: TH_TEN_C[c.t] }}></span>
+                      <span className="text-[12px] text-txt leading-snug">${TH_TEN_S[c.t]} <span className="text-txt4">·</span> ${TH_EST_N[c.e]}</span></div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 pl-4 text-[10px] text-txt4"><span className=${TH_WORD(c.v, c.n, 3).c.split(' ')[0]}>${TH_WORD(c.v, c.n, 3).w}</span><span>${c.n} copys</span>${rp ? html`<span>${rp.toLowerCase()}</span>` : ''}</div>
+                  </button>`; })}
+              </div>
+            </div>`)}
+          </div>
+          ${quiet > 0 && html`<div className="text-[11px] text-txt4 mt-2">Otras ${quiet} combinaciones rinden lo normal y se usan poco: no dan una señal clara.</div>`}
+          ${S && html`<div className="mt-4 rounded-lg bg-onSurface/[0.03] p-4 grid grid-cols-1 lg:grid-cols-5 gap-4 min-w-0">
+            <div className="lg:col-span-2 min-w-0">
+              ${Q && html`<span className=${"inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium " + Q.bg + ' ' + Q.c}>${Q.l}</span>`}
+              <div className="text-[17px] font-medium text-txt leading-snug mt-2">Hablar de ${S.t === 'Producto puro' ? 'solo el producto' : S.t.toLowerCase()} con ${TH_EST_N[S.e].toLowerCase()}</div>
+              <div className="flex flex-wrap items-center gap-2 mt-2"><${ThWord} v=${S.v} n=${S.n} minN=${3}/>${resp && html`<span className="text-[12px] text-txt3">${resp}</span>`}</div>
+              <div className="text-[11px] text-txt4 mt-1.5">${S.n} copys · el último, ${dateShort([...S.rs].sort((a, b) => b.t - a.t)[0].p.date)}</div>
+              <div className="text-[12px] text-txt2 leading-snug mt-3"><span className="text-txt4">Cómo se escribe: </span>${TH_EST_D[S.e]}</div>
+              <button onClick=${() => onWall({ t: 't', k: S.t, e: S.e })} className="mt-3 text-[12px] text-accent2 hover:underline">Ver los ${S.n} en la biblioteca</button>
+            </div>
+            <div className="lg:col-span-3 space-y-1.5 min-w-0">
+              <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-1">Los que mejor funcionaron</div>
+              ${[...S.rs].sort((a, b) => b.idx - a.idx).slice(0, 3).map((r, i) => html`<button key=${i} onClick=${(e) => { window.__smxPickY = e.clientY; onPick && onPick(r.p); }}
+                className="w-full text-left rounded-md bg-surface px-3 py-2 hover:bg-onSurface/[0.05] flex items-start gap-2">
+                <span className="flex-1 min-w-0 text-[12px] text-txt2 leading-snug line-clamp-3">«${String(r.p.copy).trim()}»</span><${ThWord} v=${r.idx} n=${99}/></button>`)}
+            </div>
+          </div>`}
+        </div>
+        ${D.ideas.length > 0 && html`<div className="rounded-xl bg-surface p-5 min-w-0">
+          <div className="text-[13px] font-medium text-txt">Ideas por probar</div>
+          <div className="text-[11px] text-txt4 mt-0.5 mb-3 max-w-3xl">Combinaciones que casi nunca hemos escrito, pero cuyas dos partes funcionan por separado. Son hipótesis, no apuestas seguras: vale la pena probarlas y ver qué pasa.</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-2.5">
+            ${D.ideas.map((c, i) => { const ex = [...c.T.rows].sort((a, b) => b.idx - a.idx)[0], ey = [...c.S.rs].sort((a, b) => b.idx - a.idx)[0];
+              return html`<div key=${i} className="rounded-lg bg-onSurface/[0.03] p-3.5 flex flex-col gap-2 min-w-0">
+              <div className="text-[13px] font-medium text-txt leading-snug">${TH_TEN_S[c.t]} con ${TH_EST_N[c.e].toLowerCase()}</div>
+              <div className="text-[11px] text-txt3 leading-snug">${c.n ? `Solo lo hemos hecho ${c.n === 1 ? 'una vez' : 'dos veces'}.` : 'Nunca lo hemos hecho.'} Hablar de ${c.t === 'Producto puro' ? 'solo el producto' : c.t.toLowerCase()} ${TH_WORD(c.T.idx, c.T.n).w.toLowerCase()}, y ${TH_EST_N[c.e].toLowerCase()} ${TH_WORD(c.S.v, c.S.n).w.toLowerCase()} con otros temas.</div>
+              <div className="text-[11px] text-txt4 leading-snug">${TH_EST_D[c.e]}</div>
+              ${ex && html`<div className="text-[11px] text-txt2 leading-snug rounded-md bg-surface px-2.5 py-2"><span className="text-txt4">Del tema: </span>«${String(ex.p.copy).trim().slice(0, 120)}${String(ex.p.copy).trim().length > 120 ? '…' : ''}»</div>`}
+              ${ey && html`<div className="text-[11px] text-txt2 leading-snug rounded-md bg-surface px-2.5 py-2"><span className="text-txt4">De la forma: </span>«${String(ey.p.copy).trim().slice(0, 120)}${String(ey.p.copy).trim().length > 120 ? '…' : ''}»</div>`}
+            </div>`; })}
+          </div>
+        </div>`}`;
+    }
+
     function ThreadsLabSection({ D, rawPosts, filters, onPick }) {
       const [tab, setTab] = useState(() => { try { return sessionStorage.getItem('smx-th-tab') || 'hoy'; } catch (e) { return 'hoy'; } });
       useEffect(() => { try { sessionStorage.setItem('smx-th-tab', tab); } catch (e) {} }, [tab]);
@@ -7777,26 +7879,7 @@
               </div>`}
           </div>
         </div>
-        <div className="rounded-xl bg-surface p-5 min-w-0">
-          <div className="text-[13px] font-medium text-txt">Mapa de oportunidades</div>
-          <div className="text-[11px] text-txt4 mt-0.5 mb-3">De qué hablamos (filas) y cómo lo armamos (columnas). Verde funciona, ámbar no; el contorno marca lo que funciona y casi no usamos; punteado, lo que nunca hemos probado. Clic en una celda para ver sus copys en la biblioteca.</div>
-          <div className="overflow-x-auto">
-            <table className="text-[12px] w-full border-separate" style=${{ borderSpacing: '4px' }}>
-              <thead><tr>
-                <th className="text-left font-normal text-[10px] font-mono uppercase tracking-[0.12em] text-txt4 pr-2 min-w-[170px]">De qué habla</th>
-                ${A.ests.map(e => html`<th key=${e} className="font-normal text-[10px] text-txt4 px-1 min-w-[96px] leading-tight align-bottom">${e}</th>`)}
-              </tr></thead>
-              <tbody>${A.tensK.map(t => html`<tr key=${t}>
-                <td className="pr-2 text-txt2 whitespace-nowrap">${t === 'Producto puro' ? 'Solo del producto' : t}</td>
-                ${A.ests.map(e => { const c = A.cell(t, e), w = TH_WORD(c.v, c.n, 3), opp = c.n >= 3 && c.n <= 5 && c.v >= 1.12;
-                  return html`<td key=${e} onClick=${() => { if (c.n) { setWallF({ t: 't', k: t, e }); setTab('bib'); } }}
-                    title=${c.n ? `${c.n} copys · ${w.w}${opp ? ' · funciona y casi no lo usamos' : ''}` : 'Nunca lo hemos probado'}
-                    className=${"text-center rounded-md py-2 px-1 text-[11px] " + (c.n ? 'cursor-pointer ' : '') + (!c.n ? 'border border-dashed border-line text-faint' : c.n < 3 ? 'bg-onSurface/[0.03] text-txt4' : w.c) + (opp ? ' ring-1 ring-success' : '')}>
-                    ${!c.n ? 'Sin probar' : c.n < 3 ? 'Poco probado' : w.w}<div className="text-[9px] opacity-60">${c.n ? c.n + (c.n === 1 ? ' copy' : ' copys') : ''}</div></td>`; })}
-              </tr>`)}</tbody>
-            </table>
-          </div>
-        </div>`;
+        <${ThOppMap} A=${A} onPick=${onPick} onWall=${(f) => { setWallF(f); setWallN(24); setTab('bib'); }}/>`;
 
       // ---------- pestaña 2: Revisa tus borradores
       const judgedDrafts = drafts.map((t, i) => {
@@ -7943,7 +8026,7 @@
               <div className="text-[11px] text-txt4 mt-0.5">Todos los copys de Threads como banco de referencias. Clic en uno para ver el post.</div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              ${wallF && html`<button onClick=${() => setWallF(null)} className="text-[11px] px-2.5 py-1 rounded-md bg-accent2/[0.12] text-txt">${wallF.k}${wallF.e ? ' · ' + wallF.e.toLowerCase() : ''} ✕</button>`}
+              ${wallF && html`<button onClick=${() => setWallF(null)} className="text-[11px] px-2.5 py-1 rounded-md bg-accent2/[0.12] text-txt">${wallF.k}${wallF.e ? ' · ' + (TH_EST_N[wallF.e] || wallF.e).toLowerCase() : ''} ✕</button>`}
               <div className="inline-flex items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Orden del muro">
                 ${[['idx', 'Lo que mejor funcionó'], ['date', 'Lo más reciente']].map(([k, l]) => html`<button key=${k} role="radio" aria-checked=${wallSort === k} onClick=${() => setWallSort(k)}
                   className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (wallSort === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
