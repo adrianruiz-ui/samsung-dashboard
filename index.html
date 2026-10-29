@@ -562,7 +562,7 @@
       'Formato': 'format', 'Tipo Contenido': 'content_type', 'Tipo Pauta': 'strategy',
       'Campaña': 'campaign', 'Subcampaña': 'subcampaign', 'Etapa': 'stage',
       'Producto': 'product', 'Objetivo': 'objective', 'Audio': 'audio',
-      'Subtítulos': 'subtitles', 'IA': 'ai', 'Duración (seg)': 'duration',
+      'Subtítulos': 'subtitles', 'IA': 'ai', 'Duración (seg)': 'duration', 'Copy': 'copy',   // v84 — texto del post (TikTok, X y Threads)
       'Imagen': 'image',   // v21 — opcional: URL de la miniatura del post
       'Alcance': 'reach', 'Impresiones': 'impressions', 'Reacciones': 'reactions',
       'Comentarios': 'comments', 'Compartidos': 'shares', 'Guardados': 'saves',
@@ -1582,6 +1582,7 @@
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
           { id: 'sec-tiktok',       name: 'TikTok creativo' },
+          { id: 'sec-copy',         name: 'Copy y mensaje' },
           { id: 'sec-simulador',    name: 'Simulador' },
           { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-calidad',      name: 'Calidad de datos' },
@@ -1645,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-26-v83';
+    const BUILD_VERSION = '2026-10-28-v84';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2080,6 +2081,14 @@
         <polygon points="6 3 20 12 6 21 6 3"/>
       </svg>`;
 
+    const QuoteIcon = ({ size = 16, className = '' }) => html`
+      <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth=${1.8} strokeLinecap="round" strokeLinejoin="round"
+           className=${className} aria-hidden="true">
+        <path d="M4 11h5v6H4z M4 11c0-3 1.5-5 4-6"/><path d="M14 11h5v6h-5z M14 11c0-3 1.5-5 4-6"/>
+      </svg>`;
+
     const AvgIcon = ({ size = 16, className = '' }) => html`
       <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size}
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2266,6 +2275,7 @@
       { id: 'comparativas', label: 'Comparativas',       Icon: CompareIcon,  group: 'analisis' },
       { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
       { id: 'tiktok',       label: 'TikTok creativo',    Icon: PlayIcon,     group: 'analisis' },
+      { id: 'copy',         label: 'Copy y mensaje',     Icon: QuoteIcon,    group: 'analisis' },
       { id: 'simulador',    label: 'Simulador',          Icon: TargetIcon,   group: 'analisis' },
       { id: 'anomalias',    label: 'Anomalías',          Icon: AlertIcon,    group: 'control' },
       { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
@@ -2396,25 +2406,6 @@
               <${SheetIcon} size=${13}/>
               ${!collapsed && html`<span>Exportar reporte</span>`}
             </button>
-          </div>
-          ${/* NO QUITAR: accesos a mapa-3d.html y graficas.html */ ''}
-          <div className=${"px-4 mb-4 -mt-2 " + (collapsed ? "flex justify-center" : "")}>
-            <a href="mapa-3d.html"
-               className=${"inline-flex items-center gap-1.5 rounded-lg border border-line text-txt2 hover:text-txt hover:bg-onSurface/[0.04] hover:border-line2 transition-colors " +
-                 (collapsed ? "w-8 h-8 justify-center" : "px-2.5 py-1.5 text-[11px] w-full justify-center")}
-               title="Mapa de campañas: árbol 3D de posts contra VTR y ER básico" aria-label="Abrir el mapa de campañas">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22v-8M12 14l-4-4M12 14l4-4M12 10V6"/><circle cx="12" cy="5" r="2"/><circle cx="7" cy="9" r="2"/><circle cx="17" cy="9" r="2"/><path d="M8 22h8"/></svg>
-              ${!collapsed && html`<span>Mapa de campañas</span>`}
-            </a>
-          </div>
-          <div className=${"px-4 mb-4 -mt-2 " + (collapsed ? "flex justify-center" : "")}>
-            <a href="graficas.html"
-               className=${"inline-flex items-center gap-1.5 rounded-lg border border-line text-txt2 hover:text-txt hover:bg-onSurface/[0.04] hover:border-line2 transition-colors " +
-                 (collapsed ? "w-8 h-8 justify-center" : "px-2.5 py-1.5 text-[11px] w-full justify-center")}
-               title="Gráficas: flujo del alcance, ola semanal, el año en espiral y duración contra retención" aria-label="Abrir las gráficas de desempeño">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 6c8 0 10 12 18 12M3 12c8 0 10-6 18-6M3 18h18"/></svg>
-              ${!collapsed && html`<span>Gráficas</span>`}
-            </a>
           </div>
 
 
@@ -2796,7 +2787,7 @@
     // post; al elegir uno se abre el mismo DetailDrawer que usa el resto
     // del dashboard.
     // ============================================================
-    const POST_SEARCH_FIELDS = ['campaign', 'subcampaign', 'product', 'format', 'content_type', 'strategy', 'stage', 'objective', 'influencer_name', 'platform', 'link'];
+    const POST_SEARCH_FIELDS = ['campaign', 'subcampaign', 'product', 'format', 'content_type', 'strategy', 'stage', 'objective', 'influencer_name', 'platform', 'link', 'copy'];
 
     function PostSearch({ allPosts, onPick }) {
       const [query, setQuery] = useState('');
@@ -2810,17 +2801,21 @@
       }, []);
 
       const results = useMemo(() => {
-        const q = query.trim().toLowerCase();
+        const q = cpFold(query.trim());
         if (q.length < 2) return [];
+        // v84 — también busca en el copy (sin acentos; varias palabras = todas deben aparecer)
+        const terms = q.split(/\s+/).filter(Boolean);
         const matches = [];
         for (const p of (allPosts || [])) {
-          for (const f of POST_SEARCH_FIELDS) {
-            const v = p[f];
-            if (v != null && String(v).toLowerCase().includes(q)) { matches.push(p); break; }
+          const meta = cpFold(POST_SEARCH_FIELDS.filter(f => f !== 'copy').map(f => p[f] == null ? '' : p[f]).join(' · '));
+          const txt = p.copy ? cpFold(p.copy) : '';
+          const hay = meta + ' · ' + txt;
+          if (terms.every(t => hay.includes(t))) {
+            const inMeta = terms.every(t => meta.includes(t));
+            matches.push({ p, snip: !inMeta && txt ? String(p.copy).trim() : null, rank: inMeta ? 1 : 0 });
           }
-          if (matches.length >= 60) break;
         }
-        return matches.sort((a, b) => (b.reach || 0) - (a.reach || 0)).slice(0, 8);
+        return matches.sort((a, b) => b.rank - a.rank || (b.p.reach || 0) - (a.p.reach || 0)).slice(0, 10);
       }, [query, allPosts]);
 
       const pick = (p) => { onPick(p); setOpen(false); setQuery(''); };
@@ -2832,20 +2827,21 @@
             <input type="text" value=${query}
                    onChange=${(e) => { setQuery(e.target.value); setOpen(true); }}
                    onFocus=${() => setOpen(true)}
-                   placeholder="Buscar post…"
+                   placeholder="Buscar post o copy…"
                    className="h-8 pl-8 pr-3 rounded-lg border border-line bg-onSurface/[0.03] text-[11px] text-txt placeholder:text-txt4 focus:outline-none focus:border-line2 focus:bg-onSurface/[0.05] w-[150px] focus:w-[260px] transition-all" />
           </div>
           ${open && query.trim().length >= 2 && html`
             <div className="absolute right-0 mt-1.5 w-[360px] max-h-[420px] overflow-y-auto rounded-xl border border-line bg-surface shadow-2xl z-50">
               ${results.length === 0 ? html`
                 <div className="px-4 py-6 text-center text-[12px] text-txt4">Sin resultados para "${query}"</div>
-              ` : results.map((p, i) => html`
+              ` : results.map(({ p, snip }, i) => html`
                 <button key=${i} onClick=${() => pick(p)}
                         className="w-full text-left px-3.5 py-2.5 border-b border-line/50 last:border-0 hover:bg-onSurface/[0.04] transition-colors flex items-center gap-2.5">
                   <span className="font-mono text-[9px] font-semibold text-white px-1.5 py-0.5 rounded shrink-0" style=${{ background: PLAT_COLORS[p.platform] || '#666' }}>${PLAT_LETTERS[p.platform] || '?'}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[12px] text-txt truncate">${p.campaign || p.product || 'Sin campaña'}</div>
                     <div className="text-[10px] font-mono text-txt4 truncate">${dateShort(p.date)} · ${p.format || '—'}${p.subcampaign ? ' · ' + p.subcampaign : ''}</div>
+                    ${snip && html`<div className="text-[11px] text-txt3 leading-snug line-clamp-2 mt-0.5">«${snip}»</div>`}
                   </div>
                   <div className="text-[11px] font-mono text-txt3 tabular-nums shrink-0">${fmt(p.reach)}</div>
                 </button>
@@ -2902,19 +2898,6 @@
                 ${autoRefreshMin > 0 && html`<div className="text-[9px] font-mono text-faint">auto cada ${autoRefreshMin}m</div>`}
               </div>
             `}
-            ${/* NO QUITAR: acceso a las páginas mapa-3d.html y graficas.html (viven junto a index.html en el repo) */ ''}
-            <a href="mapa-3d.html"
-               className="h-8 px-3 rounded-lg border border-line bg-onSurface/[0.03] hover:bg-onSurface/[0.06] hover:border-line2 transition-all flex items-center gap-1.5 text-txt3 hover:text-txt text-[11px] font-mono"
-               title="Mapa de campañas: árbol 3D de posts contra los KPIs de VTR y ER básico" aria-label="Abrir el mapa de campañas">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22v-8M12 14l-4-4M12 14l4-4M12 10V6"/><circle cx="12" cy="5" r="2"/><circle cx="7" cy="9" r="2"/><circle cx="17" cy="9" r="2"/><path d="M8 22h8"/></svg>
-              Mapa de campañas
-            </a>
-            <a href="graficas.html"
-               className="h-8 px-3 rounded-lg border border-line bg-onSurface/[0.03] hover:bg-onSurface/[0.06] hover:border-line2 transition-all flex items-center gap-1.5 text-txt3 hover:text-txt text-[11px] font-mono"
-               title="Gráficas: flujo del alcance, ola semanal, el año en espiral y duración contra retención" aria-label="Abrir las gráficas de desempeño">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 6c8 0 10 12 18 12M3 12c8 0 10-6 18-6M3 18h18"/></svg>
-              Gráficas
-            </a>
             <button onClick=${onOpenPress}
                     className="h-8 px-3 rounded-lg border border-accent2/40 bg-accent2/10 hover:bg-accent2/20 transition-all flex items-center gap-1.5 text-txt text-[11px] font-mono"
                     title="Descargar Performance Across SNS + VTR de la semana (PPTX)" aria-label="Press semanal: descargar PPTX de la semana">
@@ -6530,6 +6513,7 @@
               </table>
               <div className="text-[11px] text-txt4 mt-2">Verde/ámbar: arriba o abajo de la mediana de TikTok del filtro (VTR ${pct(medVtr)} · ER básico ${pct(medBer)}).</div>`}
             </div>`}
+          <${TikTokCopyNote} posts=${ttAll}/>
         </section>`;
     }
 
@@ -6852,7 +6836,503 @@
         </div>`;
     }
 
-    function DetailDrawer({ post, onClose, benchmarks }) {
+    // ============================================================
+    // v84 — COPY Y MENSAJE
+    // TikTok, X y Threads guardan el copy de cada post en el Sheet. Aquí
+    // se lee ese texto con reglas locales (sin IA, sin mandar nada fuera)
+    // y se clasifica en: intención, voz, gancho, territorio, CTA, dónde
+    // aparece el producto, largo y hashtags. Luego se cruza con el ER
+    // básico de cada post contra la mediana de SU plataforma: 1.0× = un
+    // post típico; 1.5× = rinde 50% más. Solo orgánico: la pauta mueve el
+    // ER por razones que no tienen que ver con el texto.
+    // ============================================================
+    const COPY_PLATS = ['X', 'Threads', 'TikTok'];
+    const cpFold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const cpHas = (p) => {
+      const c = p && p.copy != null ? String(p.copy).trim() : '';
+      return c.length > 1 && !/^\[?\s*video no disponible/i.test(c) && !/^(n\/?a|-|—|sin copy)$/i.test(c);
+    };
+    const CP_INTENTS = [
+      { k: 'Entretener',            c: '#E8590C', d: 'Humor, voz del CM y situaciones con las que la gente se identifica.' },
+      { k: 'Vivir el momento',      c: '#C2255C', d: 'Se cuelga de un momento cultural: partido, concierto, estreno o tendencia.' },
+      { k: 'Conversar',             c: '#7A5AF8', d: 'Pregunta o pide comentar, completar o compartir.' },
+      { k: 'Anunciar',              c: '#4C6EF5', d: 'Lanzamiento, teaser, invitación o novedad.' },
+      { k: 'Explicar función',      c: '#1FA9B0', d: 'Cuenta qué hace el producto o una función.' },
+      { k: 'Enseñar',               c: '#2F9E6B', d: 'Tip, tutorial, hilo o paso a paso.' },
+      { k: 'Registrar / concursar', c: '#C73E6B', d: 'Pide registrarse, participar o ganar algo.' },
+      { k: 'Vender',                c: '#B08900', d: 'Promoción, precio, compra, preventa o canje.' },
+    ];
+    const CP_INTENT_C = Object.fromEntries(CP_INTENTS.map(i => [i.k, i.c]));
+    const CP_RX = {
+      venta: /descuento|oferta|promo\b|promocion|\bmsi\b|meses sin|precio|carrito|tiktok shop|\bcompra(?!rt)|\bcompralo|cupon|envio gratis|pre-?ordena|preventa|canje|estrena ahora|aprovecha|hot ?sale|buen ?fin|samsung week|samsung shop|live store/,
+      reg: /pre-?registr|registrate|\bparticipa|ganar? (?:un|uno|el|la)\b|concurso|trivia|premio|sorteo|\bregistro\b/,
+      anun: /presentamos|acompananos|se viene|nueva forma|esta por (?:llegar|desplegarse)|por desplegarse|\d{1,2} de (?:julio|febrero|enero|agosto|septiembre)|revelacion|dile hola|lo nuevo|el nuevo #?galaxy|la nueva|nuevos? galaxy|lanzamiento|invitacion|tu entrada|unpacked|se revela|algo nuevo|aparte el/,
+      tut: /\btips?\b|como (?:crear|hacer|usar|mostrar|escanear|ahorrar)|descubre como|paso a paso|\bhilo\b|aprende|te decimos|te contamos|todo lo que (?:tienes|necesitas) (?:que )?saber|checa como|solo (?:toca|usa)|activa (?!el audio)|haz swipe/,
+      conv: /coment|cuentanos|\bdinos\b|te leemos|los leemos|dejanos|completen|completa la frase|sube (?:esa|la|tu)\b|\bsuban\b|muestren|\bdigan\b|confiesen|levanten la mano|compartenos|comparte (?:tu|tus|la|el)\b|deja (?:tu|tus|screenshot)|responde|cual (?:es|fue|seria|va|sera)\b|que (?:harias|crees|opinas|te parece)|quien (?:creen|mas)|cuantas?\b.*\?|alguien mas|confirmen|adivinas|teoria|presumela|_{3,}/,
+      humor: /\batte\b|atentamente|\bel cm\b|\bpov\b|red flag|green flag|\byo:|\bel:|tambien yo|hay dos tipos|\bmood\b|manifestando|spoiler|main character|kinda|canonico|es cine|\bcrush\b|\bex\b|novela|\bjefa?\b|\blic\b|no pregunten|crisis|llorar|soy un 10|mi momento mas|mi genero|ranking de|cosas que me gustan|no tengo pruebas|friendly reminder|el verdadero|repitan conmigo|romantizando|desarrollo del personaje|me ilusion|ilusionarme/,
+      feat: /nightography|zoom|\d+ ?mp\b|\b\d+x\b|photo ?assist|horizontal lock|privacidad|circle ?to ?search|audio eraser|live translate|traductor|quick ?share|smart ?switch|smartthings|ai home|bespoke|bateria|mah\b|snapdragon|best face|object eraser|remasteriza|generative edit|sketch to image|note ?assist|now nudge|now brief|multi ?window|pantalla dividida|flex ?window|hi-?fi|cancelacion|head gestures|presion arterial|apnea|antioxid|running coach|sueno|ritmo cardiaco|ultra ?delgad|plegable|camara|lentes|gran angular|fan ?cam|super steady|s pen|composer|gemini|bixby|galaxy ai|awesome/,
+      cread: /creado por|captured by|captures|team ?galaxy|members? stars?|nos acompano|nos llevamos|(?:con|por) @/,
+      prod: /galaxy|fold|flip|watch|buds|tab s|\bring\b|samsung|smartthings/,
+      link: /link (?:en|de) (?:la )?bio|https?:\/\/|bit\.ly|samsung\.com|conoce mas|mas informacion/,
+      first: /(?:^|[^a-z])(?:yo|mi|me|estoy|tengo|soy|mis|necesito|quiero|pienso|conmigo)(?:[^a-z]|$)/,
+      futbol: /mundial|partido|\bgol\b|futbol|mexico vs|corea|chequia|inglaterra|portero|seleccion|lamejorvision|mejor vision del juego/,
+      pop: /\bbts\b|j-hope|arirang|netflix|kpop|harry|stranger|vecna|oscar|super ?bowl|taylor|concierto|festival|corona capital/,
+      fecha: /navidad|santa\b|reyes|ano nuevo|fin de ano|madres|dia del nino|dia de la|dia mundial|dia del gamer|halloween|muertos|jacaranda|otono|vacaciones|temporada|buen ?fin|hot ?sale|samsung week|san valentin|amor y amistad/,
+    };
+    const CP_STOP = new Set(('para pero entre sobre desde hasta cuando donde tiene tienen como esta este estos estas todo todos toda todas cada mucho muchos mucha nada algo solo sola tambien porque aqui alla ahora antes despues mientras siempre nunca puede pueden hace hacer haz tus sus nuestro nuestra nuestros nuestras usted ustedes ellos ellas eres somos sera seran estar estan estamos tener tengo tienes tenemos sino ademas cual cuales quien quienes cuanto otra otro otros otras mismo misma mejor mejores mas menos muy bien aqui ahi esto eso esos esas aquel cosa cosas vez veces dia dias sabes hasta luego conoce link bio samsung galaxy nuevo nueva nuevos nuevas').split(' '));
+
+    function copyProfile(p) {
+      if (!cpHas(p)) return null;
+      if (p._cp && p._cpSrc === p.copy) return p._cp;
+      const raw = String(p.copy).trim();
+      const t = cpFold(raw);
+      const firstRaw = raw.split(/(?<=[.!?…])\s|\n|​/)[0].slice(0, 140);
+      const f = cpFold(firstRaw);
+      const humor = CP_RX.humor.test(t);
+      const voz = humor || (CP_RX.first.test(t) && !/\bnuestr|\bnosotros\b/.test(t)) ? 'Persona' : 'Marca';
+      let intent;
+      if (CP_RX.reg.test(t) && !humor) intent = 'Registrar / concursar';
+      else if (CP_RX.venta.test(t) && voz === 'Marca') intent = 'Vender';
+      else if (humor || (voz === 'Persona' && !CP_RX.link.test(t))) intent = 'Entretener';
+      else if (CP_RX.conv.test(t) && !CP_RX.anun.test(f) && !CP_RX.feat.test(f)) intent = 'Conversar';
+      else if ((CP_RX.futbol.test(t) || CP_RX.pop.test(t)) && (!CP_RX.link.test(t) || !CP_RX.feat.test(t))) intent = 'Vivir el momento';
+      else if (CP_RX.anun.test(t) && !CP_RX.tut.test(t)) intent = 'Anunciar';
+      else if (CP_RX.tut.test(t)) intent = 'Enseñar';
+      else if (CP_RX.feat.test(t)) intent = 'Explicar función';
+      else if (CP_RX.conv.test(t)) intent = 'Conversar';
+      else if (CP_RX.anun.test(t)) intent = 'Anunciar';
+      else intent = t.length < 90 ? 'Entretener' : 'Explicar función';
+      const terr = CP_RX.futbol.test(t) ? 'Fútbol' : CP_RX.pop.test(t) ? 'Cultura pop' : CP_RX.fecha.test(t) ? 'Fechas y temporadas'
+        : CP_RX.cread.test(t) ? 'Creadores y comunidad' : CP_RX.feat.test(t) ? 'Tecnología' : 'Vida cotidiana';
+      let gancho;
+      if (/^\s*[¿?]/.test(firstRaw) || /\?\s*$/.test(firstRaw)) gancho = 'Pregunta';
+      else if (/\byo:|\bel:|\bpov\b|hay dos tipos|red flag|green flag|ranking|lunes:|cosas que|objetivo:|^\s*-/.test(f)) gancho = 'Formato meme';
+      else if (/cualquier telefono|solo galaxy|tu telefono puede/.test(t)) gancho = 'Reto comparativo';
+      else if (/\d+ ?(?:mp|x|mah|%|mm|anos|horas|minutos)\b/.test(f)) gancho = 'Dato';
+      else if (CP_RX.first.test(f)) gancho = 'Confesión';
+      else if (/^\s*¡?(descubre|conoce|captura|usa|haz|encuentra|obten|recibe|crea|dale|sigue|pon|explora|comenta|comparte|sube|presume|conectate|activa|agrega|disfruta|estrena|graba|sujetalo|confirmen|digan|muestren|completen|intenten|imaginate|acompananos|pre-?registrate|participa|obsesionate|flechate|expresate|mantente|relajate|juega|sintoniza|pausa|da tap|desliza|prueba|repitan|cambia|elige|transforma|quedate|mira|escucha|cuida|vive)\b/.test(f)) gancho = 'Imperativo';
+      else gancho = 'Afirmación';
+      const cta = CP_RX.conv.test(t) ? 'Pide comentar' : (CP_RX.link.test(t) || CP_RX.venta.test(t)) ? 'Link o compra' : CP_RX.reg.test(t) ? 'Registro' : 'Sin CTA';
+      const m = t.match(CP_RX.prod);
+      const pos = m ? m.index / Math.max(1, t.length) : null;
+      const prod = !m ? 'No lo nombra' : pos < 0.34 ? 'Al inicio' : pos > 0.6 ? 'Como remate' : 'En medio';
+      const tags = (raw.match(/#[\p{L}\p{N}_]+/gu) || []);
+      const nh = tags.length;
+      const emo = (raw.match(/\p{Extended_Pictographic}/gu) || []).length;
+      const len = raw.length;
+      const lenB = len <= 60 ? '≤60 caracteres' : len <= 120 ? '61 a 120' : len <= 200 ? '121 a 200' : 'Más de 200';
+      const hashB = nh === 0 ? 'Sin hashtags' : nh <= 2 ? '1 o 2' : '3 o más';
+      const words = new Set();
+      for (const h of tags) words.add(cpFold(h));
+      for (const w of cpFold(raw.replace(/#[\p{L}\p{N}_]+/gu, ' ').replace(/https?:\/\/\S+|@\S+/g, ' ')).split(/[^a-z0-9ñ]+/)) {
+        if (w.length >= 4 && !CP_STOP.has(w) && !/^\d+$/.test(w)) words.add(w);
+      }
+      if (/\batte\b|atentamente/.test(t)) words.add('atte. el cm');
+      const out = { intent, voz, terr, gancho, cta, prod, len, lenB, nh, hashB, emo, cm: /\batte\b|atentamente|\bel cm\b/.test(t), words: [...words] };
+      p._cp = out; p._cpSrc = p.copy;
+      return out;
+    }
+
+    // Base del análisis: posts orgánicos con copy y ER básico válido, con su índice contra la mediana de la plataforma
+    function copyRows(posts) {
+      const byPl = new Map();
+      for (const p of posts || []) {
+        if (!COPY_PLATS.includes(p.platform) || isPaidP(p) || !(p.basic_er > 0) || (p._flags || []).includes('er')) continue;
+        const cp = copyProfile(p); if (!cp) continue;
+        if (!byPl.has(p.platform)) byPl.set(p.platform, []);
+        byPl.get(p.platform).push({ p, cp });
+      }
+      const out = {};
+      for (const [pl, rows] of byPl) {
+        const med = medianOf(rows.map(r => r.p.basic_er));
+        rows.forEach(r => { r.idx = med ? r.p.basic_er / med : null; });
+        out[pl] = { rows, med };
+      }
+      return out;
+    }
+    const cpGroup = (rows, keyFn, order) => {
+      const m = new Map();
+      for (const r of rows) { const k = keyFn(r); if (k == null) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+      const N = rows.length || 1;
+      let g = [...m].map(([k, rs]) => ({ k, n: rs.length, share: rs.length / N * 100, idx: medianOf(rs.map(r => r.idx)), ber: medianOf(rs.map(r => r.p.basic_er)), rows: rs }));
+      if (order) g.sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k)); else g.sort((a, b) => b.n - a.n);
+      return g;
+    };
+    const cpIdxTxt = (v) => v == null ? '—' : `${v.toFixed(v >= 9.95 ? 0 : 1)}×`;
+    const cpMinN = (N) => Math.max(4, Math.ceil(N * 0.03));
+    // Palabras y hashtags: índice mediano de los posts que la usan (mínimo de posts para no leer casualidades)
+    function cpWords(rows) {
+      const N = rows.length, minN = cpMinN(N), m = new Map();
+      for (const r of rows) for (const w of r.cp.words) { if (!m.has(w)) m.set(w, []); m.get(w).push(r); }
+      const all = [...m].filter(([, rs]) => rs.length >= minN && rs.length <= N * 0.6)
+        .map(([w, rs]) => ({ w, n: rs.length, idx: medianOf(rs.map(r => r.idx)), rows: rs }));
+      return {
+        minN,
+        up: all.filter(x => x.idx >= 1.15).sort((a, b) => b.idx - a.idx || b.n - a.n).slice(0, 8),
+        down: all.filter(x => x.idx <= 0.87).sort((a, b) => a.idx - b.idx || b.n - a.n).slice(0, 8),
+      };
+    }
+    // Lectura automática: frases en lenguaje de estrategia a partir de los cruces
+    function cpReading(pl, rows) {
+      const L = [], N = rows.length;
+      if (N < 12) return [`Hay ${N} copys orgánicos de ${pl} en este periodo: muy pocos para leer patrones. Prueba con «Histórico 2025 + 2026».`];
+      const minN = Math.max(5, Math.ceil(N * 0.05));
+      const intents = cpGroup(rows, r => r.cp.intent).filter(g => g.n >= minN);
+      const best = [...intents].sort((a, b) => b.idx - a.idx)[0];
+      const worst = [...intents].sort((a, b) => a.idx - b.idx)[0];
+      const bigWeak = intents.filter(g => g.idx < 0.9 && g.share >= 15).sort((a, b) => b.n - a.n)[0];
+      const spread = intents.length ? Math.max(...intents.map(g => g.idx)) / Math.max(0.01, Math.min(...intents.map(g => g.idx))) : 1;
+      if (spread < 1.35 && intents.length >= 2) {
+        L.push(`En ${pl} la intención del copy casi no mueve el resultado: todas quedan entre ${cpIdxTxt(Math.min(...intents.map(g => g.idx)))} y ${cpIdxTxt(Math.max(...intents.map(g => g.idx)))} de un post típico. Aquí manda la pieza; el copy acompaña.`);
+      } else if (best && bigWeak && best.k !== bigWeak.k && best.share < bigWeak.share && best.idx >= 1.3 * bigWeak.idx) {
+        L.push(`${Math.round(bigWeak.share)}% de los copys de ${pl} buscan «${bigWeak.k}» y rinden ${cpIdxTxt(bigWeak.idx)} un post típico; «${best.k}» rinde ${cpIdxTxt(best.idx)} y es apenas ${Math.round(best.share)}% de lo publicado. Lo que más decimos no es lo que más conecta.`);
+      } else if (best) {
+        L.push(`La intención que mejor rinde en ${pl} es «${best.k}» (${cpIdxTxt(best.idx)} un post típico, ${Math.round(best.share)}% de lo publicado)${worst && worst.k !== best.k ? `; la que menos, «${worst.k}» (${cpIdxTxt(worst.idx)}, ${Math.round(worst.share)}%)` : ''}.`);
+      }
+      const prod = cpGroup(rows, r => r.cp.prod);
+      const pNo = prod.find(g => g.k === 'No lo nombra'), pRem = prod.find(g => g.k === 'Como remate'), pIni = prod.find(g => g.k === 'Al inicio');
+      if (pNo && pNo.n >= minN && pRem && pRem.n >= minN && pNo.idx / pRem.idx >= 1.25) {
+        L.push(`Cuando el copy no nombra el producto rinde ${cpIdxTxt(pNo.idx)}; cuando el producto llega como remate del chiste, ${cpIdxTxt(pRem.idx)}. La gente premia la observación, no el anuncio disfrazado.`);
+      } else if (pIni && pRem && pIni.n >= minN && pRem.n >= minN && Math.abs(pIni.idx / pRem.idx - 1) >= 0.25) {
+        const w = pIni.idx > pRem.idx;
+        L.push(`Nombrar el producto ${w ? 'al inicio' : 'al final'} rinde ${cpIdxTxt(w ? pIni.idx : pRem.idx)} contra ${cpIdxTxt(w ? pRem.idx : pIni.idx)} ${w ? 'cuando llega como remate' : 'cuando abre el copy'}.`);
+      }
+      const ctas = cpGroup(rows, r => r.cp.cta).filter(g => g.n >= minN);
+      const cL = ctas.find(g => g.k === 'Link o compra'), cC = ctas.find(g => g.k === 'Pide comentar'), c0 = ctas.find(g => g.k === 'Sin CTA');
+      if (cL && (cC || c0)) {
+        const alt = [cC, c0].filter(Boolean).sort((a, b) => b.idx - a.idx)[0];
+        if (alt.idx / cL.idx >= 1.25) L.push(`Mandar a un link o a comprar baja el engagement (${cpIdxTxt(cL.idx)}); ${alt.k === 'Pide comentar' ? 'pedir que comenten' : 'no pedir nada'} rinde ${cpIdxTxt(alt.idx)}. Si el objetivo del post es conversación, el link estorba.`);
+      }
+      const hs = cpGroup(rows, r => r.cp.hashB).filter(g => g.n >= minN);
+      const h0 = hs.find(g => g.k === 'Sin hashtags'), h3 = hs.find(g => g.k === '3 o más');
+      if (h0 && h3 && h0.idx / h3.idx >= 1.3) L.push(`Los copys sin hashtags rinden ${cpIdxTxt(h0.idx)}; con 3 o más, ${cpIdxTxt(h3.idx)}. En ${pl} el hashtag se lee como etiqueta de marca, no como invitación.`);
+      const ls = cpGroup(rows, r => r.cp.lenB).filter(g => g.n >= minN);
+      if (ls.length >= 2) {
+        const b = [...ls].sort((x, y) => y.idx - x.idx)[0], w = [...ls].sort((x, y) => x.idx - y.idx)[0];
+        if (b.idx / w.idx >= 1.4) L.push(`Largo que mejor funciona: ${b.k.toLowerCase()} (${cpIdxTxt(b.idx)}); el que menos: ${w.k.toLowerCase()} (${cpIdxTxt(w.idx)}).`);
+      }
+      const cm = rows.filter(r => r.cp.cm);
+      if (cm.length >= minN) {
+        const v = medianOf(cm.map(r => r.idx));
+        if (v >= 1.2) L.push(`Los copys firmados por «el CM» rinden ${cpIdxTxt(v)} (${cm.length} posts): la cuenta funciona mejor cuando tiene una persona detrás.`);
+      }
+      if (L.length === 1 && N >= 40) L.push(`Fuera de eso, el largo, los hashtags, el CTA y el lugar del producto casi no mueven el resultado en ${pl}${pl === 'TikTok' ? ': ahí manda el video y el copy funciona como pie de foto' : ''}.`);
+      return L.slice(0, 4);
+    }
+    // Mismo mensaje en otra plataforma: copys casi idénticos publicados con pocos días de diferencia
+    function cpEcho(byPl) {
+      const all = [];
+      for (const pl of COPY_PLATS) for (const r of (byPl[pl] || { rows: [] }).rows) {
+        const toks = new Set(cpFold(r.p.copy).replace(/https?:\/\/\S+/g, ' ').split(/[^a-z0-9ñ#]+/).filter(w => w.length >= 3));
+        const d = parseDate(r.p.date);
+        if (toks.size >= 4 && d) all.push({ r, toks, t: d.getTime(), pl });
+      }
+      const used = new Set(), clusters = [];
+      for (let i = 0; i < all.length; i++) {
+        if (used.has(i)) continue;
+        const c = [all[i]];
+        for (let j = i + 1; j < all.length; j++) {
+          if (used.has(j) || c.some(x => x.pl === all[j].pl) || Math.abs(all[j].t - all[i].t) > 10 * 864e5) continue;
+          const a = all[i].toks, b = all[j].toks;
+          let inter = 0; for (const w of a) if (b.has(w)) inter++;
+          if (inter / (a.size + b.size - inter) >= 0.55) { c.push(all[j]); used.add(j); }
+        }
+        if (c.length > 1) { used.add(i); clusters.push(c); }
+      }
+      return clusters.map(c => {
+        const idxs = c.map(x => x.r.idx).filter(v => v != null);
+        return { items: c.sort((a, b) => COPY_PLATS.indexOf(a.pl) - COPY_PLATS.indexOf(b.pl)), spread: Math.max(...idxs) / Math.max(0.01, Math.min(...idxs)) };
+      }).sort((a, b) => b.spread - a.spread);
+    }
+
+    // ---------- piezas visuales ----------
+    const cpTone = (v, n, minN = 4) => v == null || n < minN ? 'text-txt4 bg-onSurface/[0.04]' : v >= 1.15 ? 'text-success bg-success/10' : v <= 0.87 ? 'text-amber bg-amber/10' : 'text-txt2 bg-onSurface/[0.05]';
+    function CpIdx({ v, n, minN }) {
+      return html`<span className=${"inline-flex items-center justify-center min-w-[46px] px-1.5 py-0.5 rounded-md font-mono text-[11px] tabular-nums " + cpTone(v, n, minN)}
+        title=${n < (minN || 4) ? `Solo ${n} ${n === 1 ? 'post' : 'posts'}: lectura direccional` : `${cpIdxTxt(v)} el ER básico de un post típico de la plataforma`}>${cpIdxTxt(v)}</span>`;
+    }
+    // Barra divergente: centro = post típico; a la derecha suma, a la izquierda resta (escala logarítmica)
+    function CpBar({ v, n, minN = 4 }) {
+      if (v == null) return html`<span className="w-20 shrink-0"></span>`;
+      const x = Math.max(-1, Math.min(1, Math.log2(v) / 1.6));
+      const col = n < minN ? 'rgba(142,142,153,.45)' : v >= 1.15 ? 'var(--cp-up, #2F9E6B)' : v <= 0.87 ? 'var(--cp-dn, #D97706)' : 'rgba(142,142,153,.7)';
+      return html`<span className="relative w-20 h-1.5 rounded-full bg-onSurface/[0.06] shrink-0" aria-hidden="true">
+        <span className="absolute top-0 h-1.5 rounded-full" style=${{ left: x >= 0 ? '50%' : `${50 + x * 50}%`, width: `${Math.max(3, Math.abs(x) * 50)}%`, background: col }}></span>
+      </span>`;
+    }
+    function CpTags({ cp, small }) {
+      const cls = "inline-flex items-center px-1.5 py-0.5 rounded-md " + (small ? 'text-[10px]' : 'text-[11px]');
+      return html`<div className="flex flex-wrap gap-1">
+        <span className=${cls + ' text-white'} style=${{ background: CP_INTENT_C[cp.intent] }}>${cp.intent}</span>
+        <span className=${cls + ' bg-onSurface/[0.06] text-txt2'}>Voz: ${cp.voz === 'Persona' ? (cp.cm ? 'el CM' : 'persona') : 'marca'}</span>
+        <span className=${cls + ' bg-onSurface/[0.06] text-txt2'}>Gancho: ${cp.gancho.toLowerCase()}</span>
+        ${!small && html`<span className=${cls + ' bg-onSurface/[0.06] text-txt2'}>${cp.terr}</span>`}
+        ${!small && html`<span className=${cls + ' bg-onSurface/[0.06] text-txt2'}>CTA: ${cp.cta.toLowerCase()}</span>`}
+        ${!small && html`<span className=${cls + ' bg-onSurface/[0.06] text-txt2'}>Producto: ${cp.prod.toLowerCase()}</span>`}
+      </div>`;
+    }
+    // Lectura del copy dentro del detalle de un post
+    function CopyDrawerBlock({ post, allPosts }) {
+      const cp = copyProfile(post);
+      const ctx = useMemo(() => {
+        if (!cp || !COPY_PLATS.includes(post.platform)) return null;
+        const byPl = copyRows(allPosts || []);
+        const b = byPl[post.platform]; if (!b) return null;
+        const me = b.rows.find(r => r.p === post);
+        const same = b.rows.filter(r => r.cp.intent === cp.intent);
+        return { idx: me ? me.idx : (post.basic_er > 0 && b.med ? post.basic_er / b.med : null), intIdx: medianOf(same.map(r => r.idx)), intN: same.length, paid: isPaidP(post) };
+      }, [post, allPosts]);
+      if (!post || post.copy == null || !String(post.copy).trim()) return null;
+      return html`
+        <div className="mb-5">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-txt4 mb-2">Copy</div>
+          <div className="rounded-xl bg-surface border border-line p-4">
+            <p className="text-[14px] text-txt leading-relaxed whitespace-pre-line break-words">${String(post.copy).trim()}</p>
+            ${cp && html`<div className="mt-3"><${CpTags} cp=${cp}/></div>`}
+            ${cp && ctx && ctx.idx != null && html`
+              <p className="text-[12px] text-txt3 mt-3 leading-snug">
+                ${ctx.paid ? 'Post con pauta: el índice se calcula contra el orgánico y tómalo con cuidado. ' : ''}Rindió <b className="text-txt">${cpIdxTxt(ctx.idx)}</b> el ER básico de un post típico de ${post.platform}.
+                ${ctx.intN >= 4 ? html` Los copys de «${cp.intent}» en ${post.platform} rinden ${cpIdxTxt(ctx.intIdx)} (${ctx.intN} posts orgánicos).` : ''}
+              </p>`}
+          </div>
+        </div>`;
+    }
+
+    function CopySection({ D, rawPosts, filters, onPick }) {
+      const [span, setSpan] = useState('filtro');
+      const [dimX, setDimX] = useState('stage');
+      const pool = useMemo(() => span === 'hist' && rawPosts ? applyFilters(rawPosts, { ...filters, year: 'all', weeks: [], months: [] }) : (D.allPosts || []), [span, rawPosts, filters, D]);
+      const byPl = useMemo(() => copyRows(pool), [pool]);
+      const plats = COPY_PLATS.filter(pl => byPl[pl] && byPl[pl].rows.length);
+      const [pl, setPl] = useState(null);
+      useEffect(() => {
+        const f = (e) => { if (COPY_PLATS.includes(e.detail)) setPl(e.detail); };
+        window.addEventListener('smx-copy-plat', f); return () => window.removeEventListener('smx-copy-plat', f);
+      }, []);
+      const cur = plats.includes(pl) ? pl : [...plats].sort((a, b) => byPl[b].rows.length - byPl[a].rows.length)[0];
+      const allCopy = pool.filter(p => COPY_PLATS.includes(p.platform));
+      const withCopy = allCopy.filter(cpHas).length;
+      const rows = cur ? byPl[cur].rows : [];
+      const N = rows.length, minN = cpMinN(N);
+      const A = useMemo(() => {
+        if (!N) return null;
+        const intents = cpGroup(rows, r => r.cp.intent, CP_INTENTS.map(i => i.k));
+        const anat = [
+          ['Largo', cpGroup(rows, r => r.cp.lenB, ['≤60 caracteres', '61 a 120', '121 a 200', 'Más de 200'])],
+          ['Hashtags', cpGroup(rows, r => r.cp.hashB, ['Sin hashtags', '1 o 2', '3 o más'])],
+          ['Gancho · cómo abre', cpGroup(rows, r => r.cp.gancho)],
+          ['Voz', cpGroup(rows, r => r.cp.voz === 'Persona' ? (r.cp.cm ? 'Persona · firma el CM' : 'Persona · primera persona') : 'Marca', ['Persona · firma el CM', 'Persona · primera persona', 'Marca'])],
+          ['Qué le pide a la gente', cpGroup(rows, r => r.cp.cta, ['Pide comentar', 'Link o compra', 'Registro', 'Sin CTA'])],
+          ['El producto en el copy', cpGroup(rows, r => r.cp.prod, ['Al inicio', 'En medio', 'Como remate', 'No lo nombra'])],
+          ['Territorio', cpGroup(rows, r => r.cp.terr)],
+        ];
+        const sorted = [...rows].filter(r => r.idx != null).sort((a, b) => b.idx - a.idx);
+        return { intents, anat, words: cpWords(rows), reading: cpReading(cur, rows), top: sorted.slice(0, 4), bottom: sorted.slice(-4).reverse() };
+      }, [rows, cur]);
+      const DIMS = {
+        stage: ['Etapa', (r) => r.p.stage && !/^(na|n\/a)$/i.test(r.p.stage) ? String(r.p.stage) : 'Sin etapa', (v) => String(v).replace(/^\d+\.\s*/, '')],
+        format: ['Formato', (r) => r.p.format || 'Sin formato', (v) => v],
+        terr: ['Territorio', (r) => r.cp.terr, (v) => v],
+        campaign: ['Campaña', (r) => r.p.campaign || 'Sin campaña', (v) => v],
+      };
+      const heat = useMemo(() => {
+        if (!N) return null;
+        const [, kf] = DIMS[dimX];
+        let cols = cpGroup(rows, kf);
+        cols = dimX === 'stage' ? cols.sort((a, b) => (a.k === 'Sin etapa') - (b.k === 'Sin etapa') || String(a.k).localeCompare(String(b.k))) : cols.slice(0, 6);
+        const rowsI = CP_INTENTS.map(i => i.k).filter(k => rows.some(r => r.cp.intent === k));
+        const cell = (ik, ck) => { const rs = rows.filter(r => r.cp.intent === ik && kf(r) === ck); return { n: rs.length, idx: rs.length ? medianOf(rs.map(r => r.idx)) : null }; };
+        return { cols, rowsI, cell };
+      }, [rows, dimX]);
+      const echoes = useMemo(() => cpEcho(byPl).slice(0, 4), [byPl]);
+
+      const Card = ({ title, sub, children, className = '' }) => html`
+        <div className=${"rounded-xl bg-surface p-5 min-w-0 " + className}>
+          ${title && html`<div className="text-[13px] font-medium text-txt">${title}</div>`}
+          ${sub && html`<div className="text-[11px] text-txt4 mt-0.5 mb-3 leading-snug">${sub}</div>`}
+          ${children}
+        </div>`;
+      const CopyCard = ({ r, good }) => html`
+        <button onClick=${(e) => { window.__smxPickY = e.clientY; onPick && onPick(r.p); }}
+                className="text-left rounded-lg bg-onSurface/[0.03] hover:bg-onSurface/[0.06] transition-colors p-3.5 flex flex-col gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-mono text-txt4 truncate">${dateShort(r.p.date)} · ${r.p.format || '—'}${r.p.campaign ? ' · ' + r.p.campaign : ''}</span>
+            <${CpIdx} v=${r.idx} n=${99}/>
+          </div>
+          <p className="text-[13px] text-txt leading-snug line-clamp-5 break-words">${String(r.p.copy).trim()}</p>
+          <${CpTags} cp=${r.cp} small/>
+          <div className="text-[10px] font-mono text-txt4">ER básico ${erFmt(r.p.basic_er)} · alcance ${fmt(r.p.reach)}</div>
+        </button>`;
+
+      const header = html`
+        <div className="mb-5">
+          <h2 className="text-[18px] font-medium text-txt">Copy y mensaje</h2>
+          <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Qué intenta hacer cada copy y cómo le fue. Cada texto se clasifica por intención, voz, gancho, territorio, CTA y lugar del producto, y se compara con un post típico de su plataforma: 1.0× es un post típico, 1.5× rinde 50% más ER básico. Solo orgánico, porque la pauta mueve el ER por razones que no son el texto.</p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            ${plats.length > 0 && html`<div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Plataforma del copy">
+              ${plats.map(k => html`<button key=${k} role="radio" aria-checked=${cur === k} onClick=${() => setPl(k)}
+                className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors flex items-center gap-1.5 " + (cur === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>
+                <svg width="7" height="7" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[k]}/></svg>${k}<span className="text-txt4 font-mono">${byPl[k].rows.length}</span></button>`)}
+            </div>`}
+            <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Periodo del análisis de copy">
+              ${[['filtro', 'Periodo del filtro'], ['hist', 'Histórico 2025 + 2026']].map(([k, l]) => html`
+                <button key=${k} role="radio" aria-checked=${span === k} onClick=${() => setSpan(k)}
+                        title=${k === 'hist' ? 'Ignora año, semana y mes para juntar más copys; respeta los demás filtros' : 'Usa el periodo seleccionado en los filtros'}
+                        className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (span === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+            </div>
+          </div>
+        </div>`;
+
+      if (!A) return html`
+        <section id="sec-copy" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-copy" name="Copy y mensaje" />
+          ${header}
+          <div className="rounded-xl bg-surface p-8 text-center">
+            <div className="text-[13px] text-txt3">${allCopy.length ? (withCopy ? 'Los copys de este filtro son de posts con pauta o sin ER básico, así que no hay con qué comparar.' : 'Los posts de este filtro no tienen copy capturado en el Sheet.') : 'No hay posts de TikTok, X o Threads en este filtro.'}</div>
+            ${span === 'filtro' && html`<button onClick=${() => setSpan('hist')} className="mt-3 text-[12px] text-accent2 hover:underline">Ver el histórico 2025 + 2026</button>`}
+          </div>
+        </section>`;
+
+      const maxShare = Math.max(...A.intents.map(g => g.share), 1);
+      return html`
+        <section id="sec-copy" className="px-4 md:px-7 py-7 relative group">
+          <${SectionExportBtn} sectionId="sec-copy" name="Copy y mensaje" />
+          ${header}
+
+          <div className="rounded-xl bg-surface px-5 py-5 mb-3">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft mb-3">La lectura · ${cur} · ${N} copys orgánicos</div>
+            <div className="space-y-2.5 max-w-4xl">
+              ${A.reading.map((s, i) => html`<p key=${i} className=${i === 0 ? "text-[16px] md:text-[18px] text-txt leading-snug font-medium" : "text-[13px] text-txt2 leading-relaxed"}>${s}</p>`)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 mb-3">
+            <${Card} className="xl:col-span-3" title="Lo que decimos vs. lo que conecta" sub="La barra es cuánto se publica de cada intención; el número, cómo rinde contra un post típico de la plataforma.">
+              <div className="space-y-2.5">
+                ${A.intents.map(g => html`
+                  <div key=${g.k} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[180px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-[12px] text-txt"><span className="w-2 h-2 rounded-sm shrink-0" style=${{ background: CP_INTENT_C[g.k] }}></span>${g.k}</div>
+                      <div className="text-[10px] text-txt4 leading-tight truncate" title=${(CP_INTENTS.find(i => i.k === g.k) || {}).d}>${(CP_INTENTS.find(i => i.k === g.k) || {}).d}</div>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2 min-w-0">
+                      <div className="flex-1 h-2 rounded-full bg-onSurface/[0.05] min-w-0"><div className="h-2 rounded-full" style=${{ width: `${g.share / maxShare * 100}%`, background: CP_INTENT_C[g.k], opacity: 0.75 }}></div></div>
+                      <span className="text-[11px] font-mono text-txt3 tabular-nums w-10 text-right">${Math.round(g.share)}%</span>
+                    </div>
+                    <div className="flex items-center gap-2 justify-end"><span className="sm:hidden text-[11px] font-mono text-txt3">${Math.round(g.share)}%</span><${CpIdx} v=${g.idx} n=${g.n} minN=${minN}/><span className="text-[10px] font-mono text-txt4 w-8 text-right">${g.n}</span></div>
+                  </div>`)}
+              </div>
+              <div className="text-[10px] font-mono text-faint mt-3">Número de la derecha = copys. En gris, intenciones con menos de ${minN} copys: lectura direccional.</div>
+            <//>
+
+            <${Card} className="xl:col-span-2" title="Palabras que suman y que restan" sub=${`Índice de los posts que usan la palabra o hashtag. Solo las que aparecen en ${A.words.minN} copys o más.`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                ${[['Suman', A.words.up, 'text-success'], ['Restan', A.words.down, 'text-amber']].map(([l, list, tc]) => html`
+                  <div key=${l} className="min-w-0">
+                    <div className=${"text-[10px] font-mono uppercase tracking-[0.15em] mb-2 " + tc}>${l}</div>
+                    ${!list.length ? html`<div className="text-[12px] text-txt4">Ninguna clara con este volumen.</div>` : html`
+                      <div className="space-y-1.5">
+                        ${list.map(x => html`<div key=${x.w} className="flex items-center justify-between gap-2 text-[12px]">
+                          <span className=${"truncate " + (x.w.startsWith('#') ? 'text-accent2' : 'text-txt')} title=${x.w}>${x.w}</span>
+                          <span className="flex items-center gap-1.5 shrink-0"><span className="text-[10px] font-mono text-txt4">${x.n}</span><${CpIdx} v=${x.idx} n=${x.n}/></span>
+                        </div>`)}
+                      </div>`}
+                  </div>`)}
+              </div>
+            <//>
+          </div>
+
+          <${Card} title="Anatomía del copy" sub="Cada rasgo, contra un post típico de la plataforma. A la derecha del centro suma; a la izquierda resta." className="mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-x-6 gap-y-5">
+              ${A.anat.map(([t, gs]) => html`
+                <div key=${t} className="min-w-0">
+                  <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-2">${t}</div>
+                  <div className="space-y-1.5">
+                    ${gs.map(g => html`<div key=${g.k} className="flex items-center gap-2 text-[12px]">
+                      <span className="flex-1 min-w-0 truncate text-txt2" title=${g.k}>${g.k}</span>
+                      <span className="text-[10px] font-mono text-txt4 w-7 text-right shrink-0">${g.n}</span>
+                      <${CpBar} v=${g.idx} n=${g.n} minN=${minN}/>
+                      <${CpIdx} v=${g.idx} n=${g.n} minN=${minN}/>
+                    </div>`)}
+                  </div>
+                </div>`)}
+            </div>
+          <//>
+
+          ${heat && heat.cols.length > 0 && html`
+            <${Card} className="mb-3">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium text-txt">Qué intención funciona en qué momento</div>
+                  <div className="text-[11px] text-txt4 mt-0.5">Índice de cada cruce contra un post típico. Celdas con un solo copy, en gris.</div>
+                </div>
+                <div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Cruzar intención con">
+                  ${Object.entries(DIMS).map(([k, [l]]) => html`<button key=${k} role="radio" aria-checked=${dimX === k} onClick=${() => setDimX(k)}
+                    className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (dimX === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${l}</button>`)}
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="text-[12px] w-full border-separate" style=${{ borderSpacing: '4px' }}>
+                  <thead><tr>
+                    <th className="text-left font-normal text-[10px] font-mono uppercase tracking-[0.12em] text-txt4 pr-2 min-w-[140px]">Intención</th>
+                    ${heat.cols.map(c => html`<th key=${c.k} className="font-normal text-[10px] text-txt4 px-1 min-w-[78px] align-bottom leading-tight whitespace-normal" title=${c.k}>${DIMS[dimX][2](c.k)}<div className="font-mono text-faint">${c.n}</div></th>`)}
+                  </tr></thead>
+                  <tbody>
+                    ${heat.rowsI.map(ik => html`<tr key=${ik}>
+                      <td className="pr-2 text-txt2 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-sm mr-2" style=${{ background: CP_INTENT_C[ik] }}></span>${ik}</td>
+                      ${heat.cols.map(c => { const x = heat.cell(ik, c.k); return html`<td key=${c.k} className=${"text-center rounded-md py-2 font-mono tabular-nums " + (x.n ? cpTone(x.idx, x.n, 2) : 'text-faint')} title=${x.n ? `${x.n} copys · ${cpIdxTxt(x.idx)}` : 'Sin copys'}>
+                        ${x.n ? cpIdxTxt(x.idx) : '·'}${x.n ? html`<div className="text-[9px] opacity-70">${x.n}</div>` : ''}</td>`; })}
+                    </tr>`)}
+                  </tbody>
+                </table>
+              </div>
+            <//>`}
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-3">
+            <${Card} title="Los copys que más conectaron" sub="Contra un post típico de la plataforma. Clic para ver el post.">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">${A.top.map((r, i) => html`<${CopyCard} key=${i} r=${r} good/>`)}</div>
+            <//>
+            <${Card} title="Los que menos" sub="Sirven para ver qué patrón se repite cuando no conecta.">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">${A.bottom.map((r, i) => html`<${CopyCard} key=${i} r=${r}/>`)}</div>
+            <//>
+          </div>
+
+          ${echoes.length > 0 && html`
+            <${Card} title="El mismo mensaje en otra plataforma" sub="Copys casi idénticos publicados en dos o más plataformas con menos de 10 días de diferencia. Mismo texto, distinta casa: la diferencia la pone la plataforma, no el mensaje.">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+                ${echoes.map((e, i) => html`
+                  <div key=${i} className="rounded-lg bg-onSurface/[0.03] p-3.5 min-w-0">
+                    <p className="text-[13px] text-txt leading-snug line-clamp-3 break-words mb-3">${String(e.items[0].r.p.copy).trim()}</p>
+                    <div className="flex flex-wrap gap-2">
+                      ${e.items.map((x, j) => html`<button key=${j} onClick=${(ev) => { window.__smxPickY = ev.clientY; onPick && onPick(x.r.p); }}
+                          className="flex items-center gap-2 rounded-md bg-surface px-2.5 py-1.5 hover:bg-onSurface/[0.06] transition-colors">
+                        <svg width="7" height="7" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill=${PLAT_COLORS[x.pl]}/></svg>
+                        <span className="text-[11px] text-txt2">${x.pl}</span><span className="text-[10px] font-mono text-txt4">${dateShort(x.r.p.date)}</span><${CpIdx} v=${x.r.idx} n=${99}/>
+                      </button>`)}
+                    </div>
+                  </div>`)}
+              </div>
+            <//>`}
+          <p className="text-[10px] font-mono text-faint mt-3">La clasificación es por reglas de texto (palabras, signos, posición del producto); puede fallar en copys ambiguos. ${withCopy} de ${allCopy.length} posts de TikTok, X y Threads en este periodo tienen copy.</p>
+        </section>`;
+    }
+
+    // Resumen del copy dentro del laboratorio de TikTok
+    function TikTokCopyNote({ posts }) {
+      const b = useMemo(() => copyRows(posts)['TikTok'], [posts]);
+      if (!b || b.rows.length < 12) return null;
+      const r = cpReading('TikTok', b.rows)[0];
+      const go = () => { window.dispatchEvent(new CustomEvent('smx-copy-plat', { detail: 'TikTok' })); const el = document.getElementById('sec-copy'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+      return html`<div className="rounded-xl bg-surface p-5 mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 max-w-3xl">
+          <div className="text-[13px] font-medium text-txt">El copy en TikTok</div>
+          <p className="text-[12px] text-txt3 mt-1 leading-snug">${r}</p>
+        </div>
+        <button onClick=${go} className="text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt transition-colors shrink-0">Ver Copy y mensaje</button>
+      </div>`;
+    }
+
+    function DetailDrawer({ post, onClose, benchmarks, allPosts }) {
       useEffect(() => {
         if (!post) return;
         const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -6898,6 +7378,7 @@
                     ${post.subcampaign && html` · ${post.subcampaign}`}
                   </p>
                 `}
+                <${CopyDrawerBlock} post=${post} allPosts=${allPosts}/>
 
                 <div className="grid grid-cols-2 gap-2.5 mb-5">
                   <div className="rounded-xl bg-surface border border-line p-3.5 min-w-0">
@@ -8756,7 +9237,7 @@
     const askFold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
     // ---------- Ortografía: corrige typos y escritura "fonética" -----------
-    const ASK_VOCAB = ('tiktok tiktoks instagram facebook youtube linkedin threads twitter reels carrusel carruseles stories historias shorts '
+    const ASK_VOCAB = ('copys texto textos intencion intenciones gancho ganchos largo longitud hashtag hashtags pregunta preguntas humor venta firmados tiktok tiktoks instagram facebook youtube linkedin threads twitter reels carrusel carruseles stories historias shorts '
       + 'video videos organico organicos organica pauta pautado pautados pagado alcance impresiones reproducciones interacciones '
       + 'comentarios compartidos guardados reacciones duracion promedio mediana semana semanas meses enero febrero marzo abril mayo '
       + 'junio julio agosto septiembre octubre noviembre diciembre publicaciones publicacion influencer influencers campana campanas '
@@ -8934,9 +9415,19 @@
       flags:        { label: 'Atributo', test: (p, v) => v === 'infl' ? askIsInfl(p) : v === 'noinfl' ? !askIsInfl(p) : v === 'ai' ? askYes(p.ai)
                       : v === 'subs' ? askYes(p.subtitles) : v === 'nosubs' ? !askYes(p.subtitles) : v === 'audio' ? askYes(p.audio) : v === 'noaudio' ? !askYes(p.audio) : true,
                       show: (v) => ({ infl: 'Con influencer', noinfl: 'Sin influencer', ai: 'Hecho con IA', subs: 'Con subtítulos', nosubs: 'Sin subtítulos', audio: 'Con audio', noaudio: 'Sin audio' }[v] || v) },
+      // v84 — copy
+      copytxt:      { label: 'El copy dice', test: (p, v) => !!p.copy && cpFold(p.copy).includes(v), show: (v) => `«${v}»` },
+      copyint:      { label: 'Intención del copy', get: (p) => { const c = copyProfile(p); return c ? c.intent : null; } },
+      copyf:        { label: 'Copy', test: (p, v) => { const c = copyProfile(p); if (!c) return false;
+                        return v === 'q' ? c.gancho === 'Pregunta' || /\?/.test(p.copy) : v === 'nohash' ? c.nh === 0 : v === 'hash3' ? c.nh >= 3 : v === 'hash' ? c.nh > 0
+                          : v === 'cm' ? c.cm : v === 'persona' ? c.voz === 'Persona' : v === 'marca' ? c.voz === 'Marca' : v === 'link' ? c.cta === 'Link o compra'
+                          : v === 'coment' ? c.cta === 'Pide comentar' : v === 'noprod' ? c.prod === 'No lo nombra' : v === 'remate' ? c.prod === 'Como remate'
+                          : v === 'corto' ? c.len <= 60 : v === 'largo' ? c.len > 200 : v === 'emoji' ? c.emo > 0 : v === 'any' ? true : true; },
+                      show: (v) => ({ q: 'Con pregunta', nohash: 'Sin hashtags', hash3: '3 hashtags o más', hash: 'Con hashtags', cm: 'Firma el CM', persona: 'Voz de persona', marca: 'Voz de marca',
+                        link: 'Manda a link o compra', coment: 'Pide comentar', noprod: 'No nombra el producto', remate: 'Producto como remate', corto: 'Copy corto (≤60)', largo: 'Copy largo (+200)', emoji: 'Con emojis', any: 'Con copy' }[v] || v) },
       dows:         { label: 'Día', test: (p, v) => askD(p).dow === v, show: (v) => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][v] },
     };
-    const ASK_SEGMENT_DIMS = ['formats', 'strategies', 'contentTypes', 'stages', 'objectives', 'products', 'campaigns', 'subcampaigns', 'influencers', 'special', 'flags'];
+    const ASK_SEGMENT_DIMS = ['formats', 'strategies', 'contentTypes', 'stages', 'objectives', 'products', 'campaigns', 'subcampaigns', 'influencers', 'special', 'flags', 'copytxt', 'copyint', 'copyf'];
     const askDimTest = (dim, v) => ASK_FDIMS[dim].test ? (p) => ASK_FDIMS[dim].test(p, v) : (p) => ASK_FDIMS[dim].get(p) === v;
     const askShow = (dim, v) => (ASK_FDIMS[dim].show ? ASK_FDIMS[dim].show(v) : v);
 
@@ -9044,6 +9535,11 @@
       inflyn:   { label: 'Influencer', key: (p) => askIsInfl(p) ? 'Con influencer' : 'Sin influencer' },
       audioyn:  { label: 'Audio', key: (p) => askYes(p.audio) ? 'Con audio' : 'Sin audio' },
       subsyn:   { label: 'Subtítulos', key: (p) => askYes(p.subtitles) ? 'Con subtítulos' : 'Sin subtítulos' },
+      copyint:  { label: 'Intención del copy', key: (p) => { const c = copyProfile(p); return c ? c.intent : null; } },
+      copyhook: { label: 'Gancho del copy', key: (p) => { const c = copyProfile(p); return c ? c.gancho : null; } },
+      copylen:  { label: 'Largo del copy', key: (p) => { const c = copyProfile(p); return c ? c.lenB : null; }, order: (v) => ['≤60 caracteres', '61 a 120', '121 a 200', 'Más de 200'].indexOf(v) },
+      copyhash: { label: 'Hashtags del copy', key: (p) => { const c = copyProfile(p); return c ? c.hashB : null; }, order: (v) => ['Sin hashtags', '1 o 2', '3 o más'].indexOf(v) },
+      copyvoz:  { label: 'Voz del copy', key: (p) => { const c = copyProfile(p); return c ? (c.voz === 'Persona' ? (c.cm ? 'Firma el CM' : 'Persona') : 'Marca') : null; } },
     };
 
     // ---------- Patrones de lenguaje ----------
@@ -9084,6 +9580,11 @@
       ['dur', /\bduracion(?:es)?\b|\bduran?\b|\bduraron\b|\bdurar\b|\bdure\b|\bcuanto (?:tiempo )?(?:duran?|miden)\b|\bcuantos segundos\b|\blength\b/g],
     ];
     const ASK_GROUP_RX = [
+      ['copyint', /\bpor intencion(?:es)?(?: del copy| de copy)?\b|\b(?:que|cual|cuales) intencion(?:es)?\b|\b(?:que|cual|por) tipos? de copys?\b|\bintencion(?:es)? (?:del|de los|de) copys?\b/g],
+      ['copyhook', /\bpor gancho\b|\b(?:que|cual|cuales) ganchos?\b|\bcomo (?:abre|empieza|arranca|inicia) (?:el|un) copy\b/g],
+      ['copylen', /\b(?:largo|longitud|extension|tamano) (?:del|de los|de) copys?\b|\bque tan largos? (?:el|los|deben ser los|debe ser el) copys?\b|\bcopys? (?:cortos?|largos?) o (?:cortos?|largos?)\b/g],
+      ['copyhash', /\b(?:cuantos|por numero de|por) hashtags\b|\bhashtags? (?:o|vs) sin hashtags?\b/g],
+      ['copyvoz', /\bpor voz\b|\bvoz (?:de marca|del cm) (?:o|vs)\b/g],
       ['hour', /\b(?:a que|en que|que|cual|mejor(?:es)?|por|cada) (?:hora|horas|horario|horarios)\b|\b(?:hora|horario)s? (?:con|que) (?:mas|mejor|menos)\b|\bmejor(?:es)? horas?\b|\bhorarios?\b/g],
       ['dow', /\b(?:por|cada|que|cual|cuales|mejor(?:es)?|peor(?:es)?|en que) dias?(?: de la semana)?\b|\bdias? de la semana\b|\bdia (?:con|que) (?:mas|mejor|menos)\b/g],
       ['durb', /\bduracion (?:ideal|optima|perfecta)\b|\bpor duracion\b|\b(?:que|cual) duracion\b|\bcuanto (?:deben|debe|tienen que|tiene que|deberian|deberia|debemos) durar\b|\b(?:largo|duracion) (?:optim[oa]|ideal|perfect[oa])\b|\bmejor duracion\b|\bduracion (?:que|con) (?:mas|mejor)\b|\bque tan largos?\b/g],
@@ -9146,7 +9647,6 @@
       dur: ['Duración', 'Segundos del video según la columna «Duración (seg)» del Sheet.', 'Los cortes del buscador son ≤10 s, 11–20 s, 21–30 s, 31–60 s y más de 60 s.'],
     };
     const ASK_UNSUP = [
-      [/\bhashtags?\b|\bcopys?\b|\btexto del post\b|\bcaptions?\b/, 'La base no registra hashtags ni copys de los posts.'],
       [/\bsentimiento\b/, 'La base no tiene el sentimiento de los comentarios; eso vive en social listening (Brandwatch).'],
       [/\binversion\b|\bpresupuesto\b|\bgasto\b|\bcostos?\b|\bcpm\b|\bcpc\b|\bcpv\b|\broi\b|\broas\b|\bcuanto (?:se )?(?:invirtio|gasto|pago|pagamos|invertimos)\b/, 'La base no tiene inversión, así que no se pueden calcular CPM, CPC ni ROI. Sí puedo comparar resultados de orgánico contra pauta.'],
       [/\bcompetencia\b|\bcompetidor(?:es)?\b|\bapple\b|\biphone\b|\bmotorola\b|\bxiaomi\b|\bhuawei\b|\boppo\b|\bhonor\b/, 'La base solo tiene las cuentas de Samsung; no hay datos de la competencia.'],
@@ -9167,6 +9667,41 @@
       let raw = ' ' + askFold(q).replace(/[¿?¡!,;:"“”()\[\]{}]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
       // sinónimos que el equipo agrega en el Sheet de registro
       for (const [a, b] of ASK_SYN) raw = raw.replace(new RegExp('(?<![a-z0-9])' + askEscRx(a) + '(?![a-z0-9])', 'g'), b);
+
+      // v84 — copy: lo que dice el texto, su intención y sus rasgos
+      {
+        const qq = String(q).match(/[«"“]([^«»"“”]{2,50})[»"”]/);
+        const copyCtx = /\bcop(?:y|ys|ies|i)\b|\btextos?\b|\bcaptions?\b|\bque (?:digan?|dice|diga|mencionen?|menciona|hablen? de|usen? (?:la palabra|el hashtag)?)\b|\bcon (?:la palabra|el hashtag)\b|#[a-z0-9]/.test(raw);
+        if (qq) { addDim('copytxt', askFold(qq[1]).trim()); raw = raw.replace(askFold(qq[1]).replace(/[¿?¡!,;:"“”()\[\]{}]/g, ' ').replace(/\s+/g, ' ').trim(), ' §pc§ '); }
+        raw = raw.replace(/ (?:que|donde|cuyo copy|en los que el copy|cuyo texto) (?:digan?|dice|diga|mencionen?|menciona|mencionan|hablen? de|habla de|usen? la palabra|usen? el hashtag|usen?|lleven?|incluyan?|tengan? la palabra) (?:la palabra |el hashtag |la frase )?((?:#?[a-z0-9ñ]+)(?: (?!(?:en|durante|del|de|con|vs|contra|por|y|este|esta|ese|esa|ultim[oa]s?|semanas?|mes|meses|ano|anos|20\d\d|que|cual|como|o)\b)#?[a-z0-9ñ]+){0,3})(?= |$)/, (m, w) => { addDim('copytxt', w.trim()); return ' §pc§ '; });
+        raw = raw.replace(/ con (?:la palabra|el hashtag|la frase) (#?[a-z0-9ñ]+)/, (m, w) => { addDim('copytxt', w); return ' §pc§ '; });
+        raw = raw.replace(/ (#[a-z0-9ñ_]{2,})(?= |$)/g, (m, w) => { addDim('copytxt', w); return ' §pc§ '; });
+        if (copyCtx) {
+          const F = [
+            ['q', /\b(?:con|que (?:tienen|llevan|hacen)|que abren con|que empiezan con) (?:una |un )?pregunta(?:s)?\b|\bpreguntas? en el copy\b/],
+            ['nohash', /\bsin hashtags?\b/], ['hash3', /\b(?:muchos|3 o mas|tres o mas|varios|demasiados) hashtags\b/],
+            ['cm', /\b(?:del|firmad[oa]s? por el|que firma el|voz del) cm\b|\batte\b/], ['persona', /\bvoz (?:de )?persona\b|\ben primera persona\b/], ['marca', /\bvoz de marca\b/],
+            ['link', /\b(?:con|que (?:llevan|tienen|mandan a)) (?:un |el )?link\b/], ['coment', /\bque (?:piden|invitan a) comentar\b|\b(?:piden|invitan a) comentar(?:ios)?\b/],
+            ['noprod', /\b(?:sin|que no) (?:mencionar|nombrar|mencionan|nombran) (?:el |al )?producto\b/], ['remate', /\bproducto (?:como|de|al) (?:remate|final)\b/],
+            ['corto', /\bcopys? cortos?\b/], ['largo', /\bcopys? largos?\b/], ['emoji', /\bcon emojis?\b/],
+          ];
+          for (const [k, rx] of F) if (rx.test(raw)) { addDim('copyf', k); raw = raw.replace(rx, ' §pc§ '); }
+          const I = [
+            ['Vender', /\b(?:de|para|que buscan) (?:venta|vender|ventas)\b|\bcomerciales\b|\bde promo(?:cion)?\b/],
+            ['Vivir el momento', /\bde (?:momento|coyuntura|tendencia)s?\b|\bculturales?\b|\bque se cuelgan\b/],
+            ['Entretener', /\b(?:de )?humor\b|\bchistos[oa]s\b|\bgracios[oa]s\b|\bde entretenimiento\b|\bque entretienen\b|\bentretener\b|\brelatables?\b/],
+            ['Conversar', /\bde conversacion\b|\bconversacionales\b|\bque buscan conversacion\b/],
+            ['Anunciar', /\bde (?:anuncio|lanzamiento)s?\b|\bque anuncian\b/],
+            ['Enseñar', /\b(?:de )?tutoriales?\b|\bde tips\b|\bque ensenan\b|\bhow ?to\b/],
+            ['Registrar / concursar', /\bde (?:registro|concursos?|dinamicas?)\b|\bque piden registro\b/],
+            ['Explicar función', /\bque explican (?:una )?funcion(?:es)?\b|\bde (?:funciones|features|beneficios)\b/],
+          ];
+          for (const [k, rx] of I) if (rx.test(raw)) { addDim('copyint', k); raw = raw.replace(rx, ' §pc§ '); }
+          if (!spec.dims.copytxt && !spec.dims.copyf && !spec.dims.copyint && /\bcop(?:y|ys|ies|i)\b/.test(raw)) addDim('copyf', 'any');
+          raw = raw.replace(/\bcop(?:y|ys|ies|i)\b|\btextos?\b|\bcaptions?\b/g, ' copys ');
+        }
+        raw = raw.replace(/\s+/g, ' ');
+      }
 
       // 2) valores reales de la base: productos, campañas, subcampañas (antes de corregir typos)
       const explicitCamp = /\bcampanas? /.test(raw), explicitSub = /\bsub ?campanas? /.test(raw);
@@ -9447,10 +9982,10 @@
       if (spec.intent === 'compare' && !spec.metrics.length) spec.metrics = [perfQ || spec.vsRest ? 'ber' : 'reach'];
       if (spec.intent === 'compare' && spec.vsRest && ASK_METRICS[spec.metrics[0]].kind === 'sum' && !spec.mode) spec.mode = 'avg';
       if (spec.rateUnit && (spec.intent === 'value' || spec.intent === 'summary' || spec.intent === 'list')) { spec.intent = 'value'; spec.metrics = ['posts']; }
-      if (spec.intent === 'group' && !spec.metrics.length) spec.metrics = [['durb', 'hour', 'daytype', 'inflyn', 'audioyn', 'subsyn'].includes(spec.group) ? 'ber'
+      if (spec.intent === 'group' && !spec.metrics.length) spec.metrics = [['durb', 'hour', 'daytype', 'inflyn', 'audioyn', 'subsyn', 'copyint', 'copyhook', 'copylen', 'copyhash', 'copyvoz'].includes(spec.group) ? 'ber'
         : superl || perfQ ? (['month', 'week', 'year'].includes(spec.group) ? 'reach' : 'ber') : 'posts'];
       if (spec.intent === 'group' && spec.group === 'durb' && spec.metrics[0] === 'dur') spec.metrics = ['vtr', 'ber'];
-      if (spec.intent === 'rank' && !spec.metrics.length) spec.metrics = ['reach'];
+      if (spec.intent === 'rank' && !spec.metrics.length) spec.metrics = [spec.dims.copyf || spec.dims.copyint || spec.dims.copytxt || /^copy/.test(spec.group || '') ? 'ber' : 'reach'];
       if (spec.intent === 'rank' && !spec.topN) spec.topN = /\b(?:el|la) (?:§p|post|publicacion|video|reel|tiktok|contenido|pieza|mejor|peor)/.test(t) && !/\b(?:los|las)\b/.test(t) && !/s\b/.test((t.match(/\b(?:mejor|peor)\b\s+(\S+)/) || ['', ''])[1]) ? 1 : 10;
       if (spec.intent === 'list' && spec.sortDate && !spec.topN) spec.topN = /\b(?:ultim[oa]|primer[oa]?)\b(?!s)/.test(t) && !/\b(?:los|las) /.test(t) ? 1 : 10;
       spec.breakdownDim = breakdownDim || null;
@@ -9472,7 +10007,7 @@
         if (opts.skipSegment && ASK_SEGMENT_DIMS.includes(dim)) continue;
         if (opts.skipDim === dim) continue;
         if (dim === 'formats' && vals.includes('__videos')) { const allow = [...new Set([...ASK_VIDEO_FORMATS, ...vals.filter(v => v !== '__videos')])]; tests.push((p) => allow.includes(p.format)); continue; }
-        if (dim === 'flags') { for (const v of vals) tests.push(askDimTest('flags', v)); continue; }   // atributos se suman (AND)
+        if (dim === 'flags' || dim === 'copyf' || dim === 'copytxt') { for (const v of vals) tests.push(askDimTest(dim, v)); continue; }   // atributos se suman (AND)
         const fs = vals.map(v => askDimTest(dim, v));
         tests.push((p) => fs.some(f => f(p)));
       }
@@ -9939,6 +10474,7 @@
     const ASK_EXAMPLES = [
       { t: 'Para creativos', q: ['¿Cuánto dura en promedio un Stay & Play en TikTok?', '¿Qué duración funciona mejor en TikTok?', '¿Qué formato funciona mejor en Instagram?', 'Los 5 TikToks con más compartidos de este año'] },
       { t: 'Resultados', q: ['¿Cuál es el VTR de Instagram de hace 2 semanas?', 'Alcance de TikTok vs Instagram este mes', '¿Cómo le fue al Fold8 en julio?', '¿Cumplimos los KPIs la semana pasada?'] },
+      { t: 'Copys', q: ['ER de los posts que digan Mundial en Threads', '¿Qué intención de copy funciona mejor en X?', 'Copys con pregunta en Threads contra el resto', 'Mejores copys firmados por el CM'] },
       { t: 'Explorar la base', q: ['Todos los TikToks de octubre 2025', '¿Cuál fue el último post de YouTube?', '¿Qué día de la semana publicamos mejor?', '¿A qué hora publicamos mejor en Instagram?'] },
     ];
     const ASK_RECENT_KEY = 'smx-ask-recent';
@@ -10185,6 +10721,7 @@
                          ['Filtros en tus palabras', 'Plataforma, formato, campaña, subcampaña, producto, influencer, Stay & Play o Tendencia, orgánico o pauta, etapa, duración («menos de 30 s»), con o sin audio, subtítulos o IA.'],
                          ['Fechas', '«Octubre 2025», «hace 2 semanas», «semana 41», «del 1 al 15 de octubre», «Q3», «primer semestre», «los lunes», «últimos 30 días», «este año».'],
                          ['Rankings y comparaciones', 'Mejores y peores posts; mejor formato, duración, día, horario, campaña, producto o influencer; X contra Y; contra el resto; contra el mes pasado.'],
+                         ['Copys (TikTok, X y Threads)', 'Lo que dice el texto («posts que digan Mundial», «#GalaxyAI»), su intención (venta, humor, conversación, tutorial…), si abre con pregunta, lleva hashtags o link o lo firma el CM; y agrupar por intención, gancho, largo o hashtags.'],
                          ['Seguidores y metas', 'Cuántos tenemos, cuántos ganamos en un periodo, crecimiento por semana o mes y si llegamos a la meta 2026.'],
                          ['Control', 'KPIs de cuenta (también por semana o mes), anomalías, pendientes de captura, ritmo de publicación, último dato capturado y definiciones («¿qué es el VTR?»).']]
                         .map(([t, d]) => html`<div key=${t}><div className="text-[10px] font-mono uppercase tracking-[0.16em] text-txt4 mb-1.5">${t}</div><div>${d}</div></div>`)}
@@ -10473,7 +11010,9 @@
       const noResults = D.global.posts === 0;
       // El laboratorio creativo de TikTok solo existe cuando el filtro de plataforma es únicamente TikTok
       const ttOnly = filters.platforms.length === 1 && filters.platforms[0] === 'TikTok';
-      const navHidden = ttOnly ? [] : ['tiktok'];
+      // v84 — Copy y mensaje solo aplica si el filtro incluye TikTok, X o Threads
+      const copyOn = !filters.platforms.length || filters.platforms.some(p => COPY_PLATS.includes(p));
+      const navHidden = [...(ttOnly ? [] : ['tiktok']), ...(copyOn ? [] : ['copy'])];
 
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
@@ -10584,8 +11123,8 @@
                 <${SectionGuard} name="VTR" resetKey=${guardKey}><${VtrSection}         D=${D} onPick=${setSelected}/><//>
                 <${SectionGuard} name="Influencers" resetKey=${guardKey}><${InfluencersSection} D=${D} onPick=${setSelected}/><//>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint=${ttOnly ? "Mezcla, cadencia, horarios, promedios, comparativas, catálogo, TikTok creativo y simulador" : "Mezcla, cadencia, horarios, promedios, comparativas, catálogo y simulador"}
-                  count=${ttOnly ? 8 : 7} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint=${`Mezcla, cadencia, horarios, promedios, comparativas, catálogo${ttOnly ? ', TikTok creativo' : ''}${copyOn ? ', copy y mensaje' : ''} y simulador`}
+                  count=${7 + (ttOnly ? 1 : 0) + (copyOn ? 1 : 0)} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
                   <${SectionGuard} name="Mezcla" resetKey=${guardKey}><${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/><//>
                   <${SectionGuard} name="Cadencia" resetKey=${guardKey}><${CadenceSection}     D=${D}/><//>
                   <${SectionGuard} name="Horarios" resetKey=${guardKey}><${HorariosSection}    D=${D}/><//>
@@ -10593,6 +11132,7 @@
                   <${SectionGuard} name="Comparativas" resetKey=${guardKey}><${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme} setFilters=${setFilters}/><//>
                   <${SectionGuard} name="Catálogo" resetKey=${guardKey}><${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/><//>
                   ${ttOnly && html`<${SectionGuard} name="TikTok creativo" resetKey=${guardKey}><${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme} rawPosts=${allPosts} filters=${filters}/><//>`}
+                  ${copyOn && html`<${SectionGuard} name="Copy y mensaje" resetKey=${guardKey}><${CopySection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected}/><//>`}
                   <${SectionGuard} name="Simulador" resetKey=${guardKey}><${SimuladorSection}   allPosts=${allPosts}/><//>
                 <//>
 
@@ -10608,7 +11148,7 @@
             <${Footer} fetchedAt=${fetchedAt} totalPosts=${baseMeta.total_posts}/>
           </div>
 
-          ${selected && html`<${DetailDrawer} post=${selected} benchmarks=${benchmarks} onClose=${() => setSelected(null)}/>`}
+          ${selected && html`<${DetailDrawer} post=${selected} benchmarks=${benchmarks} allPosts=${allPosts} onClose=${() => setSelected(null)}/>`}
           <${AskPanel} open=${askOpen} onClose=${closeAsk} allPosts=${allPosts} onPick=${setSelected} setFilters=${setFilters} drawerOpen=${!!selected} fetchedAt=${fetchedAt}/>
           ${kpiTrace && html`<${KpiTraceDrawer} trace=${kpiTrace} onClose=${() => setKpiTrace(null)} onPick=${(p) => { setKpiTrace(null); setSelected(p); }}/>`}
           <${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} D=${D} filters=${filters}/>
