@@ -1646,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-28-v84';
+    const BUILD_VERSION = '2026-10-28-v85';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -7130,6 +7130,115 @@
         </div>`;
     }
 
+    // v85 — Revisión previa: se pega un copy antes de publicarlo y se compara con lo que ya se publicó.
+    // No predice: muestra cómo rindieron los copys con los mismos rasgos y los más parecidos.
+    const cpSim = (a, b) => {
+      const A = new Set(a.words), B = b.words; let inter = 0;
+      for (const w of B) if (A.has(w)) inter++;
+      const uni = A.size + B.length - inter;
+      return (uni ? inter / uni : 0) + (a.intent === b.intent ? 0.15 : 0) + (a.gancho === b.gancho ? 0.05 : 0);
+    };
+    const CP_ADV_DIMS = [
+      ['intent', 'Intención', (c) => c.intent],
+      ['gancho', 'Cómo abre', (c) => c.gancho],
+      ['voz', 'Voz', (c) => c.voz === 'Persona' ? (c.cm ? 'Persona · firma el CM' : 'Persona · primera persona') : 'Marca'],
+      ['cta', 'Lo que pide', (c) => c.cta],
+      ['prod', 'El producto', (c) => c.prod],
+      ['lenB', 'Largo', (c) => c.lenB],
+      ['hashB', 'Hashtags', (c) => c.hashB],
+    ];
+    function CopyPreflight({ byPl, defPl, onPick }) {
+      const [txt, setTxt] = useState(() => { try { return sessionStorage.getItem('smx-copy-draft') || ''; } catch (e) { return ''; } });
+      const [pl, setPl] = useState(null);
+      const plats = COPY_PLATS.filter(k => byPl[k] && byPl[k].rows.length >= 12);
+      const cur = plats.includes(pl) ? pl : (plats.includes(defPl) ? defPl : plats[0]);
+      useEffect(() => { try { sessionStorage.setItem('smx-copy-draft', txt); } catch (e) {} }, [txt]);
+      const R = useMemo(() => {
+        const t = txt.trim();
+        if (t.length < 8 || !cur) return null;
+        const draft = copyProfile({ copy: t });
+        if (!draft) return null;
+        const rows = byPl[cur].rows, N = rows.length, minN = Math.max(5, Math.ceil(N * 0.04));
+        const traits = CP_ADV_DIMS.map(([k, label, f]) => {
+          const g = cpGroup(rows, r => f(r.cp));
+          const mine = g.find(x => x.k === f(draft));
+          const solid = g.filter(x => x.n >= minN);
+          const best = solid.sort((a, b) => b.idx - a.idx)[0];
+          const weak = mine && mine.n >= minN && mine.idx <= 0.87 && best && best.k !== mine.k && best.idx >= Math.max(1, mine.idx * 1.25);
+          return { k, label, v: f(draft), g: mine, best, weak };
+        });
+        const wordHits = draft.words.map(w => {
+          const rs = rows.filter(r => r.cp.words.includes(w));
+          return rs.length >= minN ? { w, n: rs.length, idx: medianOf(rs.map(r => r.idx)) } : null;
+        }).filter(x => x && (x.idx >= 1.15 || x.idx <= 0.87)).sort((a, b) => b.idx - a.idx);
+        const sims = rows.map(r => ({ r, s: cpSim(draft, r.cp) })).filter(x => x.s >= 0.2).sort((a, b) => b.s - a.s).slice(0, 5);
+        const prec = sims.length >= 3 ? medianOf(sims.map(x => x.r.idx)) : null;
+        return { draft, traits, wordHits, sims, prec, N, minN };
+      }, [txt, cur, byPl]);
+      const treeUrl = R ? `mapa-3d.html?copy=${encodeURIComponent(txt.trim().slice(0, 600))}&cp=${encodeURIComponent(cur)}` : null;
+      return html`
+        <div className="rounded-xl bg-surface p-5 mb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div className="min-w-0 max-w-2xl">
+              <div className="text-[13px] font-medium text-txt">Revisa un copy antes de publicarlo</div>
+              <div className="text-[11px] text-txt4 mt-0.5 leading-snug">Pega el borrador. Se lee igual que los publicados y se compara con el histórico orgánico de la plataforma: cómo rindieron los copys con los mismos rasgos y los más parecidos. No es una predicción; es lo que ya pasó.</div>
+            </div>
+            ${plats.length > 0 && html`<div className="inline-flex flex-wrap items-center rounded-lg bg-onSurface/[0.04] p-0.5" role="radiogroup" aria-label="Plataforma del borrador">
+              ${plats.map(k => html`<button key=${k} role="radio" aria-checked=${cur === k} onClick=${() => setPl(k)}
+                className=${"px-2.5 py-1 rounded-md text-[11px] transition-colors " + (cur === k ? "bg-surface text-txt shadow-sm" : "text-txt3 hover:text-txt")}>${k}</button>`)}
+            </div>`}
+          </div>
+          <textarea value=${txt} onChange=${(e) => setTxt(e.target.value)} rows=${3} aria-label="Borrador del copy"
+            placeholder="Ej.: Hoy no estoy administrando una cuenta, estoy administrando mis emociones. Atte: El CM"
+            className="w-full rounded-lg bg-onSurface/[0.04] border border-transparent focus:border-line2 focus:outline-none px-3.5 py-2.5 text-[14px] text-txt placeholder:text-txt4 leading-relaxed resize-y"></textarea>
+          ${!plats.length && html`<div className="text-[12px] text-txt4 mt-2">Hace falta histórico con copy de TikTok, X o Threads para comparar.</div>`}
+          ${R && html`
+            <div className="mt-4 grid grid-cols-1 xl:grid-cols-5 gap-4">
+              <div className="xl:col-span-3 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <${CpTags} cp=${R.draft}/>
+                  <span className="text-[10px] font-mono text-txt4">${R.draft.len} caracteres</span>
+                </div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-2">Cómo rindieron en ${cur} los copys con estos rasgos</div>
+                <div className="space-y-1.5">
+                  ${R.traits.map(t => html`<div key=${t.k} className="flex items-center gap-2 text-[12px] min-w-0">
+                    <span className="w-24 shrink-0 text-txt4">${t.label}</span>
+                    <span className="flex-1 min-w-0 truncate text-txt2" title=${t.v}>${t.v}</span>
+                    ${t.g ? html`<span className="text-[10px] font-mono text-txt4 w-7 text-right shrink-0">${t.g.n}</span><${CpBar} v=${t.g.idx} n=${t.g.n} minN=${R.minN}/><${CpIdx} v=${t.g.idx} n=${t.g.n} minN=${R.minN}/>`
+                      : html`<span className="text-[11px] text-txt4">sin precedentes</span>`}
+                  </div>`)}
+                </div>
+                ${R.traits.some(t => t.weak) && html`
+                  <div className="mt-3 rounded-lg bg-amber/10 px-3.5 py-2.5 space-y-1">
+                    ${R.traits.filter(t => t.weak).map(t => html`<p key=${t.k} className="text-[12px] text-txt2 leading-snug"><b className="text-amber font-medium">${t.label}:</b> «${t.v}» rinde ${cpIdxTxt(t.g.idx)} en ${cur}; «${t.best.k}» rinde ${cpIdxTxt(t.best.idx)} (${t.best.n} copys).</p>`)}
+                  </div>`}
+                ${R.wordHits.length > 0 && html`
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mr-1">Palabras de tu copy</span>
+                    ${R.wordHits.map(x => html`<span key=${x.w} className=${"inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] " + cpTone(x.idx, x.n)} title=${`${x.n} copys en ${cur} la usan`}>${x.w}<b className="font-mono font-normal">${cpIdxTxt(x.idx)}</b></span>`)}
+                  </div>`}
+              </div>
+              <div className="xl:col-span-2 min-w-0">
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Los más parecidos ya publicados</div>
+                  ${R.prec != null && html`<div className="text-[11px] text-txt3">rindieron <${CpIdx} v=${R.prec} n=${99}/></div>`}
+                </div>
+                ${!R.sims.length ? html`<div className="text-[12px] text-txt4">Nada suficientemente parecido en ${cur}: es territorio nuevo para la cuenta.</div>` : html`
+                  <div className="space-y-1.5">
+                    ${R.sims.map(({ r }, i) => html`<button key=${i} onClick=${(e) => { window.__smxPickY = e.clientY; onPick && onPick(r.p); }}
+                        className="w-full text-left rounded-lg bg-onSurface/[0.03] hover:bg-onSurface/[0.06] transition-colors px-3 py-2 flex items-start gap-2.5">
+                      <span className="flex-1 min-w-0 text-[12px] text-txt2 leading-snug line-clamp-2">${String(r.p.copy).trim()}</span>
+                      <${CpIdx} v=${r.idx} n=${99}/>
+                    </button>`)}
+                  </div>`}
+                <a href=${treeUrl} target="_blank" rel="noopener"
+                   className="mt-3 inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt transition-colors">
+                  Ver los parecidos en el árbol <${ExtIcon} size=${12}/></a>
+              </div>
+            </div>`}
+        </div>`;
+    }
+
     function CopySection({ D, rawPosts, filters, onPick }) {
       const [span, setSpan] = useState('filtro');
       const [dimX, setDimX] = useState('stage');
@@ -7177,6 +7286,7 @@
         return { cols, rowsI, cell };
       }, [rows, dimX]);
       const echoes = useMemo(() => cpEcho(byPl).slice(0, 4), [byPl]);
+      const histPl = useMemo(() => copyRows(rawPosts || pool), [rawPosts]);   // la revisión previa compara contra todo el histórico
 
       const Card = ({ title, sub, children, className = '' }) => html`
         <div className=${"rounded-xl bg-surface p-5 min-w-0 " + className}>
@@ -7223,6 +7333,7 @@
             <div className="text-[13px] text-txt3">${allCopy.length ? (withCopy ? 'Los copys de este filtro son de posts con pauta o sin ER básico, así que no hay con qué comparar.' : 'Los posts de este filtro no tienen copy capturado en el Sheet.') : 'No hay posts de TikTok, X o Threads en este filtro.'}</div>
             ${span === 'filtro' && html`<button onClick=${() => setSpan('hist')} className="mt-3 text-[12px] text-accent2 hover:underline">Ver el histórico 2025 + 2026</button>`}
           </div>
+          <div className="mt-3"><${CopyPreflight} byPl=${histPl} defPl=${cur} onPick=${onPick}/></div>
         </section>`;
 
       const maxShare = Math.max(...A.intents.map(g => g.share), 1);
@@ -7237,6 +7348,8 @@
               ${A.reading.map((s, i) => html`<p key=${i} className=${i === 0 ? "text-[16px] md:text-[18px] text-txt leading-snug font-medium" : "text-[13px] text-txt2 leading-relaxed"}>${s}</p>`)}
             </div>
           </div>
+
+          <${CopyPreflight} byPl=${histPl} defPl=${cur} onPick=${onPick}/>
 
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 mb-3">
             <${Card} className="xl:col-span-3" title="Lo que decimos vs. lo que conecta" sub="La barra es cuánto se publica de cada intención; el número, cómo rinde contra un post típico de la plataforma.">

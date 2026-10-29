@@ -236,11 +236,16 @@
     .jsel { max-width: 260px; background-color: rgb(var(--c-ink) / .55); backdrop-filter: blur(6px); }
     html.light .jsel { background-color: rgb(var(--c-surface2) / .9); }
     .jsel.on { background-color: rgb(var(--c-accent2)); color: #fff; }
+    #paint.on { background-color: rgb(var(--c-accent2) / .16); color: rgb(var(--c-txt)); }
     .jcard { position: absolute; top: 58px; left: 14px; z-index: 3; width: 260px; padding: 12px 14px; border-radius: 10px; background: rgb(var(--c-ink) / .82); backdrop-filter: blur(8px);
              font-size: 12.5px; animation: chipIn 420ms var(--ease-out) both; }
     html.light .jcard { background: rgb(var(--c-surface) / .95); box-shadow: 0 8px 28px rgba(10,10,15,.12); }
     .jcard .jt { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: rgb(var(--c-txt3)); }
     .jcard .jn { font-size: 16px; font-weight: 620; margin: 2px 0 8px; letter-spacing: -0.01em; }
+    .jcard .jn.jq { font-size: 13px; font-weight: 500; line-height: 1.35; }
+    .tip .cpy { margin-top: 8px; font-size: 12px; line-height: 1.4; color: rgb(var(--c-txt2)); }
+    .tip .cpy i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+    .tip .cpy b { font-weight: 600; color: rgb(var(--c-txt)); }
     .jcard dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
     .jcard dt { color: rgb(var(--c-txt3)); } .jcard dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
     .jcard button { margin-top: 10px; border: 0; background: rgb(var(--c-txt) / .08); color: rgb(var(--c-txt2)); border-radius: 7px; padding: 6px 10px; font: 500 12px var(--font); cursor: pointer; }
@@ -334,6 +339,7 @@
         <div class="ov">
           <div class="ov-l">
           <select class="sel jsel" id="journey" aria-label="Viaje de un producto"><option value="">Viaje de un producto…</option></select>
+          <select class="sel jsel" id="paint" aria-label="Color de las hojas"><option value="kpi">Color: cumple la meta</option><option value="copy">Color: intención del copy</option></select>
           <button class="back" id="back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Todas las campañas</button>
           </div>
           <div class="ov-r">
@@ -506,7 +512,7 @@
           pauta: clean(g(row, 'Tipo Pauta')), tipo: clean(g(row, 'Tipo Contenido')),
           reach: toNum(g(row, 'Alcance')) || 0, views: toNum(g(row, 'Views')),
           dur: toNum(g(row, 'Duración (seg)')), vtr: toNum(g(row, 'VTR %')), ber: toNum(g(row, 'ER Básico %')),
-          infl: clean(g(row, 'Nombre Influencer')),
+          infl: clean(g(row, 'Nombre Influencer')), copy: g(row, 'Copy') ? String(g(row, 'Copy')).trim() : null,
         });
       }
     });
@@ -534,6 +540,114 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const rgb = (n, a) => 'rgb(' + tok(n) + (a != null ? ' / ' + a : '') + ')';
+
+  // ============================================================
+  // COPY — mismas reglas que «Copy y mensaje» del dashboard (index.html). Si cambian allá, cambiarlas aquí.
+  // ============================================================
+  const COPY_PLATS = ['X', 'Threads', 'TikTok'];
+  const cpFold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const cpHas = (p) => {
+    const c = p && p.copy != null ? String(p.copy).trim() : '';
+    return c.length > 1 && !/^\[?\s*video no disponible/i.test(c) && !/^(n\/?a|-|—|sin copy)$/i.test(c);
+  };
+  const CP_INTENTS = [
+    { k: 'Entretener',            c: '#E8590C', d: 'Humor, voz del CM y situaciones con las que la gente se identifica.' },
+    { k: 'Vivir el momento',      c: '#C2255C', d: 'Se cuelga de un momento cultural: partido, concierto, estreno o tendencia.' },
+    { k: 'Conversar',             c: '#7A5AF8', d: 'Pregunta o pide comentar, completar o compartir.' },
+    { k: 'Anunciar',              c: '#4C6EF5', d: 'Lanzamiento, teaser, invitación o novedad.' },
+    { k: 'Explicar función',      c: '#1FA9B0', d: 'Cuenta qué hace el producto o una función.' },
+    { k: 'Enseñar',               c: '#2F9E6B', d: 'Tip, tutorial, hilo o paso a paso.' },
+    { k: 'Registrar / concursar', c: '#C73E6B', d: 'Pide registrarse, participar o ganar algo.' },
+    { k: 'Vender',                c: '#B08900', d: 'Promoción, precio, compra, preventa o canje.' },
+  ];
+  const CP_INTENT_C = Object.fromEntries(CP_INTENTS.map(i => [i.k, i.c]));
+  const CP_RX = {
+    venta: /descuento|oferta|promo\b|promocion|\bmsi\b|meses sin|precio|carrito|tiktok shop|\bcompra(?!rt)|\bcompralo|cupon|envio gratis|pre-?ordena|preventa|canje|estrena ahora|aprovecha|hot ?sale|buen ?fin|samsung week|samsung shop|live store/,
+    reg: /pre-?registr|registrate|\bparticipa|ganar? (?:un|uno|el|la)\b|concurso|trivia|premio|sorteo|\bregistro\b/,
+    anun: /presentamos|acompananos|se viene|nueva forma|esta por (?:llegar|desplegarse)|por desplegarse|\d{1,2} de (?:julio|febrero|enero|agosto|septiembre)|revelacion|dile hola|lo nuevo|el nuevo #?galaxy|la nueva|nuevos? galaxy|lanzamiento|invitacion|tu entrada|unpacked|se revela|algo nuevo|aparte el/,
+    tut: /\btips?\b|como (?:crear|hacer|usar|mostrar|escanear|ahorrar)|descubre como|paso a paso|\bhilo\b|aprende|te decimos|te contamos|todo lo que (?:tienes|necesitas) (?:que )?saber|checa como|solo (?:toca|usa)|activa (?!el audio)|haz swipe/,
+    conv: /coment|cuentanos|\bdinos\b|te leemos|los leemos|dejanos|completen|completa la frase|sube (?:esa|la|tu)\b|\bsuban\b|muestren|\bdigan\b|confiesen|levanten la mano|compartenos|comparte (?:tu|tus|la|el)\b|deja (?:tu|tus|screenshot)|responde|cual (?:es|fue|seria|va|sera)\b|que (?:harias|crees|opinas|te parece)|quien (?:creen|mas)|cuantas?\b.*\?|alguien mas|confirmen|adivinas|teoria|presumela|_{3,}/,
+    humor: /\batte\b|atentamente|\bel cm\b|\bpov\b|red flag|green flag|\byo:|\bel:|tambien yo|hay dos tipos|\bmood\b|manifestando|spoiler|main character|kinda|canonico|es cine|\bcrush\b|\bex\b|novela|\bjefa?\b|\blic\b|no pregunten|crisis|llorar|soy un 10|mi momento mas|mi genero|ranking de|cosas que me gustan|no tengo pruebas|friendly reminder|el verdadero|repitan conmigo|romantizando|desarrollo del personaje|me ilusion|ilusionarme/,
+    feat: /nightography|zoom|\d+ ?mp\b|\b\d+x\b|photo ?assist|horizontal lock|privacidad|circle ?to ?search|audio eraser|live translate|traductor|quick ?share|smart ?switch|smartthings|ai home|bespoke|bateria|mah\b|snapdragon|best face|object eraser|remasteriza|generative edit|sketch to image|note ?assist|now nudge|now brief|multi ?window|pantalla dividida|flex ?window|hi-?fi|cancelacion|head gestures|presion arterial|apnea|antioxid|running coach|sueno|ritmo cardiaco|ultra ?delgad|plegable|camara|lentes|gran angular|fan ?cam|super steady|s pen|composer|gemini|bixby|galaxy ai|awesome/,
+    cread: /creado por|captured by|captures|team ?galaxy|members? stars?|nos acompano|nos llevamos|(?:con|por) @/,
+    prod: /galaxy|fold|flip|watch|buds|tab s|\bring\b|samsung|smartthings/,
+    link: /link (?:en|de) (?:la )?bio|https?:\/\/|bit\.ly|samsung\.com|conoce mas|mas informacion/,
+    first: /(?:^|[^a-z])(?:yo|mi|me|estoy|tengo|soy|mis|necesito|quiero|pienso|conmigo)(?:[^a-z]|$)/,
+    futbol: /mundial|partido|\bgol\b|futbol|mexico vs|corea|chequia|inglaterra|portero|seleccion|lamejorvision|mejor vision del juego/,
+    pop: /\bbts\b|j-hope|arirang|netflix|kpop|harry|stranger|vecna|oscar|super ?bowl|taylor|concierto|festival|corona capital/,
+    fecha: /navidad|santa\b|reyes|ano nuevo|fin de ano|madres|dia del nino|dia de la|dia mundial|dia del gamer|halloween|muertos|jacaranda|otono|vacaciones|temporada|buen ?fin|hot ?sale|samsung week|san valentin|amor y amistad/,
+  };
+  const CP_STOP = new Set(('para pero entre sobre desde hasta cuando donde tiene tienen como esta este estos estas todo todos toda todas cada mucho muchos mucha nada algo solo sola tambien porque aqui alla ahora antes despues mientras siempre nunca puede pueden hace hacer haz tus sus nuestro nuestra nuestros nuestras usted ustedes ellos ellas eres somos sera seran estar estan estamos tener tengo tienes tenemos sino ademas cual cuales quien quienes cuanto otra otro otros otras mismo misma mejor mejores mas menos muy bien aqui ahi esto eso esos esas aquel cosa cosas vez veces dia dias sabes hasta luego conoce link bio samsung galaxy nuevo nueva nuevos nuevas').split(' '));
+
+  function copyProfile(p) {
+    if (!cpHas(p)) return null;
+    if (p._cp && p._cpSrc === p.copy) return p._cp;
+    const raw = String(p.copy).trim();
+    const t = cpFold(raw);
+    const firstRaw = raw.split(/(?<=[.!?…])\s|\n|​/)[0].slice(0, 140);
+    const f = cpFold(firstRaw);
+    const humor = CP_RX.humor.test(t);
+    const voz = humor || (CP_RX.first.test(t) && !/\bnuestr|\bnosotros\b/.test(t)) ? 'Persona' : 'Marca';
+    let intent;
+    if (CP_RX.reg.test(t) && !humor) intent = 'Registrar / concursar';
+    else if (CP_RX.venta.test(t) && voz === 'Marca') intent = 'Vender';
+    else if (humor || (voz === 'Persona' && !CP_RX.link.test(t))) intent = 'Entretener';
+    else if (CP_RX.conv.test(t) && !CP_RX.anun.test(f) && !CP_RX.feat.test(f)) intent = 'Conversar';
+    else if ((CP_RX.futbol.test(t) || CP_RX.pop.test(t)) && (!CP_RX.link.test(t) || !CP_RX.feat.test(t))) intent = 'Vivir el momento';
+    else if (CP_RX.anun.test(t) && !CP_RX.tut.test(t)) intent = 'Anunciar';
+    else if (CP_RX.tut.test(t)) intent = 'Enseñar';
+    else if (CP_RX.feat.test(t)) intent = 'Explicar función';
+    else if (CP_RX.conv.test(t)) intent = 'Conversar';
+    else if (CP_RX.anun.test(t)) intent = 'Anunciar';
+    else intent = t.length < 90 ? 'Entretener' : 'Explicar función';
+    const terr = CP_RX.futbol.test(t) ? 'Fútbol' : CP_RX.pop.test(t) ? 'Cultura pop' : CP_RX.fecha.test(t) ? 'Fechas y temporadas'
+      : CP_RX.cread.test(t) ? 'Creadores y comunidad' : CP_RX.feat.test(t) ? 'Tecnología' : 'Vida cotidiana';
+    let gancho;
+    if (/^\s*[¿?]/.test(firstRaw) || /\?\s*$/.test(firstRaw)) gancho = 'Pregunta';
+    else if (/\byo:|\bel:|\bpov\b|hay dos tipos|red flag|green flag|ranking|lunes:|cosas que|objetivo:|^\s*-/.test(f)) gancho = 'Formato meme';
+    else if (/cualquier telefono|solo galaxy|tu telefono puede/.test(t)) gancho = 'Reto comparativo';
+    else if (/\d+ ?(?:mp|x|mah|%|mm|anos|horas|minutos)\b/.test(f)) gancho = 'Dato';
+    else if (CP_RX.first.test(f)) gancho = 'Confesión';
+    else if (/^\s*¡?(descubre|conoce|captura|usa|haz|encuentra|obten|recibe|crea|dale|sigue|pon|explora|comenta|comparte|sube|presume|conectate|activa|agrega|disfruta|estrena|graba|sujetalo|confirmen|digan|muestren|completen|intenten|imaginate|acompananos|pre-?registrate|participa|obsesionate|flechate|expresate|mantente|relajate|juega|sintoniza|pausa|da tap|desliza|prueba|repitan|cambia|elige|transforma|quedate|mira|escucha|cuida|vive)\b/.test(f)) gancho = 'Imperativo';
+    else gancho = 'Afirmación';
+    const cta = CP_RX.conv.test(t) ? 'Pide comentar' : (CP_RX.link.test(t) || CP_RX.venta.test(t)) ? 'Link o compra' : CP_RX.reg.test(t) ? 'Registro' : 'Sin CTA';
+    const m = t.match(CP_RX.prod);
+    const pos = m ? m.index / Math.max(1, t.length) : null;
+    const prod = !m ? 'No lo nombra' : pos < 0.34 ? 'Al inicio' : pos > 0.6 ? 'Como remate' : 'En medio';
+    const tags = (raw.match(/#[\p{L}\p{N}_]+/gu) || []);
+    const nh = tags.length;
+    const emo = (raw.match(/\p{Extended_Pictographic}/gu) || []).length;
+    const len = raw.length;
+    const lenB = len <= 60 ? '≤60 caracteres' : len <= 120 ? '61 a 120' : len <= 200 ? '121 a 200' : 'Más de 200';
+    const hashB = nh === 0 ? 'Sin hashtags' : nh <= 2 ? '1 o 2' : '3 o más';
+    const words = new Set();
+    for (const h of tags) words.add(cpFold(h));
+    for (const w of cpFold(raw.replace(/#[\p{L}\p{N}_]+/gu, ' ').replace(/https?:\/\/\S+|@\S+/g, ' ')).split(/[^a-z0-9ñ]+/)) {
+      if (w.length >= 4 && !CP_STOP.has(w) && !/^\d+$/.test(w)) words.add(w);
+    }
+    if (/\batte\b|atentamente/.test(t)) words.add('atte. el cm');
+    const out = { intent, voz, terr, gancho, cta, prod, len, lenB, nh, hashB, emo, cm: /\batte\b|atentamente|\bel cm\b/.test(t), words: [...words] };
+    p._cp = out; p._cpSrc = p.copy;
+    return out;
+  }
+
+  const cpSim = (a, b) => {
+    const A = new Set(a.words), B = b.words; let inter = 0;
+    for (const w of B) if (A.has(w)) inter++;
+    const uni = A.size + B.length - inter;
+    return (uni ? inter / uni : 0) + (a.intent === b.intent ? 0.15 : 0) + (a.gancho === b.gancho ? 0.05 : 0);
+  };
+  let PAINT = 'kpi', DRAFT = null, JSET = null, prevPlats = null;
+  const jOn = () => !!(JOURNEY || JSET);
+  const jIn = p => JSET ? JSET.has(p) : p.pr === JOURNEY;
+  // Borrador que llega desde el dashboard (?copy=…&cp=…): se encienden las hojas de los copys más parecidos
+  function computeDraft() {
+    JSET = null;
+    if (!DRAFT || !VIEW) return;
+    const sc = VIEW.posts.map(p => { const c = copyProfile(p); return c ? { p, s: cpSim(DRAFT.prof, c) + (p.plat === DRAFT.plat ? 0.05 : 0) } : null; })
+      .filter(x => x && x.s >= 0.2).sort((a, b) => b.s - a.s).slice(0, 12);
+    DRAFT.n = sc.length; JSET = new Set(sc.map(x => x.p));
+  }
 
   function eligible(p, lz) {
     if (lz === 'vtr') return !p.stories && (p.vtr || 0) > 0 && (p.dur || 0) > 0 && p.dur <= 30;
@@ -699,7 +813,7 @@
     el.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', onUp);
     el.addEventListener('pointerleave', () => { if (pinned == null && hover != null) { hover = null; tip.hidden = true; dirty = true; } });
-    window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null || JOURNEY)) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); else if (JOURNEY) setJourney(null); } });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && (focus || pinned != null || jOn())) { pinned = null; tip.hidden = true; if (focus) setFocus(focus); else if (jOn()) setJourney(null); } });
     themeGL();
     GL = true;
     requestAnimationFrame(frame);
@@ -804,7 +918,7 @@
       const cx = own[i] >= 0 ? TREE.camps[own[i]] : null;
       if (cx && lens !== 'plat' && cx.st && cx.st.n) col = tmpC.copy(wood).lerp(cx.st.avg >= TREE.g ? good : bad, 0.3);
       if (ai != null && own[i] >= 0) col = own[i] === ai ? tmpC.copy(col).lerp(hi, 0.3) : tmpC.copy(wood).lerp(dim, 0.82);
-      if (JOURNEY && own[i] >= 0) col = tmpC.copy(wood).lerp(dim, 0.7);
+      if (jOn() && own[i] >= 0) col = tmpC.copy(wood).lerp(dim, 0.7);
       c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b;
     }
     branches.geometry.attributes.color.needsUpdate = true;
@@ -812,6 +926,7 @@
 
   // ---------- hojas
   function leafColorBase(p) {
+    if (PAINT === 'copy') { const c = copyProfile(p); return c ? tmpC.set(CP_INTENT_C[c.intent]) : tmpC.copy(tokColor('--c-txt3')).lerp(tokColor('--c-surface'), 0.55); }
     if (lens === 'plat') return tmpC.set(PLAT_COLORS[p.plat]);
     if (!hasGoal(p, lens)) return tmpC.copy(tokColor('--c-accent'));
     return tmpC.copy(meetsP(p, lens) ? tokColor('--c-success') : tokColor('--c-bad'));
@@ -820,9 +935,9 @@
     const L = p.leaf;
     if (!L) return { x: 0, y: TRUNK, z: 0, s: 0, r: 0, g: 0, b: 0 };
     const c = leafColorBase(p).clone();
-    const off = (focus && p.c !== focus) || (JOURNEY && p.pr !== JOURNEY);
+    const off = (focus && p.c !== focus) || (jOn() && !jIn(p));
     if (off) c.lerp(tokColor('--c-surface'), 0.86);
-    let s = L.s * (focus && p.c === focus ? 1.25 : off ? 0.6 : 1) * (JOURNEY && p.pr === JOURNEY ? 1.35 : 1);
+    let s = L.s * (focus && p.c === focus ? 1.25 : off ? 0.6 : 1) * (jOn() && jIn(p) ? 1.35 : 1);
     if (!vis(p)) return { x: L.sub.node.x, y: L.sub.node.y, z: L.sub.node.z, s: 0, r: c.r, g: c.g, b: c.b };   // brota desde su rama
     return { x: L.pos.x, y: L.pos.y, z: L.pos.z, s, r: c.r, g: c.g, b: c.b };
   }
@@ -872,8 +987,8 @@
       if (!p.leaf || !p.a || p.a.s < 0.05) return;
       const s = p.leaf.sub.node, e = p.a, m = { x: s.x + (e.x - s.x) * 0.45, y: Math.max(s.y, e.y) * 0.9 + s.y * 0.1, z: s.z + (e.z - s.z) * 0.45 };
       let al = base * gk;
-      if ((focus && p.c !== focus) || (JOURNEY && p.pr !== JOURNEY)) al *= 0.12;
-      else if ((focus && p.c === focus) || (JOURNEY && p.pr === JOURNEY)) al = Math.min(1, al * 2.2);
+      if ((focus && p.c !== focus) || (jOn() && !jIn(p))) al *= 0.12;
+      else if ((focus && p.c === focus) || (jOn() && jIn(p))) al = Math.min(1, al * 2.2);
       let px = s.x, py = s.y, pz = s.z;
       for (let k = 1; k <= 5; k++) {
         const t = k / 5, u = 1 - t;
@@ -900,7 +1015,7 @@
     path.visible = true;
   }
   function writePulses() {
-    const curve = sapCurve || (JOURNEY && jcurve);
+    const curve = sapCurve || (JOURNEY && !JSET && jcurve);
     if (!curve || REDUCED) { pulses.visible = false; return; }
     const n = sapCurve ? 6 : 8, pos = new Float32Array(n * 3), per = sapCurve ? 1700 : 9000;
     for (let j = 0; j < n; j++) { const q = curve.getPointAt(((tNow / per) + j / n) % 1); pos[j * 3] = q.x; pos[j * 3 + 1] = q.y; pos[j * 3 + 2] = q.z; }
@@ -910,7 +1025,7 @@
   function writeJourney() {
     if (jtube) { scene.remove(jtube); jtube.geometry.dispose(); jtube = null; }
     jcurve = null;
-    if (!JOURNEY || !VIEW) return;
+    if (!JOURNEY || JSET || !VIEW) return;
     const pts = [];
     VIEW.posts.filter(p => p.pr === JOURNEY && vis(p) && p.leaf && p.a && p.a.s > 0.05).sort((a, b) => a.d - b.d).forEach(p => {
       const v = new THREE.Vector3(p.a.x, p.a.y, p.a.z);
@@ -928,12 +1043,12 @@
   function writeRoots() {
     if (!roots || !VIEW || !STEPS.length) { if (roots) roots.count = 0; return; }
     const lz = treeLens(), kpi = lens !== 'plat', n = STEPS.length, cur = UPTO ? STEPS.indexOf(UPTO) : n - 1;
-    const key = [VIEW.pid, VIEW.posts.length, lz, kpi, cur, focus, JOURNEY, document.documentElement.classList.contains('light')].join('|');
+    const key = [VIEW.pid, VIEW.posts.length, lz, kpi, cur, focus, JOURNEY, JSET ? JSET.size : 0, PAINT, document.documentElement.classList.contains('light')].join('|');
     if (key === rootsKey) return;
     rootsKey = key;
     const rows = STEPS.map((st, i) => {
       const from = i ? STEPS[i - 1] : new Date(0);
-      const ps = VIEW.posts.filter(p => p.d > from && p.d <= st && (!focus || p.c === focus) && (!JOURNEY || p.pr === JOURNEY));
+      const ps = VIEW.posts.filter(p => p.d > from && p.d <= st && (!focus || p.c === focus) && (!jOn() || jIn(p)));
       if (!kpi) return { a: ps.length, b: 0, c: 0 };
       const e = ps.filter(p => eligible(p, lz)), gl = e.filter(p => hasGoal(p, lz));
       return { a: gl.filter(p => meetsP(p, lz)).length, b: gl.length - gl.filter(p => meetsP(p, lz)).length, c: e.length - gl.length };
@@ -1005,11 +1120,11 @@
     if (!VIEW || !TREE) return;
     const narrow = stage.getBoundingClientRect().width < 640, lz = TREE.lz;
     // los mejores contenidos de la copa
-    const pool = VIEW.posts.filter(p => p.leaf && vis(p) && (!focus || p.c === focus) && (!JOURNEY || p.pr === JOURNEY));
+    const pool = VIEW.posts.filter(p => p.leaf && vis(p) && (!focus || p.c === focus) && (!jOn() || jIn(p)));
     pool.sort((a, b) => val(b, lz) - val(a, lz)).slice(0, narrow ? 4 : 7).forEach((p, i) => {
       const el = document.createElement('button');
       el.className = 'chip tchip'; el.style.setProperty('--d', (i * 60) + 'ms');
-      el.innerHTML = '<b class="' + (hasGoal(p, lz) ? (meetsP(p, lz) ? 'ok' : 'bad') : '') + '">' + pct(val(p, lz), KPI[lz].dec) + '</b><span>' + esc([p.fmt, p.pr || p.c, p.plat].filter(Boolean).join(' · ')) + '</span>';
+      el.innerHTML = '<b class="' + (hasGoal(p, lz) ? (meetsP(p, lz) ? 'ok' : 'bad') : '') + '">' + pct(val(p, lz), KPI[lz].dec) + '</b><span>' + esc(JSET && p.copy ? (p.copy.length > 34 ? p.copy.slice(0, 33) + '…' : p.copy) + ' · ' + p.plat : [p.fmt, p.pr || p.c, p.plat].filter(Boolean).join(' · ')) + '</span>';
       el.addEventListener('click', e => { e.stopPropagation(); pinned = p.i; hover = p.i; dirty = true; showTip(p, true); });
       el.addEventListener('mouseenter', () => { if (pinned == null) { hover = p.i; dirty = true; } });
       el.addEventListener('mouseleave', () => { if (pinned == null && hover === p.i) { hover = null; dirty = true; } });
@@ -1017,7 +1132,7 @@
       labelItems.push({ el, kind: 'leaf', p, w: el.offsetWidth, h: el.offsetHeight });
     });
     // nombres de campaña en sus ramas
-    if (!JOURNEY) {
+    if (!jOn()) {
       const camps = focus ? TREE.camps.filter(x => x.n === focus) : TREE.camps.slice().sort((a, b) => b.list.length - a.list.length).slice(0, narrow ? 4 : 8);
       camps.forEach(x => {
         const s = stats(x.list.filter(vis), lz), el = document.createElement('button');
@@ -1196,7 +1311,7 @@
     const hits = ray.intersectObject(leaves, false);
     for (const hit of hits) {
       const p = VIEW.posts[hit.instanceId];
-      if (!p || !p.leaf || !vis(p) || (focus && p.c !== focus) || (JOURNEY && p.pr !== JOURNEY)) continue;
+      if (!p || !p.leaf || !vis(p) || (focus && p.c !== focus) || (jOn() && !jIn(p))) continue;
       return p;
     }
     return null;
@@ -1233,6 +1348,7 @@
       '<dt>Duración</dt><dd>' + (p.dur ? Math.round(p.dur) + ' s' : '—') + '</dd>' +
       '<dt>VTR</dt><dd>' + kv(p.vtr, 'vtr') + '</dd><dt>ER básico</dt><dd>' + kv(p.ber, 'er') + '</dd>' +
       (p.infl ? '<dt>Influencer</dt><dd>' + esc(p.infl) + '</dd>' : '') + '</dl>' +
+      (copyProfile(p) ? '<div class="cpy"><i style="background:' + CP_INTENT_C[copyProfile(p).intent] + '"></i><b>' + esc(copyProfile(p).intent) + '</b> · ' + esc(p.copy.length > 160 ? p.copy.slice(0, 158) + '…' : p.copy) + '</div>' : '') +
       (pin ? '<div class="links">' + (p.link && /^https?:/i.test(p.link) ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener">Abrir post ↗</a>' : '') +
         (sheet ? '<a href="' + esc(sheet) + '" target="_blank" rel="noopener">Fila ' + p.row + ' en el Sheet ↗</a>' : '') + '</div>' +
         (p.pr && JOURNEY !== p.pr ? '<button class="jlink" data-pr="' + esc(p.pr) + '">Ver el viaje de ' + esc(p.pr) + ' →</button>' : '')
@@ -1249,7 +1365,7 @@
     tip.style.transform = 'translate(' + Math.max(10, x).toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
   }
   function setFocus(c) {
-    if (JOURNEY && c !== focus) { JOURNEY = null; syncJourneyUI(); }
+    if (jOn() && c !== focus) { JOURNEY = null; DRAFT = null; JSET = null; syncJourneyUI(); }
     focus = focus === c ? null : c; pinned = null; hover = null; tip.hidden = true;
     refresh();
   }
@@ -1393,6 +1509,11 @@
   }
   function renderLegend() {
     const el = document.getElementById('legend'), lz = lens === 'plat' ? 'vtr' : lens;
+    if (PAINT === 'copy') {
+      el.innerHTML = CP_INTENTS.map(i => '<span><i style="background:' + i.c + '"></i>' + esc(i.k) + '</span>').join('') + '<span><i style="background:' + rgb('--c-txt3', 0.45) + '"></i>Sin copy</span>' +
+        '<span>Color = intención del copy (TikTok, X y Threads) · más alto = mejor ' + (lz === 'vtr' ? 'VTR' : 'ER') + ' · tamaño = alcance</span>';
+      return;
+    }
     el.innerHTML = (lens === 'plat' ? Object.entries(PLAT_COLORS).map(([k, v]) => '<span><i style="background:' + v + '"></i>' + k + '</span>').join('')
       : '<span><i style="background:' + rgb('--c-success') + '"></i>Cumple</span><span><i style="background:' + rgb('--c-bad') + '"></i>No cumple</span>' +
         (erMixed() ? '<span><i style="background:' + rgb('--c-accent') + '"></i>Sin meta (no es Instagram)</span>' : '')) +
@@ -1538,17 +1659,36 @@
     if (!VIEW) { sel.innerHTML = '<option value="">Viaje de un producto…</option>'; return; }
     const cnt = d3.rollups(VIEW.posts.filter(p => p.pr), v => [v.length, new Set(v.map(p => p.c)).size], p => p.pr).sort((a, b) => b[1][0] - a[1][0]);
     if (JOURNEY && !cnt.some(x => x[0] === JOURNEY)) JOURNEY = null;
+    computeDraft();
     sel.innerHTML = '<option value="">Viaje de un producto…</option>' + cnt.map(([pr, [n, k]]) =>
       '<option value="' + esc(pr) + '"' + (pr === JOURNEY ? ' selected' : '') + '>' + esc(pr) + ' · ' + n + ' posts · ' + k + ' camp.</option>').join('');
     syncJourneyUI();
   }
   function syncJourneyUI() {
     const sel = $('journey'); sel.value = JOURNEY || ''; sel.classList.toggle('on', !!JOURNEY);
+    const ps = $('paint'); if (ps) { ps.value = PAINT; ps.classList.toggle('on', PAINT === 'copy'); }
     renderJourneyCard();
   }
   function renderJourneyCard() {
     const el = $('jcard');
-    if (!JOURNEY || !VIEW) { el.hidden = true; return; }
+    if (!jOn() || !VIEW) { el.hidden = true; return; }
+    if (JSET) {
+      const L = [...JSET].filter(vis), lz = treeLens();
+      // cada parecido contra la mediana orgánica de SU plataforma (X y Threads tienen ER muy distintos)
+      const bases = {}; COPY_PLATS.forEach(pl => { bases[pl] = d3.median(VIEW.posts.filter(p => p.plat === pl && p.ber > 0 && !/paid|pauta|pagad/i.test(p.pauta || '')), p => p.ber); });
+      const med = d3.median(L.filter(p => p.ber > 0), p => p.ber);
+      const ratio = d3.median(L.filter(p => p.ber > 0 && bases[p.plat]), p => p.ber / bases[p.plat]), base = ratio != null ? 1 : null;
+      el.innerHTML = '<div class="jt">Copys parecidos a tu borrador</div><div class="jn jq">«' + esc(DRAFT.text.length > 120 ? DRAFT.text.slice(0, 118) + '…' : DRAFT.text) + '»</div>' +
+        (L.length ? '<dl><dt>Parecidos en el periodo</dt><dd>' + L.length + '</dd><dt>Plataformas</dt><dd>' + esc([...new Set(L.map(p => p.plat))].join(', ')) + '</dd>' +
+          '<dt>Campañas</dt><dd>' + new Set(L.map(p => p.c)).size + '</dd>' +
+          (med != null ? '<dt>ER básico mediano</dt><dd>' + pct(med, 2) + '</dd>' : '') +
+          (ratio != null ? '<dt>Contra un post típico</dt><dd><span class="' + (ratio >= 1.15 ? 'ok' : ratio <= 0.87 ? 'bad' : '') + '">' + ratio.toFixed(1) + '×</span></dd>' : '') + '</dl>'
+          : '<div class="hint2" style="margin:4px 0 0">Nada parecido en este periodo y selección. Prueba otro año o más plataformas.</div>') +
+        '<button id="jclose">Cerrar</button>';
+      el.hidden = false;
+      $('jclose').onclick = () => setJourney(null);
+      return;
+    }
     const all = VIEW.posts.filter(p => p.pr === JOURNEY), L = all.filter(vis);
     const camps = new Set(L.map(p => p.c)).size, plats = new Set(L.map(p => p.plat)).size;
     let kpi = '';
@@ -1563,7 +1703,7 @@
     $('jclose').onclick = () => setJourney(null);
   }
   function setJourney(pr) {
-    JOURNEY = pr || null;
+    JOURNEY = pr || null; DRAFT = null; JSET = null;
     pinned = null; hover = null; tip.hidden = true;
     if (focus) { focus = null; }
     syncJourneyUI();
@@ -1596,6 +1736,18 @@
       const cur = ps.some(p => p.id === saved) ? saved : (ps.find(p => p.id === 'y' + new Date().getFullYear()) || ps[0]).id;
       sel.innerHTML = ps.map(p => '<option value="' + p.id + '"' + (p.id === cur ? ' selected' : '') + '>' + p.label + '</option>').join('');
       $('state').hidden = true;
+      // borrador desde «Revisa un copy» del dashboard
+      try {
+        const q = new URLSearchParams(location.search), t = (q.get('copy') || '').trim(), pl = q.get('cp');
+        if (t.length >= 8) {
+          const prof = copyProfile({ copy: t });
+          if (prof) {
+            DRAFT = { text: t, plat: COPY_PLATS.includes(pl) ? pl : 'X', prof };
+            PAINT = 'copy'; prevPlats = new Set(PLATS); PLATS = new Set(COPY_PLATS);
+            lens = 'er'; document.querySelectorAll('.seg button[data-lens]').forEach(x => x.setAttribute('aria-checked', String(x.dataset.lens === 'er')));
+          }
+        }
+      } catch (er) {}
       setPeriod(cur);
     } catch (e) {
       if (e.expired) { signOut(e.message); return; }
@@ -1617,6 +1769,14 @@
   $('tlplay').addEventListener('click', () => { hideHint(); setPlay(!playing); });
   $('tlrange').addEventListener('input', e => { setPlay(false); hideHint(); setUpto(+e.target.value, false); });
   $('journey').addEventListener('change', e => setJourney(e.target.value));
+  $('paint').addEventListener('change', e => {
+    PAINT = e.target.value === 'copy' ? 'copy' : 'kpi';
+    if (PAINT === 'copy' && lens === 'vtr') { lens = 'er'; document.querySelectorAll('.seg button[data-lens]').forEach(x => x.setAttribute('aria-checked', String(x.dataset.lens === 'er'))); }
+    // el copy solo existe en TikTok, X y Threads: se muestran esas; al volver, regresan las plataformas que había
+    if (PAINT === 'copy') { prevPlats = new Set(PLATS); PLATS = new Set(COPY_PLATS); }
+    else if (prevPlats) { PLATS = prevPlats; prevPlats = null; }
+    if (PID) setPeriod(PID);
+  });
   tip.addEventListener('click', e => { const b = e.target.closest('.jlink'); if (b) setJourney(b.dataset.pr); });
   window.addEventListener('keydown', e => { if (e.key === ' ' && e.target === document.body && VIEW) { e.preventDefault(); setPlay(!playing); } });
   document.querySelectorAll('.vseg button').forEach(b => b.addEventListener('click', () => { lastTouch = performance.now(); hideHint(); setView(b.dataset.view); }));
