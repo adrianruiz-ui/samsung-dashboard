@@ -1575,6 +1575,7 @@
           { id: 'sec-top-posts',    name: 'Top posts' },
           { id: 'sec-vtr',          name: 'VTR' },
           { id: 'sec-influencers',  name: 'Influencers' },
+          { id: 'sec-threads',      name: 'Laboratorio de Threads' },
           { id: 'sec-mezcla',       name: 'Mezcla' },
           { id: 'sec-cadencia',     name: 'Cadencia' },
           { id: 'sec-horarios',     name: 'Horarios' },
@@ -1582,8 +1583,6 @@
           { id: 'sec-comparativas', name: 'Comparativas' },
           { id: 'sec-catalogo',     name: 'Catálogo' },
           { id: 'sec-tiktok',       name: 'TikTok creativo' },
-          { id: 'sec-copy',         name: 'Copy y mensaje' },
-          { id: 'sec-threads',      name: 'Threads · copy' },
           { id: 'sec-simulador',    name: 'Simulador' },
           { id: 'sec-anomalias',    name: 'Anomalías' },
           { id: 'sec-calidad',      name: 'Calidad de datos' },
@@ -1647,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-29-v87';
+    const BUILD_VERSION = '2026-10-29-v88';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -2269,6 +2268,7 @@
       { id: 'top-posts',    label: 'Top posts',          Icon: RowsIcon,     group: 'resultados' },
       { id: 'vtr',          label: 'VTR',                Icon: PlayIcon,     group: 'resultados' },
       { id: 'influencers',  label: 'Influencers',        Icon: StarIcon,     group: 'resultados' },
+      { id: 'threads',      label: 'Laboratorio de Threads', Icon: QuoteIcon, group: 'analisis' },
       { id: 'mezcla',       label: 'Mezcla',             Icon: DonutIcon,    group: 'analisis' },
       { id: 'cadencia',     label: 'Cadencia',           Icon: CalendarIcon, group: 'analisis' },
       { id: 'horarios',     label: 'Horarios',           Icon: ClockIcon,    group: 'analisis' },
@@ -2276,8 +2276,6 @@
       { id: 'comparativas', label: 'Comparativas',       Icon: CompareIcon,  group: 'analisis' },
       { id: 'catalogo',     label: 'Catálogo',           Icon: BagIcon,      group: 'analisis' },
       { id: 'tiktok',       label: 'TikTok creativo',    Icon: PlayIcon,     group: 'analisis' },
-      { id: 'copy',         label: 'Copy y mensaje',     Icon: QuoteIcon,    group: 'analisis' },
-      { id: 'threads',      label: 'Threads · copy',     Icon: QuoteIcon,    group: 'analisis' },
       { id: 'simulador',    label: 'Simulador',          Icon: TargetIcon,   group: 'analisis' },
       { id: 'anomalias',    label: 'Anomalías',          Icon: AlertIcon,    group: 'control' },
       { id: 'calidad',      label: 'Calidad de datos',   Icon: ShieldIcon,   group: 'control' },
@@ -6547,7 +6545,6 @@
               </table>
               <div className="text-[11px] text-txt4 mt-2">Verde/ámbar: arriba o abajo de la mediana de TikTok del filtro (VTR ${pct(medVtr)} · ER básico ${pct(medBer)}).</div>`}
             </div>`}
-          <${TikTokCopyNote} posts=${ttAll}/>
         </section>`;
     }
 
@@ -7141,10 +7138,10 @@
             <p className="text-[14px] text-txt leading-relaxed whitespace-pre-line break-words">${String(post.copy).trim()}</p>
             ${cp && html`<div className="mt-3"><${CpTags} cp=${cp}/></div>`}
             ${cp && ctx && ctx.idx != null && html`
-              <p className="text-[12px] text-txt3 mt-3 leading-snug">
-                ${ctx.paid ? 'Post con pauta: el índice se calcula contra el orgánico y tómalo con cuidado. ' : ''}Rindió <b className="text-txt">${cpIdxTxt(ctx.idx)}</b> el ER básico de lo normal de ${post.platform} en esos días.
-                ${ctx.intN >= 4 ? html` Los copys de «${cp.intent}» en ${post.platform} rinden ${cpIdxTxt(ctx.intIdx)} (${ctx.intN} posts orgánicos).` : ''}
-              </p>`}
+              <div className="flex flex-wrap items-center gap-2 mt-3 text-[12px] text-txt3">
+                <span>Contra lo normal de ${post.platform} en esos días:</span><${ThWord} v=${ctx.idx} n=${99}/>
+                ${ctx.paid ? html`<span className="text-txt4">(post con pauta: tómalo con cuidado)</span>` : ''}
+              </div>`}
           </div>
         </div>`;
     }
@@ -7727,12 +7724,12 @@
 
       const header = html`
         <div className="mb-4">
-          <h2 className="text-[18px] font-medium text-txt">Threads · Laboratorio de copy</h2>
+          <h2 className="text-[18px] font-medium text-txt">Laboratorio de Threads</h2>
           <p className="text-txt4 text-[12px] mt-1 max-w-3xl">Para el equipo que escribe Threads. Todo se compara contra lo normal de la cuenta en esos mismos días, así que lo que ves es el efecto del copy y no el del momento (un partido del Mundial sube todo). Usa todo el histórico orgánico de Threads.</p>
         </div>`;
       if (!A) return html`
         <section id="sec-threads" className="px-4 md:px-7 py-7 relative group">
-          <${SectionExportBtn} sectionId="sec-threads" name="Threads copy" />
+          <${SectionExportBtn} sectionId="sec-threads" name="Laboratorio de Threads" />
           ${header}
           <div className="rounded-xl bg-surface p-8 text-center text-[13px] text-txt3">Hay ${rows.length} copys orgánicos de Threads con los filtros actuales: muy pocos para leer patrones. Revisa el filtro de pauta.</div>
         </section>`;
@@ -7848,7 +7845,9 @@
                       ${d.sims.map((x, j) => html`<button key=${j} onClick=${(e) => pick(e, x.p)} className="w-full text-left rounded-md bg-surface px-2.5 py-1.5 hover:bg-onSurface/[0.05] flex items-start gap-2">
                         <span className="flex-1 min-w-0 text-[11px] text-txt2 leading-snug line-clamp-2">${String(x.p.copy).trim()}</span><${ThWord} v=${x.idx} n=${99}/></button>`)}
                     </div>`
-                    : html`<div className="text-[11px] text-txt3">No se parece a nada que hayamos publicado: territorio nuevo.</div>`}`}
+                    : html`<div className="text-[11px] text-txt3">No se parece a nada que hayamos publicado: territorio nuevo.</div>`}
+                  <a href=${`mapa-3d.html?copy=${encodeURIComponent(drafts[d.i].trim().slice(0, 600))}&cp=Threads`} target="_blank" rel="noopener"
+                     className="self-start inline-flex items-center gap-1.5 text-[11px] text-accent2 hover:underline">Ver los parecidos en el árbol <${ExtIcon} size=${11}/></a>`}
               </div>`; })}
           </div>
         </div>
@@ -7960,7 +7959,7 @@
 
       return html`
         <section id="sec-threads" className="px-4 md:px-7 py-7 relative group">
-          <${SectionExportBtn} sectionId="sec-threads" name="Threads copy" />
+          <${SectionExportBtn} sectionId="sec-threads" name="Laboratorio de Threads" />
           ${header}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4" role="tablist" aria-label="Laboratorio de Threads">
             ${TABS.map(([k, l, d], i) => html`<button key=${k} role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}
@@ -11669,10 +11668,11 @@
       // El laboratorio creativo de TikTok solo existe cuando el filtro de plataforma es únicamente TikTok
       const ttOnly = filters.platforms.length === 1 && filters.platforms[0] === 'TikTok';
       // v84 — Copy y mensaje solo aplica si el filtro incluye TikTok, X o Threads
-      const copyOn = !filters.platforms.length || filters.platforms.some(p => COPY_PLATS.includes(p));
+
       // v86 — el laboratorio de Threads aparece cuando el filtro es solo Threads (igual que TikTok creativo)
-      const thOnly = filters.platforms.length === 1 && filters.platforms[0] === 'Threads';
-      const navHidden = [...(ttOnly ? [] : ['tiktok']), ...(copyOn ? [] : ['copy']), ...(thOnly ? [] : ['threads'])];
+      // v88 — el laboratorio de Threads se ve siempre que el filtro incluya Threads, y va primero en Análisis
+      const thOn = !filters.platforms.length || filters.platforms.includes('Threads');
+      const navHidden = [...(ttOnly ? [] : ['tiktok']), ...(thOn ? [] : ['threads'])];
 
       return html`
         <div className="min-h-screen bg-ink text-txt flex">
@@ -11783,8 +11783,9 @@
                 <${SectionGuard} name="VTR" resetKey=${guardKey}><${VtrSection}         D=${D} onPick=${setSelected}/><//>
                 <${SectionGuard} name="Influencers" resetKey=${guardKey}><${InfluencersSection} D=${D} onPick=${setSelected}/><//>
 
-                <${GroupBlock} id="analisis" label="Análisis" hint=${`Mezcla, cadencia, horarios, promedios, comparativas, catálogo${ttOnly ? ', TikTok creativo' : ''}${copyOn ? ', copy y mensaje' : ''}${thOnly ? ', Threads · copy' : ''} y simulador`}
-                  count=${7 + (ttOnly ? 1 : 0) + (copyOn ? 1 : 0) + (thOnly ? 1 : 0)} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                <${GroupBlock} id="analisis" label="Análisis" hint=${`${thOn ? 'Laboratorio de Threads, m' : 'M'}ezcla, cadencia, horarios, promedios, comparativas, catálogo${ttOnly ? ', TikTok creativo' : ''} y simulador`}
+                  count=${7 + (ttOnly ? 1 : 0) + (thOn ? 1 : 0)} open=${!!openGroups.analisis} onToggle=${() => setGroup('analisis', !openGroups.analisis)}>
+                  ${thOn && html`<${SectionGuard} name="Laboratorio de Threads" resetKey=${guardKey}><${ThreadsLabSection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected}/><//>`}
                   <${SectionGuard} name="Mezcla" resetKey=${guardKey}><${MixSection}     D=${D} filters=${filters} setFilters=${setFilters}/><//>
                   <${SectionGuard} name="Cadencia" resetKey=${guardKey}><${CadenceSection}     D=${D}/><//>
                   <${SectionGuard} name="Horarios" resetKey=${guardKey}><${HorariosSection}    D=${D}/><//>
@@ -11792,8 +11793,6 @@
                   <${SectionGuard} name="Comparativas" resetKey=${guardKey}><${ComparativasSection} D=${D} rawPosts=${allPosts} filters=${filters} chartTheme=${chartTheme} setFilters=${setFilters}/><//>
                   <${SectionGuard} name="Catálogo" resetKey=${guardKey}><${CatalogSection}     D=${D} filters=${filters} setFilters=${setFilters}/><//>
                   ${ttOnly && html`<${SectionGuard} name="TikTok creativo" resetKey=${guardKey}><${TikTokLabSection} D=${D} onPick=${setSelected} chartTheme=${chartTheme} rawPosts=${allPosts} filters=${filters}/><//>`}
-                  ${copyOn && html`<${SectionGuard} name="Copy y mensaje" resetKey=${guardKey}><${CopySection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected} setFilters=${setFilters}/><//>`}
-                  ${thOnly && html`<${SectionGuard} name="Threads · copy" resetKey=${guardKey}><${ThreadsLabSection} D=${D} rawPosts=${allPosts} filters=${filters} onPick=${setSelected}/><//>`}
                   <${SectionGuard} name="Simulador" resetKey=${guardKey}><${SimuladorSection}   allPosts=${allPosts}/><//>
                 <//>
 
