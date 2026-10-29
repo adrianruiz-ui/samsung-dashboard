@@ -1646,7 +1646,7 @@
     // ============================================================
     // BUILD_VERSION: cámbialo cuando subas una versión nueva.
     // Al cambiar, automáticamente se invalida cualquier caché viejo del navegador.
-    const BUILD_VERSION = '2026-10-29-v89';
+    const BUILD_VERSION = '2026-10-29-v90';
     const CACHE_KEY = 'smx-dashboard-cache-' + BUILD_VERSION;
     const CACHE_TTL_MS = CACHE_TTL_MIN * 60 * 1000;
 
@@ -7526,7 +7526,9 @@
       const forms = TH_FORMULAS.filter(([, rx]) => rx.test(t) || rx.test(raw)).map(([k]) => k);
       const tens = TH_TENSIONS.filter(([, rx]) => rx.test(t)).map(([k]) => k);
       const lines = raw.split(/\n|​\s*(?=\S)/).map(s => s.trim()).filter(Boolean);
-      const sents = raw.split(/(?<=[.!?…])\s+/).filter(s => s.trim().length > 2);
+      // sin links, hashtags ni «conoce más»: no cuentan como parte del chiste
+      const body = raw.replace(/(?:conoce m[aá]s|m[aá]s informaci[oó]n|descubre m[aá]s)?[^.!?\n]{0,25}(?:link (?:en|de) (?:la )?bio|https?:\/\/\S+|bit\.ly\/\S+)/gi, '').replace(/#[\p{L}\p{N}_]+/gu, '').trim();
+      const sents = body.split(/(?<=[.!?…])\s+/).filter(s => s.replace(/[\s\p{Extended_Pictographic}\u200b]/gu, '').length > 2);
       const est = forms.includes('Diálogo (Yo: / Él:)') ? 'Diálogo' : forms.includes('Lista o ranking') || forms.includes('Hay dos tipos de…') ? 'Lista o comparación'
         : /^\s*[¿?]/.test(raw) || /\?\s*\S{0,6}\s*$/.test(raw) ? 'Pregunta' : (sents.length >= 2 || lines.length >= 2) ? 'Planteamiento y remate' : 'Una línea';
       const out = { forms, tens: tens.length ? tens : ['Producto puro'], est, brand: cp.prod };
@@ -7772,6 +7774,233 @@
         </div>`}`;
     }
 
+    // ---------- v90 — Mesa de borradores: lectura de director creativo basada en la data ----------
+    const TH_PRO_TXT = {
+      'f:Firma del CM': 'Firmas como el CM: la gente responde mejor cuando hay una persona detrás de la cuenta.',
+      'f:Sube tu foto': 'Pides que suban su foto: es de lo que más conversación saca.',
+      'f:Confiesen / levanten la mano': 'Invitas a confesar algo: la gente contesta cuando se siente identificada.',
+      'f:Lista o ranking': 'La lista ordena el chiste y se lee de un vistazo.',
+      'f:Refrán volteado': 'Volteas una frase que todos conocen: es un recurso que suele conectar.',
+      'f:Spoiler / plot twist': 'El «spoiler» crea curiosidad desde la primera palabra.',
+      't:Trabajo y jefe': 'Hablas de algo que todos vivimos en el trabajo: es de los temas que más conectan.',
+      't:Emociones y autoestima': 'Hablas de una emoción: en Threads la vulnerabilidad conecta.',
+      't:Cuerpo, salud y cansancio': 'El cansancio y el cuerpo son una tensión con la que todos se identifican.',
+      't:Vida digital': 'Hablas de la vida en el celular, algo que todos reconocen.',
+      's:Planteamiento y remate': 'Tiene situación y giro: es la forma que mejor funciona en la cuenta.',
+      'b:No lo nombra': 'No necesita nombrar la marca para que funcione.',
+      'b:Al inicio': 'La marca aparece desde el inicio, sin esconderse en el remate.',
+    };
+    const TH_CON_TXT = {
+      'x:Manda a un link o a comprar': 'El link lo enfría: en Threads la gente viene a platicar, no a dar clic.',
+      'x:Tres hashtags o más': 'Tantos hashtags lo hacen ver como anuncio.',
+      'f:El Galaxy habla o mira': 'Poner al Galaxy como protagonista del chiste suele restar: funciona mejor cuando la protagonista es la persona.',
+      'f:Diálogo (Yo: / Él:)': 'El diálogo «Yo: / Él:» no ha funcionado en la cuenta.',
+      'b:Como remate': 'Rematar con la marca suele restar: el giro debería ser de la persona, no del producto.',
+      'b:En medio': 'La marca a media frase corta el ritmo del chiste.',
+      's:Una línea': 'Como frase corta se queda floja: dale una situación antes del giro.',
+      's:Pregunta': 'Las preguntas solas no han funcionado tan bien: dale un contexto antes.',
+      't:Dinero y compras': 'Hablar de dinero y compras suena a venta y suele restar.',
+      't:Fotos y recuerdos': 'Las fotos son territorio muy usado: cuesta sorprender.',
+      't:Fechas y temporadas': 'Las fechas del calendario se sienten genéricas si no hay un giro propio.',
+      't:Amor, ex y crush': 'El tema de amor y ex no ha despegado en la cuenta.',
+    };
+    const TH_SHORT = (k) => ({ 'f:Firma del CM': 'la firma del CM', 's:Planteamiento y remate': 'la situación con giro', 'b:No lo nombra': 'que no nombra la marca' }[k]
+      || (k[0] === 't' ? `el tema de ${k.slice(2).split(' y ')[0].toLowerCase()}` : k[0] === 'f' ? `el recurso «${k.slice(2)}»` : thTraitName(k).toLowerCase()));
+    const TH_LINK_RX = /(?:conoce m[aá]s|m[aá]s informaci[oó]n|descubre m[aá]s)?[^.!?\n]{0,25}(?:link (?:en|de) (?:la )?bio|https?:\/\/\S+|bit\.ly\/\S+|samsung\.com\S*)/gi;
+    const TH_HASH_RX = /#[\p{L}\p{N}_]+/gu;
+    // Pedazos del texto que suman o restan (para subrayarlos en el borrador)
+    function thMarks(raw, r, TS, signOf) {
+      const marks = [];
+      const add = (rx, key, flags, once) => {
+        const st = TS.get(key); const sign = signOf ? signOf(key, st) : st && st.sign; if (!st || !sign) return;
+        const re = new RegExp(rx.source, flags || (rx.flags.includes('g') ? rx.flags : rx.flags + 'g'));
+        const f = cpFold(raw); let m;
+        // los índices de cpFold coinciden con el texto original (mismo largo, sin acentos)
+        const src = f.length === raw.length ? f : raw.toLowerCase();
+        while ((m = re.exec(src)) && marks.length < 40) {
+          if (!m[0].length) { re.lastIndex++; continue; }
+          if (once && src[m.index - 1] === '#') continue;   // la marca dentro de un hashtag no cuenta
+          marks.push({ a: m.index, b: m.index + m[0].length, sign, key }); if (once) break;
+        }
+      };
+      for (const [k, rx] of TH_FORMULAS) if (r.th.forms.includes(k)) add(rx, 'f:' + k);
+      for (const [k, rx] of TH_TENSIONS) if (r.th.tens.includes(k)) add(rx, 't:' + k);
+      if (r.cp.cta === 'Link o compra') add(/link (?:en|de) (?:la )?bio|https?:\/\/\S+|bit\.ly\/\S+|conoce mas|compra\w*/, 'x:Manda a un link o a comprar');
+      if (r.cp.nh >= 3) add(/#[a-z0-9_ñ]+/, 'x:Tres hashtags o más');
+      if (r.th.brand !== 'No lo nombra') add(/galaxy(?: (?:z |s|a|watch|buds|tab|ring)?[a-z0-9+]{1,8}){0,2}|samsung\w*/, 'b:' + r.th.brand, null, true);
+      // sin encimar: gana la primera, y una marca en ámbar le gana a una verde
+      marks.sort((x, y) => x.a - y.a || x.sign - y.sign);
+      const out = []; for (const m of marks) { if (out.length && m.a < out[out.length - 1].b) continue; out.push(m); }
+      return out;
+    }
+    function ThMarked({ raw, marks, TS }) {
+      if (!marks.length) return html`<span>${raw}</span>`;
+      const parts = []; let i = 0;
+      marks.forEach((m, j) => {
+        if (m.a > i) parts.push(html`<span key=${'t' + j}>${raw.slice(i, m.a)}</span>`);
+        const st = TS.get(m.key), why = (m.sign > 0 ? TH_PRO_TXT : TH_CON_TXT)[m.key] || `${thTraitName(m.key)}: ${m.sign > 0 ? 'suele sumar' : 'suele restar'}.`;
+        parts.push(html`<mark key=${'m' + j} title=${`${why} (${st.n} copys en la cuenta)`}
+          className=${"rounded-[3px] px-0.5 -mx-0.5 cursor-help underline decoration-2 underline-offset-[3px] " + (m.sign > 0 ? 'bg-success/[0.14] decoration-success/70 text-txt' : 'bg-amber/[0.16] decoration-amber/80 text-txt')}>${raw.slice(m.a, m.b)}</mark>`);
+        i = m.b;
+      });
+      if (i < raw.length) parts.push(html`<span key="end">${raw.slice(i)}</span>`);
+      return parts;
+    }
+    // Lectura completa de un borrador
+    function thReadDraft(txt, A, rows) {
+      const p = { copy: txt, platform: 'Threads' }, cp = copyProfile(p); if (!cp) return null;
+      const r = { p, cp, th: thProfile(p) };
+      const s = thSemaforo(r, A.TS);
+      const sims = rows.map(x => ({ x, s: cpSim(cp, x.cp) })).filter(y => y.s >= 0.2).sort((a, b) => b.s - a.s).slice(0, 3).map(y => y.x);
+      const respG = sims.length >= 2 ? thAgg(sims) : null;
+      // dónde cae en el mapa
+      const ten = r.th.tens.find(t => t !== 'Producto puro') || 'Producto puro';
+      const c = A.cell(ten, r.th.est);
+      const q = c.n < 3 ? null : c.v >= 1.12 ? (c.n < 8 ? 'opp' : 'core') : c.v <= 0.88 ? (c.n < 8 ? 'drop' : 'fix') : (c.n >= 8 ? (c.v >= 1 ? 'core' : 'fix') : 'none');
+      const bestForm = A.ests.map(e => ({ e, ...A.cell(ten, e) })).filter(x => x.n >= 3 && x.e !== r.th.est).sort((a, b) => b.v - a.v)[0];
+      // el tema se juzga junto con su forma (un tema flojo puede funcionar bien armado de cierta manera)
+      const signOf = (k, st) => k === 't:' + ten && c.n >= 3 ? (c.v >= 1.12 ? 1 : c.v <= 0.88 ? -1 : 0) : st && st.sign;
+      const marks = thMarks(txt, r, A.TS, signOf);
+      if (ten !== 'Producto puro' && c.n >= 3) {
+        const k = 't:' + ten, sg = signOf(k, A.TS.get(k));
+        s.pro = s.pro.filter(x => x.k !== k); s.con = s.con.filter(x => x.k !== k);
+        if (sg > 0) s.pro.unshift({ k, n: c.n, v: c.v, sign: 1 }); else if (sg < 0) s.con.unshift({ k, n: c.n, v: c.v, sign: -1 });
+        s.light = s.pro.length > s.con.length ? 'verde' : s.con.length > s.pro.length ? 'rojo' : 'ambar';
+      }
+      // palancas: las mecánicas se aplican solas; las demás son tarea con ejemplo
+      const T = (k) => A.TS.get(k) || { sign: 0 };
+      const lev = [];
+      if (cp.cta === 'Link o compra' && T('x:Manda a un link o a comprar').sign < 0) lev.push({ k: 'link', l: 'Quitar el link', d: 'Sin link conversa más.', apply: (t) => t.replace(TH_LINK_RX, '').replace(/(?:conoce m[aá]s|m[aá]s informaci[oó]n)[:\s]*$/i, '') });
+      if (cp.nh >= 2 && (T('x:Tres hashtags o más').sign < 0 || T('x:Sin hashtags').sign > 0 || cp.nh >= 3)) lev.push({ k: 'hash', l: 'Quitar hashtags', d: 'Deja de verse como anuncio.', apply: (t) => t.replace(TH_HASH_RX, '') });
+      if (!cp.cm && T('f:Firma del CM').sign > 0) lev.push({ k: 'cm', l: 'Firmar como el CM', d: 'Le pone una persona detrás.', apply: (t) => t.replace(/\s+$/, '') + '\nAtte. El CM' });
+      const tasks = [];
+      const exOf = (pred) => { const x = rows.filter(pred).sort((a, b) => b.idx - a.idx)[0]; return x ? String(x.p.copy).trim() : null; };
+      if (r.th.brand === 'Como remate' && T('b:Como remate').sign < 0) tasks.push({ l: 'Que el giro sea de la persona, no de la marca', ex: exOf(x => x.th.brand === 'No lo nombra' && x.th.est === 'Planteamiento y remate' && x.idx >= 1.2) });
+      if (r.th.est === 'Una línea' && (T('s:Una línea').sign < 0 || T('s:Planteamiento y remate').sign > 0)) tasks.push({ l: 'Agrega una situación antes del giro', ex: exOf(x => x.th.est === 'Planteamiento y remate' && x.th.tens.includes(ten) && x.idx >= 1.2) || exOf(x => x.th.est === 'Planteamiento y remate' && x.idx >= 1.3) });
+      if (r.th.forms.includes('El Galaxy habla o mira') && T('f:El Galaxy habla o mira').sign < 0) tasks.push({ l: 'Que la persona sea la protagonista, no el Galaxy', ex: exOf(x => x.th.tens.includes(ten) && !x.th.forms.includes('El Galaxy habla o mira') && x.idx >= 1.2) });
+      if ((q === 'fix' || q === 'drop') && bestForm && bestForm.v >= 1.12) tasks.push({ l: `Prueba escribirlo como ${TH_EST_N[bestForm.e].toLowerCase()}`, ex: exOf(x => x.th.tens.includes(ten) && x.th.est === bestForm.e) });
+      // nota del estratega
+      const pro = s.pro.map(x => x.k), con = s.con.map(x => x.k);
+      const nota = [];
+      const what = `Es ${({ 'Una línea': 'una frase corta', 'Planteamiento y remate': 'una situación con giro', 'Pregunta': 'una pregunta', 'Lista o comparación': 'una lista', 'Diálogo': 'un diálogo' })[r.th.est]} ${ten === 'Producto puro' ? 'que habla solo del producto' : `sobre ${ten.toLowerCase()}`}.`;
+      nota.push(what + (q && q !== 'none' ? ` En la cuenta, esa combinación es ${({ opp: 'una oportunidad: funciona y casi no la usamos', core: 'de lo que nos sostiene', fix: 'de lo que hay que replantear: la usamos seguido y no rinde', drop: 'de lo que no conviene insistir' })[q]}.` : ''));
+      const p1 = pro.find(k => TH_PRO_TXT[k]); if (p1) nota.push(TH_PRO_TXT[p1]);
+      const c1 = con.find(k => TH_CON_TXT[k]); if (c1) nota.push(TH_CON_TXT[c1]);
+      if (!p1 && !c1) nota.push('Nada en el texto suma o resta de forma clara: aquí lo decide la ejecución y el momento.');
+      return { r, s, sims, resp: respG ? thResp(respG, A.base) : null, ten, q, bestForm, marks, lev, tasks, nota,
+        strength: s.pro.reduce((a, x) => a + Math.log2(x.v), 0) + s.con.reduce((a, x) => a + Math.log2(x.v), 0), score: s.pro.length - s.con.length };
+    }
+    function ThMesa({ A, rows, mom, drafts, setDrafts, onPick }) {
+      const [levOn, setLevOn] = useState({});
+      const [copied, setCopied] = useState(null);
+      const reads = drafts.map((t, i) => { const txt = t.trim(); return txt.length < 8 ? { i, empty: true } : { i, txt, ...(thReadDraft(txt, A, rows) || { empty: true }) }; });
+      const filled = reads.filter(d => !d.empty);
+      const ranked = [...filled].sort((a, b) => b.score - a.score || b.strength - a.strength);
+      const L = (i) => String.fromCharCode(65 + i);
+      // veredicto del panel
+      const verdict = (() => {
+        if (filled.length < 2) return null;
+        const [b, n2] = ranked;
+        if (b.score === n2.score && Math.abs(b.strength - n2.strength) < 0.15) return { t: `Las versiones ${filled.map(d => L(d.i)).join(' y ')} están muy parejas.`, w: 'Lo que las separa no está en los datos: elige la que mejor suene en voz alta.' };
+        const why = b.s.pro[0] ? TH_SHORT(b.s.pro[0].k) : null;
+        const AV = { 'x:Manda a un link o a comprar': 'no manda a un link', 'x:Tres hashtags o más': 'no se llena de hashtags', 'f:El Galaxy habla o mira': 'no pone al Galaxy de protagonista',
+          'b:Como remate': 'no remata con la marca', 's:Una línea': 'no se queda en una frase corta', 'f:Diálogo (Yo: / Él:)': 'no usa el diálogo «Yo: / Él:»' };
+        const avoid = filled.filter(d => d !== b).flatMap(d => d.s.con).find(x => AV[x.k] && !b.s.con.some(y => y.k === x.k));
+        const t = `Me quedaría con la ${L(b.i)}` + (why ? `: tiene ${why}` : '') + (avoid ? `${why ? ' y' : ':'} ${AV[avoid.k]}` : '') + '.';
+        // mezcla: una fortaleza de otra versión que la ganadora no tiene
+        const mix = filled.filter(d => d !== b).map(d => ({ d, x: d.s.pro.find(x => !b.s.pro.some(y => y.k === x.k) && x.k[0] !== 'b' && x.k[0] !== 'x') })).find(o => o.x);
+        return { t, w: mix ? `Súmale ${TH_SHORT(mix.x.k)} de la ${L(mix.d.i)}.` : null, best: b.i };
+      })();
+      const momLine = mom ? { racha: 'La cuenta viene en racha: buen día para la versión más arriesgada.', normal: 'La cuenta viene normal: cualquier versión sólida funciona.', fria: 'La cuenta viene fría: hoy conviene la versión más segura, la que más se parece a lo que ya funcionó.' }[mom.state] : null;
+      const liveTopic = filled.some(d => CP_RX.futbol.test(cpFold(d.txt)) || CP_RX.pop.test(cpFold(d.txt)));
+      const suggested = (d) => { let t = d.txt; d.lev.forEach(l => { if (levOn[d.i + l.k]) t = l.apply(t); }); return t.replace(/[ \t]{2,}/g, ' ').replace(/\s+\n/g, '\n').trim(); };
+      const tr = A.track;
+      return html`
+        <div className="rounded-xl bg-surface p-5 mb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 max-w-3xl">
+              <div className="text-[13px] font-medium text-txt">Pega tus versiones</div>
+              <div className="text-[11px] text-txt4 mt-0.5 leading-snug">Hasta 4 versiones del mismo post. La mesa las lee con lo que ya sabemos de Threads: subraya lo que suma y lo que resta, explica por qué y propone cómo subirle. Es una recomendación, no una garantía.</div>
+            </div>
+            ${drafts.length < 4 && html`<button onClick=${() => setDrafts(d => [...d, ''])} className="text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt shrink-0">Agregar versión</button>`}
+          </div>
+          ${(momLine || liveTopic) && html`<div className="mt-3 text-[12px] text-txt3 flex flex-wrap gap-x-4 gap-y-1">
+            ${momLine && html`<span><span className=${"inline-block w-2 h-2 rounded-full mr-1.5 " + (mom.state === 'racha' ? 'bg-success' : mom.state === 'fria' ? 'bg-amber' : 'bg-txt4')}></span>${momLine}</span>`}
+            ${liveTopic && html`<span>Hablas de algo que está pasando: el momento suele empujar más que el texto.</span>`}
+          </div>`}
+        </div>
+
+        ${verdict && html`<div className="rounded-xl bg-surface px-5 py-4 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-accentSoft">El veredicto</span>
+          <span className="text-[16px] font-medium text-txt leading-snug">${verdict.t}</span>
+          ${verdict.w && html`<span className="text-[13px] text-txt2">${verdict.w}</span>`}
+        </div>`}
+
+        <div className=${"grid grid-cols-1 gap-3 mb-3 " + (drafts.length > 1 ? 'lg:grid-cols-2' : '')}>
+          ${reads.map(d => { const Lt = d.s ? TH_LIGHT[d.s.light] : null; const sug = !d.empty ? suggested(d) : ''; const anyLev = !d.empty && d.lev.some(l => levOn[d.i + l.k]);
+            const sugRead = anyLev ? thReadDraft(sug, A, rows) : null;
+            return html`<div key=${d.i} className=${"rounded-xl bg-surface p-4 flex flex-col gap-3 min-w-0 " + (verdict && verdict.best === d.i ? 'ring-1 ring-success/50' : '')}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-mono text-txt3">Versión ${L(d.i)}</span>
+                  ${Lt && html`<span className="flex items-center gap-1.5 text-[12px]"><span className=${"w-2 h-2 rounded-full " + Lt.c}></span><span className=${Lt.t}>${Lt.l}</span></span>`}
+                  ${verdict && verdict.best === d.i && html`<span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success">La recomendada</span>`}
+                </div>
+                ${drafts.length > 1 && html`<button onClick=${() => { setDrafts(ds => ds.filter((_, j) => j !== d.i)); setLevOn({}); }} aria-label=${`Quitar versión ${L(d.i)}`} className="text-txt4 hover:text-txt text-[12px]">✕</button>`}
+              </div>
+              <textarea value=${drafts[d.i]} onChange=${(e) => { const v = e.target.value; setDrafts(ds => ds.map((x, j) => j === d.i ? v : x)); }} rows=${3}
+                aria-label=${`Borrador ${L(d.i)}`} placeholder="Escribe o pega el copy…"
+                className="w-full rounded-lg bg-onSurface/[0.04] border border-transparent focus:border-line2 focus:outline-none px-3 py-2 text-[13px] text-txt placeholder:text-txt4 leading-relaxed resize-y"></textarea>
+              ${!d.empty && html`
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-1.5">Así lo lee la mesa</div>
+                  <p className="text-[14px] text-txt2 leading-relaxed whitespace-pre-line break-words"><${ThMarked} raw=${d.txt} marks=${d.marks} TS=${A.TS}/></p>
+                  ${d.marks.length > 0 && html`<div className="text-[10px] text-txt4 mt-1">Verde suma, ámbar resta. Pasa el cursor por lo subrayado para ver por qué.</div>`}
+                </div>
+                <div className="rounded-lg bg-onSurface/[0.03] px-3.5 py-3 space-y-1.5">
+                  <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-accentSoft">Nota del estratega</div>
+                  ${d.nota.map((t, j) => html`<p key=${j} className=${"leading-snug " + (j === 0 ? 'text-[13px] text-txt' : 'text-[12px] text-txt2')}>${t}</p>`)}
+                  ${d.resp && html`<p className="text-[12px] text-txt3">Por lo parecido que hemos publicado, suele ${d.resp.toLowerCase().replace('saca', 'sacar')}.</p>`}
+                </div>
+                ${(d.lev.length > 0 || d.tasks.length > 0) && html`<div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4 mb-1.5">Para subirle</div>
+                  ${d.lev.length > 0 && html`<div className="flex flex-wrap gap-1.5 mb-2">
+                    ${d.lev.map(l => { const on = !!levOn[d.i + l.k]; return html`<button key=${l.k} onClick=${() => setLevOn(o => ({ ...o, [d.i + l.k]: !on }))} aria-pressed=${on} title=${l.d}
+                      className=${"text-[12px] px-2.5 py-1 rounded-md transition-colors " + (on ? 'bg-success/[0.16] text-success' : 'bg-onSurface/[0.05] text-txt2 hover:bg-onSurface/[0.09]')}>${on ? '✓ ' : '+ '}${l.l}</button>`; })}
+                  </div>`}
+                  ${anyLev && html`<div className="rounded-lg bg-success/[0.06] px-3.5 py-3 mb-2">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-success">Versión sugerida</span>
+                      <span className="flex gap-2">
+                        <button onClick=${() => { try { navigator.clipboard.writeText(sug); setCopied(d.i); setTimeout(() => setCopied(null), 1500); } catch (e) {} }} className="text-[11px] text-accent2 hover:underline">${copied === d.i ? 'Copiado' : 'Copiar'}</button>
+                        ${drafts.length < 4 && html`<button onClick=${() => { setDrafts(ds => [...ds, sug]); }} className="text-[11px] text-accent2 hover:underline">Agregar como versión ${L(drafts.length)}</button>`}
+                      </span>
+                    </div>
+                    <p className="text-[13px] text-txt leading-relaxed whitespace-pre-line break-words">${sug}</p>
+                    ${sugRead && sugRead.s.light !== d.s.light && html`<div className="text-[11px] text-txt3 mt-1.5">Con estos cambios pasa a: <b className=${TH_LIGHT[sugRead.s.light].t}>${TH_LIGHT[sugRead.s.light].l.toLowerCase()}</b>.</div>`}
+                  </div>`}
+                  ${d.tasks.map((tk, j) => html`<div key=${j} className="text-[12px] leading-snug mb-1.5">
+                    <span className="text-txt">✎ ${tk.l}.</span>${tk.ex && html` <span className="text-txt3">Así lo resolvimos antes: «${tk.ex.length > 130 ? tk.ex.slice(0, 128) + '…' : tk.ex}»</span>`}
+                  </div>`)}
+                </div>`}
+                ${d.q && d.q !== 'none' && html`<div className="text-[12px] text-txt3"><span className="text-txt4">En el mapa: </span>${TH_TEN_S[d.ten]} · ${TH_EST_N[d.r.th.est]} → <b className=${TH_Q[d.q].c + ' font-medium'}>${TH_Q[d.q].l}</b></div>`}
+                <div className="space-y-1">
+                  ${d.sims.length ? html`<div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Lo más parecido que hemos publicado</div>
+                    ${d.sims.slice(0, 2).map((x, j) => html`<button key=${j} onClick=${(e) => { window.__smxPickY = e.clientY; onPick && onPick(x.p); }} className="w-full text-left rounded-md bg-onSurface/[0.03] px-2.5 py-1.5 hover:bg-onSurface/[0.06] flex items-start gap-2">
+                      <span className="flex-1 min-w-0 text-[11px] text-txt2 leading-snug line-clamp-2">${String(x.p.copy).trim()}</span><${ThWord} v=${x.idx} n=${99}/></button>`)}`
+                    : html`<div className="text-[11px] text-txt3">No se parece a nada que hayamos publicado: territorio nuevo.</div>`}
+                  <a href=${`mapa-3d.html?copy=${encodeURIComponent(d.txt.slice(0, 600))}&cp=Threads`} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 text-[11px] text-accent2 hover:underline">Ver los parecidos en el árbol <${ExtIcon} size=${11}/></a>
+                </div>`}
+            </div>`; })}
+        </div>
+        ${(tr.verde || tr.rojo) && html`<div className="rounded-xl bg-surface px-5 py-4 text-[12px] text-txt3 leading-relaxed">
+          <b className="text-txt font-medium">¿Qué tan confiable es la mesa?</b> Aplicada a lo que ya publicamos:
+          ${tr.verde ? ` de los copys con más a favor, ${Math.round(tr.verde.ok / tr.verde.n * 10)} de cada 10 rindieron arriba de lo normal;` : ''}
+          ${tr.ambar ? ` sin señales claras, ${Math.round(tr.ambar.ok / tr.ambar.n * 10)} de cada 10;` : ''}
+          ${tr.rojo ? ` con más en contra, ${Math.round(tr.rojo.ok / tr.rojo.n * 10)} de cada 10.` : ''}
+          ${' '}Sirve para elegir entre versiones y quitar riesgos, no para garantizar resultados: el momento pesa tanto como el texto.</div>`}`;
+    }
+
     function ThreadsLabSection({ D, rawPosts, filters, onPick }) {
       const [tab, setTab] = useState(() => { try { return sessionStorage.getItem('smx-th-tab') || 'hoy'; } catch (e) { return 'hoy'; } });
       useEffect(() => { try { sessionStorage.setItem('smx-th-tab', tab); } catch (e) {} }, [tab]);
@@ -7882,64 +8111,7 @@
         <${ThOppMap} A=${A} onPick=${onPick} onWall=${(f) => { setWallF(f); setWallN(24); setTab('bib'); }}/>`;
 
       // ---------- pestaña 2: Revisa tus borradores
-      const judgedDrafts = drafts.map((t, i) => {
-        const txt = t.trim(); if (txt.length < 8) return { i, empty: true };
-        const p = { copy: txt, platform: 'Threads' }, cp = copyProfile(p); if (!cp) return { i, empty: true };
-        const r = { p, cp, th: thProfile(p) };
-        const s = thSemaforo(r, A.TS);
-        const sims = rows.map(x => ({ x, s: cpSim(cp, x.cp) })).filter(y => y.s >= 0.2).sort((a, b) => b.s - a.s).slice(0, 3).map(y => y.x);
-        const respG = sims.length >= 2 ? thAgg(sims) : null;
-        return { i, r, s, sims, resp: respG ? thResp(respG, A.base) : null, score: s.pro.length - s.con.length };
-      });
-      const filled = judgedDrafts.filter(d => !d.empty);
-      const order = [...filled].sort((a, b) => b.score - a.score);
-      const tr = A.track;
-      const mesa = html`
-        <div className="rounded-xl bg-surface p-5 mb-3">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-            <div className="min-w-0 max-w-2xl">
-              <div className="text-[13px] font-medium text-txt">Pega tus versiones</div>
-              <div className="text-[11px] text-txt4 mt-0.5 leading-snug">Hasta 4 borradores del mismo post. Cada uno recibe un semáforo con lo que tiene a favor y en contra según lo que ya pasó en Threads. No es una predicción: el momento en que se publique pesa tanto como el texto.</div>
-            </div>
-            ${drafts.length < 4 && html`<button onClick=${() => setDrafts(d => [...d, ''])} className="text-[12px] px-3 py-1.5 rounded-lg bg-onSurface/[0.05] hover:bg-onSurface/[0.09] text-txt shrink-0">Agregar versión</button>`}
-          </div>
-          <div className=${"grid grid-cols-1 gap-3 " + (drafts.length >= 3 ? 'md:grid-cols-2 2xl:grid-cols-4' : 'md:grid-cols-2')}>
-            ${judgedDrafts.map((d) => { const L = d.s ? TH_LIGHT[d.s.light] : null; const rank = d.empty ? null : order.indexOf(d) + 1;
-              return html`<div key=${d.i} className="rounded-lg bg-onSurface/[0.03] p-3.5 flex flex-col gap-2.5 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Versión ${String.fromCharCode(65 + d.i)}</span>
-                  ${drafts.length > 1 && html`<button onClick=${() => setDrafts(ds => ds.filter((_, j) => j !== d.i))} aria-label=${`Quitar versión ${String.fromCharCode(65 + d.i)}`} className="text-txt4 hover:text-txt text-[12px]">✕</button>`}
-                </div>
-                <textarea value=${drafts[d.i]} onChange=${(e) => { const v = e.target.value; setDrafts(ds => ds.map((x, j) => j === d.i ? v : x)); }} rows=${3}
-                  aria-label=${`Borrador ${String.fromCharCode(65 + d.i)}`} placeholder="Escribe o pega el copy…"
-                  className="w-full rounded-md bg-surface border border-transparent focus:border-line2 focus:outline-none px-3 py-2 text-[13px] text-txt placeholder:text-txt4 leading-relaxed resize-y"></textarea>
-                ${L && html`
-                  <div className="flex items-center gap-2">
-                    <span className=${"w-2.5 h-2.5 rounded-full shrink-0 " + L.c}></span>
-                    <span className=${"text-[13px] font-medium " + L.t}>${L.l}</span>
-                    ${filled.length > 1 && rank === 1 && order[0].score > (order[1] ? order[1].score : -99) && html`<span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success">La más sólida</span>`}
-                  </div>
-                  <p className="text-[11px] text-txt4 -mt-1 leading-snug">${L.d}</p>
-                  ${d.s.pro.length > 0 && html`<div className="text-[12px] leading-snug"><span className="text-success">A favor:</span> <span className="text-txt2">${d.s.pro.map(x => thTraitName(x.k)).join(' · ')}</span></div>`}
-                  ${d.s.con.length > 0 && html`<div className="text-[12px] leading-snug"><span className="text-amber">En contra:</span> <span className="text-txt2">${d.s.con.map(x => thTraitName(x.k)).join(' · ')}</span></div>`}
-                  ${d.resp && html`<div className="text-[12px] text-txt3">Por lo parecido, suele: <b className="font-medium text-txt">${d.resp.toLowerCase()}</b></div>`}
-                  ${d.sims.length ? html`<div className="space-y-1">
-                      <div className="text-[10px] font-mono uppercase tracking-[0.15em] text-txt4">Ya publicamos algo parecido</div>
-                      ${d.sims.map((x, j) => html`<button key=${j} onClick=${(e) => pick(e, x.p)} className="w-full text-left rounded-md bg-surface px-2.5 py-1.5 hover:bg-onSurface/[0.05] flex items-start gap-2">
-                        <span className="flex-1 min-w-0 text-[11px] text-txt2 leading-snug line-clamp-2">${String(x.p.copy).trim()}</span><${ThWord} v=${x.idx} n=${99}/></button>`)}
-                    </div>`
-                    : html`<div className="text-[11px] text-txt3">No se parece a nada que hayamos publicado: territorio nuevo.</div>`}
-                  <a href=${`mapa-3d.html?copy=${encodeURIComponent(drafts[d.i].trim().slice(0, 600))}&cp=Threads`} target="_blank" rel="noopener"
-                     className="self-start inline-flex items-center gap-1.5 text-[11px] text-accent2 hover:underline">Ver los parecidos en el árbol <${ExtIcon} size=${11}/></a>`}
-              </div>`; })}
-          </div>
-        </div>
-        ${(tr.verde || tr.rojo) && html`<div className="rounded-xl bg-surface px-5 py-4 text-[12px] text-txt3 leading-relaxed">
-          <b className="text-txt font-medium">¿Qué tan confiable es el semáforo?</b> Aplicado a lo que ya publicamos:
-          ${tr.verde ? ` de los copys en verde, ${Math.round(tr.verde.ok / tr.verde.n * 10)} de cada 10 rindieron arriba de lo normal;` : ''}
-          ${tr.ambar ? ` sin señales claras, ${Math.round(tr.ambar.ok / tr.ambar.n * 10)} de cada 10;` : ''}
-          ${tr.rojo ? ` en rojo, ${Math.round(tr.rojo.ok / tr.rojo.n * 10)} de cada 10.` : ''}
-          ${' '}Sirve para descartar riesgos y elegir entre versiones parecidas, no para garantizar resultados.</div>`}`;
+      const mesa = html`<${ThMesa} A=${A} rows=${rows} mom=${mom} drafts=${drafts} setDrafts=${setDrafts} onPick=${onPick}/>`;
 
       // ---------- pestaña 3: Cómo nos fue
       const recent = [...A.judged].sort((a, b) => b.r.t - a.r.t).slice(0, 12);
